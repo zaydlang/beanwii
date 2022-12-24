@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/beanwii
+beanwii.so
+beanwii.dylib
+beanwii.dll
+beanwii.a
+beanwii.lib
+beanwii-test-*
+*.exe
+*.o
+*.obj
+*.lst

@@ -1,0 +1,9 @@
+{
+	"authors": [
+		"Zayd Qumsieh"
+	],
+	"copyright": "Copyright © 2022, Zayd Qumsieh",
+	"description": "A Wii emulator",
+	"license": "proprietary",
+	"name": "beanwii"
+}
