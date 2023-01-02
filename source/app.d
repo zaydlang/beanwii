@@ -1,10 +1,11 @@
 import std.stdio;
 
-import emu.hw.disk.diskloader;
+import emu.hw.wii;
 import util.file;
 
 void main() {
 	auto disk_data = load_file_as_bytes("./spm.wbfs");
 
-	load_wii_disk(disk_data.ptr, disk_data.length);
+	Wii wii = new Wii();
+	wii.load_wii_disk(disk_data.ptr, disk_data.length);
 }
