@@ -4,7 +4,9 @@ enum LogSource {
     DISK,
     WBFS,
     ENCRYPTION,
-    VMEM
+    VMEM,
+    BROADWAY,
+    SLOWMEM
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

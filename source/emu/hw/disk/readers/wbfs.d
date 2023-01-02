@@ -93,7 +93,6 @@ final class WbfsReader : DiskReader {
         size_t disk_chunk   = wlba_entry << this.wbfs_disk_address_chunk_shift;
         size_t disk_offset  = address & this.wbfs_disk_address_offset_mask;
         size_t disk_address = disk_chunk + disk_offset;
-        log_wbfs("disk_slot: %d, address: 0x%x, wlba_entry: 0x%x, disk_chunk: 0x%x, disk_offset: 0x%x, disk_address: 0x%x", disk_slot, address, wlba_entry, disk_chunk, disk_offset, disk_address);
 
         memcpy(out_buffer, this.disk_data + disk_address, size);
     }
@@ -103,7 +102,6 @@ final class WbfsReader : DiskReader {
         wlba_entry_address += 0x100;                                                        // get to the beginning of the wlba_table
         wlba_entry_address += (address >> this.wbfs_disk_address_chunk_shift) * u16.sizeof; // get to the entry that corresponds to the address
         
-        log_wbfs("wlba_entry_address: 0x%x", wlba_entry_address);
         return disk_data.read_be!u16(wlba_entry_address);
     }
 }

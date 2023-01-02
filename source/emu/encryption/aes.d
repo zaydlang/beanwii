@@ -28,8 +28,6 @@ public void decrypt_aes(u8[] buf, u8[16] key, u8[16] iv, u8* out_buf) {
         error_encryption("Could not decrypt buf.");
     }
 
-    log_encryption("Decrypted %d / %d bytes.", outlen, buf.length);
-
     if (outlen != buf.length) {
         error_encryption("Error. Did not decrypt all bytes.");
     }

@@ -59,7 +59,7 @@ enum WiiPartitionType {
     CHANNEL = 2
 }
 
-enum WiiPartitionDataPayloadLength = 0x400 * 7;
+enum WiiPartitionDataPayloadLength = 0x400 * 31;
 
 struct WiiPartitionHeader {
     WiiTicket ticket;
@@ -88,6 +88,6 @@ struct WiiPartitionData {
     u8[WiiPartitionDataPayloadLength] payload;
 }
 
-static assert(WiiPartitionData.sizeof == 0x2000);
+static assert(WiiPartitionData.sizeof == 0x8000);
 
 enum WII_DOL_OFFSET = 0x420; // blaze it

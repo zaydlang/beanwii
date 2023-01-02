@@ -8,4 +8,5 @@ void main() {
 
 	Wii wii = new Wii();
 	wii.load_wii_disk(disk_data.ptr, disk_data.length);
+	wii.run();
 }

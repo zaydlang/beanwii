@@ -25,7 +25,7 @@ public void decrypt_partition(WiiTicket* ticket, WiiPartitionData* partition_dat
 private void get_title_key(WiiTicket* ticket, u8* out_buf) {
     u8[16] initialization_vector;
     initialization_vector[0 .. 8] = (cast(u8*) &ticket.title_id)[0 .. 8];
-    u8[16] encrypted_title_key  = ticket.encrypted_title_key;
+    u8[16] encrypted_title_key = ticket.encrypted_title_key;
 
     decrypt_aes(encrypted_title_key, cast(u8[16]) COMMON_KEY, initialization_vector, out_buf);
 }

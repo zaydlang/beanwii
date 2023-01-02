@@ -7,16 +7,22 @@ import emu.hw.disk.dol;
 import emu.hw.disk.layout;
 import emu.hw.disk.readers.diskreader;
 import emu.hw.disk.readers.wbfs;
-import emu.hw.memory.strategy.slowmem.slowmem;
+import emu.hw.memory.strategy.memstrategy;
 import util.array;
 import util.log;
 import util.number;
 
 final class Wii {
     private BroadwayCpu broadway_cpu;
+    private Mem         mem;
 
     this() {
-        this.broadway_cpu = new BroadwayCpu();
+        this.mem          = new Mem();
+        this.broadway_cpu = new BroadwayCpu(mem);
+    }
+
+    public void run() {
+        this.broadway_cpu.run_instruction();
     }
 
     public void load_wii_disk(u8* disk_data, size_t length) {
@@ -77,12 +83,17 @@ final class Wii {
 
                 size_t dol_address = decrypted_data.read_be!u32(WII_DOL_OFFSET) << 2;
                 log_wbfs("Dol address: 0x%x", dol_address);
+                log_wbfs("Dol debug: 0x%x", decrypted_data.read_be!u32(dol_address + 0x2224));
+
+                for (int i = 0; i <= 0x2224; i += 4) {
+                    log_wbfs("[%x] = 0x%x", i, decrypted_data.read_be!u32(dol_address + i));
+                }
 
                 WiiDol* dol = cast(WiiDol*) &decrypted_data[dol_address];
+                dol.data = decrypted_data[dol_address .. partition_data_size];
 
-                SlowMem mem = new SlowMem();
-                mem.map_dol(dol, decrypted_data);
-                broadway_cpu.set_pc(cast(u32) dol.entry_point);
+                this.mem.map_dol(dol);
+                broadway_cpu.set_pc(cast(u32) dol.header.entry_point);
             }
         }
     }

@@ -15,7 +15,7 @@ private T read(T)(u8* buf, size_t address) {
 }
 
 pragma(inline, true)
-private T write(T)(u8* buf, size_t address, T value) {
+private void write(T)(u8* buf, size_t address, T value) {
     (cast(T*) buf)[address >> get_shift!T] = value;
 }
 
@@ -45,18 +45,18 @@ private void write_with_endianness(Endianness endianness, T)(u8* buf, size_t add
     static assert(is_number!T);
 
     version (BigEndian) {
-        if (endianness = Endianness.LITTLE) {
+        if (endianness == Endianness.LITTLE) {
             value = bswap(value);
         }
     }
 
     version (LittleEndian) {
-        if (endianness = Endianness.BIG) {
+        if (endianness == Endianness.BIG) {
             value = bswap(value);
         }
     }
     
-    buf.write(address, value);
+    buf.write!T(address, value);
 }
 
 public T read_be(T)(u8* buf, size_t address) {
@@ -67,12 +67,12 @@ public T read_le(T)(u8* buf, size_t address) {
     return buf.read_with_endianness!(Endianness.LITTLE, T)(address);
 }
 
-public T write_be(T)(u8* buf, size_t address) {
-    return buf.write_with_endianness!(Endianness.BIG, T)(address);
+public void write_be(T)(u8* buf, size_t address, T value) {
+    return buf.write_with_endianness!(Endianness.BIG, T)(address, value);
 }
 
-public T write_le(T)(u8* buf, size_t address) {
-    return buf.write_with_endianness!(Endianness.LITTLE, T)(address);
+public void write_le(T)(u8* buf, size_t address, T value) {
+    return buf.write_with_endianness!(Endianness.LITTLE, T)(address, value);
 }
 
 public T read_be(T)(u8[] buf, size_t address) {
@@ -83,12 +83,12 @@ public T read_le(T)(u8[] buf, size_t address) {
     return buf.ptr.read_with_endianness!(Endianness.LITTLE, T)(address);
 }
 
-public T write_be(T)(u8[] buf, size_t address) {
-    return buf.ptr.write_with_endianness!(Endianness.BIG, T)(address);
+public void write_be(T)(u8[] buf, size_t address, T value) {
+    return buf.ptr.write_with_endianness!(Endianness.BIG, T)(address, value);
 }
 
-public T write_le(T)(u8[] buf, size_t address) {
-    return buf.ptr.write_with_endianness!(Endianness.LITTLE, T)(address);
+public void write_le(T)(u8[] buf, size_t address, T value) {
+    return buf.ptr.write_with_endianness!(Endianness.LITTLE, T)(address, value);
 }
 
 private auto get_shift(T)() {
