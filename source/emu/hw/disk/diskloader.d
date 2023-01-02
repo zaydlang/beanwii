@@ -6,6 +6,7 @@ import emu.hw.disk.dol;
 import emu.hw.disk.layout;
 import emu.hw.disk.readers.diskreader;
 import emu.hw.disk.readers.wbfs;
+import emu.hw.memory.strategy.slowmem.slowmem;
 import util.array;
 import util.log;
 import util.number;
@@ -70,27 +71,9 @@ public void load_wii_disk(u8* disk_data, size_t length) {
             log_wbfs("Dol address: 0x%x", dol_address);
 
             WiiDol* dol = cast(WiiDol*) &decrypted_data[dol_address];
-            // log everything about dol
-    // u32_be[7]  text_offset;
-    // u32_be[11] data_offset;
-    // u32_be[7]  text_address;
-    // u32_be[11] data_address;
-    // u32_be[7]  text_size;
-    // u32_be[11] data_size;
-    // u32_be     bss_address;
-    // u32_be     bss_size;
-    // u32_be     entry_point;
-    // u8[28]     padding;
-    // log all this
 
-            log_wbfs("Dol Text[0]: %x %x", cast(u32) dol.text_address[0], cast(u32) dol.text_size[0]);
-            log_wbfs("Dol Text[1]: %x %x", cast(u32) dol.text_address[1], cast(u32) dol.text_size[1]);
-            log_wbfs("Dol Text[2]: %x %x", cast(u32) dol.text_address[2], cast(u32) dol.text_size[2]);
-            log_wbfs("Dol Text[3]: %x %x", cast(u32) dol.text_address[3], cast(u32) dol.text_size[3]);
-            log_wbfs("Dol Text[4]: %x %x", cast(u32) dol.text_address[4], cast(u32) dol.text_size[4]);
-            log_wbfs("Dol Text[5]: %x %x", cast(u32) dol.text_address[5], cast(u32) dol.text_size[5]);
-            log_wbfs("Dol Text[6]: %x %x", cast(u32) dol.text_address[6], cast(u32) dol.text_size[6]);
-            
+            SlowMem mem = new SlowMem();
+            mem.map_dol(dol, decrypted_data);
         }
     }
 }
