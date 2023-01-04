@@ -40,6 +40,19 @@ final class BroadwayCpu {
 
         auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
         generated_function(&this.state);
+
+        log_state();
+    }
+
+    private void log_state() {
+        for (int i = 0; i < 32; i += 8) {
+            log_broadway("0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x",
+                this.state.gprs[i + 0], this.state.gprs[i + 1], this.state.gprs[i + 2], this.state.gprs[i + 3],
+                this.state.gprs[i + 4], this.state.gprs[i + 5], this.state.gprs[i + 6], this.state.gprs[i + 7]
+            );
+        }
+
+        log_broadway("pc: 0x%08x", state.pc);
     }
 
     private void log_instruction(u32 instruction) {

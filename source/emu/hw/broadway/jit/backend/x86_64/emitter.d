@@ -14,7 +14,6 @@ final class Code : CodeGenerator {
     RegisterAllocator register_allocator;
 
     this() {
-        log_jit("initializing code emitter");
         register_allocator = new RegisterAllocator();
     }
 
@@ -48,7 +47,6 @@ final class Code : CodeGenerator {
         ir.pretty_print();
 
         for (int i = 0; i < ir.length(); i++) {
-            log_jit("emitting instruction %d", i);
             emit(ir.instructions[i], i);
         }
 
@@ -91,8 +89,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_GET_REG(IRInstructionGetReg ir_instruction, int current_instruction_index) {
-        log_jit("emitting get_reg");
-
         GuestReg guest_reg = ir_instruction.src;
         HostReg_x86_64 host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
 
@@ -101,8 +97,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_SET_REG_VAR(IRInstructionSetRegVar ir_instruction, int current_instruction_index) {
-        log_jit("emitting set_reg_var");
-
         GuestReg dest_reg = ir_instruction.dest;
         Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg32();
         
@@ -113,8 +107,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_SET_REG_IMM(IRInstructionSetRegImm ir_instruction, int current_instruction_index) {
-        log_jit("emitting set_reg_imm");
-
         GuestReg dest_reg = ir_instruction.dest;
         
         int offset = cast(int) BroadwayState.gprs.offsetof + 4 * dest_reg;
@@ -122,8 +114,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_BINARY_DATA_OP_IMM(IRInstructionBinaryDataOpImm ir_instruction, int current_instruction_index) {
-        log_jit("emitting binary_data_op_imm");
-
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
         Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1).to_xbyak_reg32();
         int src2     = ir_instruction.src2;
@@ -167,8 +157,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_BINARY_DATA_OP_VAR(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
-        log_jit("emitting binary_data_op_imm");
-
         Reg dest_reg        = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
         Reg src1            = register_allocator.get_bound_host_reg(ir_instruction.src1).to_xbyak_reg32();
         HostReg_x86_64 src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
@@ -213,8 +201,6 @@ final class Code : CodeGenerator {
     }
 
     void emit_UNARY_DATA_OP(IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
-        log_jit("emitting unary_data_op");
-
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
         Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg32();
 

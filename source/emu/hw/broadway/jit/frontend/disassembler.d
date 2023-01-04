@@ -34,6 +34,19 @@ import util.number;
 //     log_jit("Emitting bx r%d", rm);
 // }
 
+private void emit_addi(IR* ir, u32 opcode) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int simm = sext_32(opcode.bits(0, 15), 16);
+
+    if (ra == 0) {
+        ir.set_reg(rd, simm);
+    } else {
+        IRVariable src = ir.get_reg(ra);
+        ir.set_reg(rd, src + simm);
+    }
+}
+
 private void emit_addis(IR* ir, u32 opcode) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -50,9 +63,8 @@ private void emit_addis(IR* ir, u32 opcode) {
 public void emit(IR* ir, u32 opcode) {
     int primary_opcode = opcode.bits(26, 31);
 
-    log_jit("primary opcode: %x", primary_opcode);
-
     switch (primary_opcode) {
+        case PrimaryOpcode.ADDI:  emit_addi (ir, opcode); break;
         case PrimaryOpcode.ADDIS: emit_addis(ir, opcode); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);

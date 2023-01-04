@@ -23,10 +23,8 @@ final class RegisterAllocator {
         public void bind_variable(IRVariable new_variable) {
             if (variable_bound) error_jit("Tried to bind %s to %s when it was already bound to %s.", host_reg, new_variable, variable);
 
-            log_jit("Binding %s to %s.", host_reg, new_variable);
             variable_bound = true;
             this.variable = new_variable.get_id();
-            log_jit("%s is %s", host_reg, this.variable);
         }
 
         public void unbind_variable() {
@@ -47,8 +45,6 @@ final class RegisterAllocator {
     BindingVariable[NUM_HOST_REGS] bindings;
 
     this() {
-        log_jit("Initializing register allocator.");
-        
         for (int i = 0; i < NUM_HOST_REGS; i++) {
             bindings[i] = BindingVariable(cast(HostReg_x86_64) i);
         }
@@ -72,14 +68,11 @@ final class RegisterAllocator {
 
         if (binding_variable_index == -1) {
             binding_variable = get_free_binding_variable();
-            log_jit("wtf1 %d",bindings[1].variable);
             binding_variable.bind_variable(ir_variable);
-            log_jit("wtf1 %d",bindings[1].variable);
         } else {
             binding_variable = &bindings[binding_variable_index];
         }
 
-            log_jit("wtf1 %d",bindings[1].variable);
         return binding_variable.host_reg;
     }
 
@@ -90,7 +83,6 @@ final class RegisterAllocator {
     int get_binding_variable_from_variable(IRVariable ir_variable) {
         for (int i = 0; i < NUM_HOST_REGS; i++) {
             BindingVariable binding_variable = bindings[i];
-            log_jit("Comparing %d [%s] to %s. [%d]", binding_variable.variable, binding_variable.host_reg, ir_variable, !binding_variable.unbound());
             if (!binding_variable.unbound() && binding_variable.variable == ir_variable.get_id()) {
                 return i;
             }
@@ -110,7 +102,6 @@ final class RegisterAllocator {
     }
 
     void unbind_variable(IRVariable ir_variable) {
-        log_jit("Unbinding v%d.", ir_variable.get_id());
         auto binding_variable_index = get_binding_variable_from_variable(ir_variable);
         if (binding_variable_index == -1) error_jit("Tried to unbind %s when it was not bound.", ir_variable);
         bindings[binding_variable_index].unbind_variable();
@@ -125,7 +116,6 @@ final class RegisterAllocator {
     }
 
     private BindingVariable* get_free_binding_variable() {
-        log_jit("Getting free binding variable.");
         for (int i = 0; i < NUM_HOST_REGS; i++) {
             // pls dont clobber the stack pointer
             static if (is(HostReg_x86_64 == HostReg_x86_64)) {

@@ -22,7 +22,9 @@ final class Wii {
     }
 
     public void run() {
-        this.broadway_cpu.run_instruction();
+        while (true) {
+            this.broadway_cpu.run_instruction();
+        }
     }
 
     public void load_wii_disk(u8* disk_data, size_t length) {

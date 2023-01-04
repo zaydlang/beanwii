@@ -28,7 +28,6 @@ struct IR {
     size_t[MAX_IR_VARIABLES] variable_lifetimes;
 
     private void emit(I)(I ir_opcode) {
-        log_jit("Emit: %s at idx %d", ir_opcode, current_instruction_index);
         instructions[current_instruction_index++] = ir_opcode;
     }
 
@@ -223,7 +222,6 @@ struct IRVariable {
     }
 
     IRBinaryDataOp get_binary_data_op(string s)() {
-        log_jit("get_binary_data_op: %s", s);
         final switch (s) {
             case "+":  return IRBinaryDataOp.ADD;
             case "-":  return IRBinaryDataOp.SUB;
