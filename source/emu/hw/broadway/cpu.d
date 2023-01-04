@@ -41,7 +41,7 @@ final class BroadwayCpu {
             cast(WriteHandler) (&mem.write_be_u32).funcptr,
             cast(WriteHandler) (&mem.write_be_u16).funcptr,
             cast(WriteHandler) (&mem.write_be_u8) .funcptr,
-            &mem
+            cast(void*) mem
         );
 
         Code code = new Code(config);

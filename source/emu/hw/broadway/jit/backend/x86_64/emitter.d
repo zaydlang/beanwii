@@ -77,7 +77,7 @@ final class Code : CodeGenerator {
         super.call(op);
         if (!rsp_aligned) add(rsp, 8);
     }
-
+    
     void emit(IR* ir) {
         emit_prologue();
 
