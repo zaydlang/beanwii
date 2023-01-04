@@ -72,11 +72,28 @@ final class SlowMem : MemStrategy {
 
         log_disk("Entrypoint: %x", cast(u32) dol.header.entry_point);
     }
+
+    private void write_be(T)(u32 address, T value) {
+        foreach (mapping; mappings) {
+            if (mapping.in_range(address)) {
+                mapping.write_be!T(address, value);
+                return;
+            }
+        }
+
+        error_slowmem("Write to invalid address 0x%08X", address);
+        assert (0);
+    }
     
     override public u64 read_be_u64(u32 address) { return read_be!u64(address); }
     override public u32 read_be_u32(u32 address) { return read_be!u32(address); }
     override public u16 read_be_u16(u32 address) { return read_be!u16(address); }
     override public u8  read_be_u8 (u32 address) { return read_be!u8 (address); }
+
+    override public void write_be_u64(u32 address, u64 value) { write_be!u64(address, value); }
+    override public void write_be_u32(u32 address, u32 value) { write_be!u32(address, value); }
+    override public void write_be_u16(u32 address, u16 value) { write_be!u16(address, value); }
+    override public void write_be_u8 (u32 address, u8  value) { write_be!u8 (address, value); }
 
     T read_be(T)(u32 address) {
         foreach (mapping; mappings) {

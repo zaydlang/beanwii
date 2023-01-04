@@ -13,5 +13,10 @@ interface MemStrategy {
     public u16 read_be_u16(u32 address);
     public u8  read_be_u8 (u32 address);
 
+    public void write_be_u64(u32 address, u64 value);
+    public void write_be_u32(u32 address, u32 value);
+    public void write_be_u16(u32 address, u16 value);
+    public void write_be_u8 (u32 address, u8  value);
+    
     public void map_dol(WiiDol* dol);
 }

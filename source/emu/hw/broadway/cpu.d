@@ -34,7 +34,17 @@ final class BroadwayCpu {
         ir.reset();
         emit(ir, instruction);
 
-        Code code = new Code();
+        JitConfig config = JitConfig(
+            cast(ReadHandler) ( &mem.read_be_u32) .funcptr,
+            cast(ReadHandler)  (&mem.read_be_u16) .funcptr,
+            cast(ReadHandler)  (&mem.read_be_u8)  .funcptr,
+            cast(WriteHandler) (&mem.write_be_u32).funcptr,
+            cast(WriteHandler) (&mem.write_be_u16).funcptr,
+            cast(WriteHandler) (&mem.write_be_u8) .funcptr,
+            &mem
+        );
+
+        Code code = new Code(config);
         code.reset();
         code.emit(ir);
 

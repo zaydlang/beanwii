@@ -8,13 +8,32 @@ import emu.hw.broadway.jit.ir.types;
 import emu.hw.broadway.state;
 import std.sumtype;
 import util.log;
+import util.number;
 import xbyak;
 
+alias ReadHandler  = u32 function(u32 address);
+alias WriteHandler = void function(u32 address, u32 value);
+
+struct JitConfig {
+    ReadHandler  read_handler32;
+    ReadHandler  read_handler16;
+    ReadHandler  read_handler8;
+    WriteHandler write_handler32;
+    WriteHandler write_handler16;
+    WriteHandler write_handler8;
+
+    void*        mem_handler_ctx;
+}
+
 final class Code : CodeGenerator {
+    JitConfig         config;
     RegisterAllocator register_allocator;
 
-    this() {
-        register_allocator = new RegisterAllocator();
+    bool rsp_aligned;
+
+    this(JitConfig config) {
+        this.config             = config;
+        this.register_allocator = new RegisterAllocator();
     }
 
     void disambiguate_second_operand_and_emit(string op)(Reg reg, IROperand operand) {
@@ -39,6 +58,24 @@ final class Code : CodeGenerator {
         super.reset();
         
         if (register_allocator) register_allocator.reset();
+
+        rsp_aligned = true;
+    }
+
+    override void push(Operand op) {
+        rsp_aligned = !rsp_aligned;
+        super.push(op);
+    }
+
+    override void pop(Operand op) {
+        rsp_aligned = !rsp_aligned;
+        super.pop(op);
+    }
+
+    override void call(Operand op) {
+        if (!rsp_aligned) sub(rsp, 8);
+        super.call(op);
+        if (!rsp_aligned) add(rsp, 8);
     }
 
     void emit(IR* ir) {
@@ -54,8 +91,12 @@ final class Code : CodeGenerator {
     }
 
     void emit_prologue() {
-        push(rbp);
         mov(rbp, rsp);
+        
+        // align stack
+        and(rsp, ~15);
+
+        push(rbp);
         
         push(rbx);
         push(rsi);
@@ -84,6 +125,7 @@ final class Code : CodeGenerator {
         pop(rbx);
 
         pop(rbp);
+        mov(rsp, rbp);
 
         ret();
     }
@@ -255,6 +297,57 @@ final class Code : CodeGenerator {
         log_jit("emitting set_flags");
     }
 
+    void emit_SET_VAR_IMM(IRInstructionSetVarImm ir_instruction, int current_instruction_index) {
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+        mov(dest_reg, ir_instruction.imm);
+    }
+
+    void emit_WRITE(IRInstructionWrite ir_instruction, int current_instruction_index) {
+        // TODO: optimize this instead of just spilling all registers
+        
+        push(rax);
+        push(rcx);
+        push(rdx);
+        push(r8);
+        push(r9);
+        push(r10);
+        push(r11);
+
+        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg32();
+        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+
+        push(rsi);
+        push(rdi);
+        push(rdx);
+
+        // TODO: if any of value_reg / address_reg are bound to rdi / rsi, then we need to... tbh i don't
+        // know exactly how to fix that but it's obviously a massive problem.
+
+        mov(rdx, value_reg);
+        mov(rsi, address_reg);
+        mov(rdi, cast(u64) config.mem_handler_ctx);
+
+        final switch (ir_instruction.size) {
+            case 4: mov(rax, cast(u64) config.write_handler32); break;
+            case 2: mov(rax, cast(u64) config.write_handler16); break;
+            case 1: mov(rax, cast(u64) config.write_handler8);  break;
+        }
+
+        call(rax);
+
+        pop(rdx);
+        pop(rdi);
+        pop(rsi);
+
+        pop(r11);
+        pop(r10);
+        pop(r9);
+        pop(r8);
+        pop(rdx);
+        pop(rcx);
+        pop(rax);
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
             (IRInstructionGetReg i)          => emit_GET_REG(i, current_instruction_index),
@@ -264,6 +357,8 @@ final class Code : CodeGenerator {
             (IRInstructionBinaryDataOpVar i) => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
             (IRInstructionUnaryDataOp i)     => emit_UNARY_DATA_OP(i, current_instruction_index),
             (IRInstructionSetFlags i)        => emit_SET_FLAGS(i, current_instruction_index),
+            (IRInstructionSetVarImm i)       => emit_SET_VAR_IMM(i, current_instruction_index),
+            (IRInstructionWrite i)           => emit_WRITE(i, current_instruction_index)
         );
     }
 

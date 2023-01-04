@@ -13,7 +13,9 @@ alias IRInstruction = SumType!(
     IRInstructionBinaryDataOpImm,
     IRInstructionBinaryDataOpVar,
     IRInstructionUnaryDataOp,
-    IRInstructionSetFlags
+    IRInstructionSetFlags,
+    IRInstructionSetVarImm,
+    IRInstructionWrite,
 );
 
 struct IR {
@@ -58,6 +60,18 @@ struct IR {
     
     IRVariable generate_new_variable() {
         return IRVariable(&this, this.generate_new_variable_id());
+    }
+
+    IRVariable constant(int constant) {
+        IRVariable dest = generate_new_variable();
+        emit(IRInstructionSetVarImm(dest, constant));
+        
+        return dest;
+    }
+
+    void write_u32(IRVariable address, IRVariable value) {
+        emit(IRInstructionWrite(value, address, u32.sizeof));
+        address.update_lifetime();
     }
 
     IRVariable get_reg(GuestReg reg) {
@@ -122,6 +136,21 @@ struct IR {
 
             (IRInstructionSetFlags i) {
                 log_ir("setf v%d, %d", i.src.get_id(), i.flags);
+            },
+
+            (IRInstructionSetVarImm i) {
+                log_ir("ld   v%d, %x", i.dest.get_id(), i.imm);
+            },
+
+            (IRInstructionWrite i) {
+                string mnemonic;
+                final switch (i.size) {
+                    case 4: mnemonic = "stw"; break;
+                    case 2: mnemonic = "sth"; break;
+                    case 1: mnemonic = "stb"; break;
+                }
+                
+                log_ir("%s  v%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             }
         );
     }
@@ -222,7 +251,7 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest, this, amount));
-        
+
         return dest;
     }
 
@@ -303,7 +332,18 @@ struct IRInstructionSetRegImm {
     u32 imm;
 }
 
+struct IRInstructionSetVarImm {
+    IRVariable dest;
+    u32 imm;
+}
+
 struct IRInstructionSetFlags {
     IRVariable src;
     int flags;
+}
+
+struct IRInstructionWrite {
+    IRVariable dest;
+    IRVariable address;
+    int size;
 }

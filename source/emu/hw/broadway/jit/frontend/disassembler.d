@@ -81,7 +81,14 @@ private void emit_rlwinm(IR* ir, u32 opcode) {
 }
 
 private void emit_stw(IR* ir, u32 opcode) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int offset  = opcode.bits(0, 16);
 
+    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    address = address + sext_32(offset, 16);
+
+    ir.write_u32(address, ir.get_reg(rs));
 }
 
 public void emit(IR* ir, u32 opcode) {
@@ -91,6 +98,7 @@ public void emit(IR* ir, u32 opcode) {
         case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode); break;
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode); break;
+        case PrimaryOpcode.STW:    emit_stw   (ir, opcode); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
