@@ -1,6 +1,9 @@
 module emu.hw.broadway.cpu;
 
 import capstone;
+import emu.hw.broadway.jit.frontend.disassembler;
+import emu.hw.broadway.jit.backend.x86_64.emitter;
+import emu.hw.broadway.jit.ir.ir;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import util.endian;
@@ -11,8 +14,11 @@ final class BroadwayCpu {
     private Mem           mem;
     private BroadwayState state;
 
+    private Capstone      capstone;
+
     this(Mem mem) {
-        this.mem = mem;
+        this.mem      = mem;
+        this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
     }
 
     public void set_pc(u32 pc) {
@@ -20,13 +26,26 @@ final class BroadwayCpu {
     }
 
     public void run_instruction() {
-        for (int i = 0; i < 5; i++) {
-            u32 instruction = cast(u32) fetch();
-            // log_broadway("Instruction: %x", instruction);
-            auto cs = create(Arch.ppc, ModeFlags(Mode.bit64));
-            auto res = cs.disasm((cast(ubyte*) &instruction)[0 .. 4], 4);
-            foreach(instr; res)
-                log_broadway("0x%x:\t%s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+        u32 instruction = cast(u32) fetch();
+        log_instruction(instruction);
+
+        IR* ir = new IR();
+        ir.setup();
+        ir.reset();
+        emit(ir, instruction);
+
+        Code code = new Code();
+        code.reset();
+        code.emit(ir);
+
+        auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
+        generated_function(&this.state);
+    }
+
+    private void log_instruction(u32 instruction) {
+        auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], 4);
+        foreach (instr; res) {
+            log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
         }
     }
 

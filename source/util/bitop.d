@@ -30,3 +30,29 @@ public size_t bfs(T)(T value) {
     static import core.bitop;
     return core.bitop.bsf(value);
 }
+
+public T bits(T)(T value, size_t start, size_t end) {
+    assert (is_number!T);
+    auto mask = create_mask(start, end);
+    return (value >> start) & mask;
+}
+
+public bool bit(T)(T value, size_t index) {    
+    return (value >> index) & 1;
+}
+
+public s32 sext_32(T)(T value, u32 size) {
+    assert(is_number!T);
+    
+    auto negative = value.bit(size - 1);
+    s32 result = value;
+
+    if (negative) result |= (((1 << (32 - size)) - 1) << size);
+    return result;
+}
+
+private auto create_mask(size_t start, size_t end) {
+    if (end - start >= 31) return 0xFFFFFFFF;
+
+    return (1 << (end - start + 1)) - 1;
+}

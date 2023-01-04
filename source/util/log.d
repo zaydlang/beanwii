@@ -6,7 +6,10 @@ enum LogSource {
     ENCRYPTION,
     VMEM,
     BROADWAY,
-    SLOWMEM
+    SLOWMEM,
+    IR,
+    JIT,
+    XBYAK
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

@@ -6,6 +6,6 @@ import util.number;
 struct BroadwayState {
     align(1):
    
-    u32_be[32] gprs;
-    u32        pc;
+    u32[32] gprs;
+    u32     pc;
 }
