@@ -19,6 +19,17 @@ final class BroadwayCpu {
     this(Mem mem) {
         this.mem      = mem;
         this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
+
+        this.reset();
+    }
+
+    void reset() {
+        for (int i = 0; i < 32; i++) {
+            state.gprs[i] = 0;
+        }
+
+        state.pc = 0;
+        state.lr = 0;
     }
 
     public void set_pc(u32 pc) {
@@ -26,13 +37,13 @@ final class BroadwayCpu {
     }
 
     public void run_instruction() {
-        u32 instruction = cast(u32) fetch();
+        u32 instruction = fetch();
         log_instruction(instruction);
 
         IR* ir = new IR();
         ir.setup();
         ir.reset();
-        emit(ir, instruction);
+        emit(ir, instruction, state.pc);
 
         JitConfig config = JitConfig(
             cast(ReadHandler) ( &mem.read_be_u32) .funcptr,
@@ -49,7 +60,10 @@ final class BroadwayCpu {
         code.emit(ir);
 
         auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
+
+        // log_jit("before %x", &this.state);
         generated_function(&this.state);
+        // log_jit("after %x", &this.state);
 
         log_state();
     }
@@ -62,6 +76,7 @@ final class BroadwayCpu {
             );
         }
 
+        log_broadway("lr: 0x%08x", state.lr);
         log_broadway("pc: 0x%08x", state.pc);
     }
 
@@ -72,8 +87,8 @@ final class BroadwayCpu {
         }
     }
 
-    private u32_be fetch() {
-        u32_be instruction = mem.read_be_u32(state.pc);
+    private u32 fetch() {
+        u32 instruction = cast(u32) mem.read_be_u32(state.pc);
         state.pc += 4;
         return instruction;
     }

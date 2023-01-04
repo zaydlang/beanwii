@@ -7,5 +7,6 @@ struct BroadwayState {
     align(1):
    
     u32[32] gprs;
+    u32     lr;
     u32     pc;
 }

@@ -34,7 +34,7 @@ import util.number;
 //     log_jit("Emitting bx r%d", rm);
 // }
 
-private void emit_addi(IR* ir, u32 opcode) {
+private void emit_addi(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int simm = sext_32(opcode.bits(0, 15), 16);
@@ -47,7 +47,7 @@ private void emit_addi(IR* ir, u32 opcode) {
     }
 }
 
-private void emit_addis(IR* ir, u32 opcode) {
+private void emit_addis(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int simm = opcode.bits(0, 15); // no need to sext cuz it gets shifted by 16
@@ -60,7 +60,20 @@ private void emit_addis(IR* ir, u32 opcode) {
     }
 }
 
-private void emit_rlwinm(IR* ir, u32 opcode) {
+private void emit_b(IR* ir, u32 opcode, u32 pc) {
+    bool aa = opcode.bit(1);
+    bool lk = opcode.bit(0);
+    int  li = opcode.bits(2, 25);
+
+    u32 branch_address = sext_32(li, 24) << 2;
+    if (!aa) branch_address += pc;
+
+    if (lk) ir.set_reg(GuestReg.LR, pc);
+
+    ir.set_reg(GuestReg.PC, branch_address);
+}
+
+private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int      sh = opcode.bits(11, 15);
@@ -80,7 +93,7 @@ private void emit_rlwinm(IR* ir, u32 opcode) {
     }
 }
 
-private void emit_stw(IR* ir, u32 opcode) {
+private void emit_stw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int offset  = opcode.bits(0, 16);
@@ -91,14 +104,15 @@ private void emit_stw(IR* ir, u32 opcode) {
     ir.write_u32(address, ir.get_reg(rs));
 }
 
-public void emit(IR* ir, u32 opcode) {
+public void emit(IR* ir, u32 opcode, u32 pc) {
     int primary_opcode = opcode.bits(26, 31);
 
     switch (primary_opcode) {
-        case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode); break;
-        case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode); break;
-        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode); break;
-        case PrimaryOpcode.STW:    emit_stw   (ir, opcode); break;
+        case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, pc); break;
+        case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
+        case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
+        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
+        case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }

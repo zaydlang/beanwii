@@ -81,7 +81,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        ir.pretty_print();
+        // ir.pretty_print();
 
         for (int i = 0; i < ir.length(); i++) {
             emit(ir.instructions[i], i);
@@ -91,13 +91,15 @@ final class Code : CodeGenerator {
     }
 
     void emit_prologue() {
+        push(rbp);
+
         mov(rbp, rsp);
+        and(rsp, ~15);
+        this.rsp_aligned = true;
         
         // align stack
-        and(rsp, ~15);
 
         push(rbp);
-        
         push(rbx);
         push(rsi);
         push(rdi);
@@ -123,9 +125,10 @@ final class Code : CodeGenerator {
         pop(rdi);
         pop(rsi);
         pop(rbx);
-
         pop(rbp);
+
         mov(rsp, rbp);
+        pop(rbp);
 
         ret();
     }

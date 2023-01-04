@@ -35,7 +35,9 @@ enum GuestReg {
     R28,
     R29,
     R30,
-    R31
+    R31,
+    LR,
+    PC
 }
 
 string to_string(GuestReg reg) {
