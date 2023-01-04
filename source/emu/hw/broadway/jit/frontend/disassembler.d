@@ -60,12 +60,37 @@ private void emit_addis(IR* ir, u32 opcode) {
     }
 }
 
+private void emit_rlwinm(IR* ir, u32 opcode) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int      sh = opcode.bits(11, 15);
+    int      mb = opcode.bits(6,  10);
+    int      me = opcode.bits(1,  5);
+    bool     rc = opcode.bit(0);
+
+    assert (mb <= me);
+    int mask = cast(int) ((cast(u64) 1) << (cast(u64) (mb - me + 1)) - 1) << mb;
+
+    IRVariable result = ir.get_reg(rs);
+    result = result.rol(sh) & mask;
+    ir.set_reg(ra, result);
+
+    if (rc) {
+        error_broadway("rlwinm record bit unimplemented");
+    }
+}
+
+private void emit_stw(IR* ir, u32 opcode) {
+
+}
+
 public void emit(IR* ir, u32 opcode) {
     int primary_opcode = opcode.bits(26, 31);
 
     switch (primary_opcode) {
-        case PrimaryOpcode.ADDI:  emit_addi (ir, opcode); break;
-        case PrimaryOpcode.ADDIS: emit_addis(ir, opcode); break;
+        case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode); break;
+        case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode); break;
+        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }

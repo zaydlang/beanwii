@@ -213,6 +213,19 @@ struct IRVariable {
         return dest;
     }
 
+    IRVariable rol(int amount) {
+        assert (0 <= amount && amount <= 31);
+
+        IRVariable dest = ir.generate_new_variable();
+        
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest, this, amount));
+        
+        return dest;
+    }
+
     void update_lifetime() {
         ir.update_lifetime(this.variable_id);
     }

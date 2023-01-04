@@ -73,7 +73,7 @@
 //             );
 //         } else {
 //             error_nds("VirtualMemoryManager not implemented for non-posix systems");
-//             assert(0);
+//             assert (0);
 //         }
 //     }
 
@@ -84,13 +84,13 @@
 //             if (unmap_error < 0) {
 //                 perror("unmap");
 //                 error_nds("Failed to unmap memory region");
-//                 assert(0);
+//                 assert (0);
 //             }
 
 //             mmap(host_address, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
 //         } else {
 //             error_nds("VirtualMemoryManager not implemented for non-posix systems");
-//             assert(0);
+//             assert (0);
 //         }
 //     }
 
@@ -139,17 +139,17 @@
 //                 if (unmap_error < 0) {
 //                     perror("unmap");
 //                     error_nds("Failed to unmap memory region");
-//                     assert(0);
+//                     assert (0);
 //                 }
 
 //                 void* map_error = mmap(host_address, memory_region.size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, memory_region.descriptor, offset);
 //                 if (cast(u64) map_error < 0) {
 //                     error_nds("Failed to map memory region");
-//                     assert(0);
+//                     assert (0);
 //                 }
 //             } else {
 //                 error_nds("VirtualMemoryManager not implemented for non-posix systems");
-//                 assert(0);
+//                 assert (0);
 //             }
 //         }
 //     }

@@ -18,12 +18,12 @@ final class SlowMem : MemStrategy {
         }
 
         public T read_be(T)(u32 address) {
-            assert(this.in_range(address));
+            assert (this.in_range(address));
             return this.data.read_be!T(address - this.address);
         }
 
         public void write_be(T)(u32 address, T value) {
-            assert(this.in_range(address));
+            assert (this.in_range(address));
             return this.data.write_be!T(cast(size_t) (address - this.address), value);
         }
     }
@@ -86,6 +86,6 @@ final class SlowMem : MemStrategy {
         }
 
         error_slowmem("Read from invalid address 0x%08X", address);
-        assert(0);
+        assert (0);
     }
 }

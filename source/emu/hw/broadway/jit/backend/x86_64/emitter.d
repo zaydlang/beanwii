@@ -149,6 +149,11 @@ final class Code : CodeGenerator {
                 xor(dest_reg, src2);
                 break;
             
+            case IRBinaryDataOp.ROL:
+                mov(dest_reg, src1);
+                rol(dest_reg, src2);
+                break;
+            
             default: break;
         }
         
@@ -190,6 +195,11 @@ final class Code : CodeGenerator {
             case IRBinaryDataOp.XOR:
                 mov(dest_reg, src1);
                 xor(dest_reg, src2.to_xbyak_reg32());
+                break;
+            
+            case IRBinaryDataOp.ROL:
+                mov(dest_reg, src1);
+                rol(dest_reg, src2.to_xbyak_reg8());
                 break;
             
             default: break;

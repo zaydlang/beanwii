@@ -21,7 +21,7 @@ struct WiiDolHeader {
     u8[28]                            padding;
 }
 
-static assert(WiiDolHeader.sizeof == 0x100);
+static assert (WiiDolHeader.sizeof == 0x100);
 
 struct WiiDol {
     align(1):

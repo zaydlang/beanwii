@@ -21,7 +21,7 @@ private void write(T)(u8* buf, size_t address, T value) {
 
 pragma(inline, true)
 private T read_with_endianness(Endianness endianness, T)(u8* buf, size_t address) {
-    static assert(is_number!T);
+    static assert (is_number!T);
 
     T value = buf.read!T(address);
 
@@ -42,7 +42,7 @@ private T read_with_endianness(Endianness endianness, T)(u8* buf, size_t address
 
 pragma(inline, true)
 private void write_with_endianness(Endianness endianness, T)(u8* buf, size_t address, T value) {
-    static assert(is_number!T);
+    static assert (is_number!T);
 
     version (BigEndian) {
         if (endianness == Endianness.LITTLE) {
@@ -92,7 +92,7 @@ public void write_le(T)(u8[] buf, size_t address, T value) {
 }
 
 private auto get_shift(T)() {
-    assert(is_unsigned_number!T);
+    assert (is_unsigned_number!T);
 
     static if (is(T == u64)) return 3;
     static if (is(T == u32)) return 2;

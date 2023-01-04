@@ -27,7 +27,7 @@ struct WiiHeader {
     u8     disable_disc_encryption;
 }
 
-static assert(WiiHeader.sizeof == 0x62);
+static assert (WiiHeader.sizeof == 0x62);
 
 struct WiiPartitionInfoTableEntry {
     align(1):
@@ -36,14 +36,14 @@ struct WiiPartitionInfoTableEntry {
     u32_be partition_info_offset;
 }
 
-static assert(WiiPartitionInfoTableEntry.sizeof == 0x8);
+static assert (WiiPartitionInfoTableEntry.sizeof == 0x8);
 
 struct WiiPartitionInfoTable {
     align(1):
     WiiPartitionInfoTableEntry[4] entries;
 }
 
-static assert(WiiPartitionInfoTable.sizeof == 0x20);
+static assert (WiiPartitionInfoTable.sizeof == 0x20);
 
 struct WiiPartitionInfo {
     align(1):
@@ -51,7 +51,7 @@ struct WiiPartitionInfo {
     u32_be partition_type;
 }
 
-static assert(WiiPartitionInfo.sizeof == 0x8);
+static assert (WiiPartitionInfo.sizeof == 0x8);
 
 enum WiiPartitionType {
     DATA    = 0,
@@ -73,7 +73,7 @@ struct WiiPartitionHeader {
     u32_be    data_size;
 }
 
-static assert(WiiPartitionHeader.sizeof == 0x2c0);
+static assert (WiiPartitionHeader.sizeof == 0x2c0);
 
 struct WiiPartitionData {
     align(1):
@@ -88,6 +88,6 @@ struct WiiPartitionData {
     u8[WiiPartitionDataPayloadLength] payload;
 }
 
-static assert(WiiPartitionData.sizeof == 0x8000);
+static assert (WiiPartitionData.sizeof == 0x8000);
 
 enum WII_DOL_OFFSET = 0x420; // blaze it
