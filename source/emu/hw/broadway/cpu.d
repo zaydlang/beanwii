@@ -92,4 +92,8 @@ final class BroadwayCpu {
         state.pc += 4;
         return instruction;
     }
+
+    public void set_gpr(int gpr, u32 value) {
+        this.state.gprs[gpr] = value;
+    }
 }

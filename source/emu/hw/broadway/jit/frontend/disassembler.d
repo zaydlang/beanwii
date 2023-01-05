@@ -108,8 +108,6 @@ private void emit_mflr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     int spr     = opcode.bits(11, 20);
 
-    log_jit("SPR: %x", spr);
-
     assert (
         spr == 0b1000_00000
     );

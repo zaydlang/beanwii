@@ -22,6 +22,8 @@ final class Wii {
     }
 
     public void run() {
+        broadway_cpu.set_gpr(1, 0x816ffff0); // ????
+
         while (true) {
             this.broadway_cpu.run_instruction();
         }
