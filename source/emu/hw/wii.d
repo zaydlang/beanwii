@@ -110,11 +110,11 @@ final class Wii {
 
     private void run_apploader(u8[] disk_data) {
         WiiApploader* apploader = cast(WiiApploader*) &disk_data[WII_APPLOADER_OFFSET];
-        this.mem.map_buffer(cast(u8*) apploader, cast(s32) apploader.size, APPLOADER_LOAD_ADDRESS);
+        this.mem.map_buffer(cast(u8*) apploader, cast(s32) apploader.size, WII_APPLOADER_LOAD_ADDRESS);
 
         // r1 is reserved for the stack, so let's just set the stack somewhere arbitrary that won't
         // conflict with the apploader code
-        this.broadway_cpu.set_gpr(1, 0x8000_0000);
+        this.broadway_cpu.set_gpr(1, 0x8001_0000);
 
         this.broadway_cpu.set_pc(cast(u32) apploader.entry_point);
         this.broadway_cpu.run_until_return();
