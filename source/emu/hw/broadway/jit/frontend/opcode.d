@@ -4,6 +4,7 @@ enum PrimaryOpcode {
     ADDI   = 0xE,
     ADDIS  = 0xF,
     B      = 0x12,
+    BCLR   = 0x13,
     RLWINM = 0x15,
     MFLR   = 0x1F,
     LWZ    = 0x20,

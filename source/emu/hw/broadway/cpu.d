@@ -46,7 +46,7 @@ final class BroadwayCpu {
         emit(ir, instruction, state.pc);
 
         JitConfig config = JitConfig(
-            cast(ReadHandler) ( &mem.read_be_u32) .funcptr,
+            cast(ReadHandler)  (&mem.read_be_u32) .funcptr,
             cast(ReadHandler)  (&mem.read_be_u16) .funcptr,
             cast(ReadHandler)  (&mem.read_be_u8)  .funcptr,
             cast(WriteHandler) (&mem.write_be_u32).funcptr,

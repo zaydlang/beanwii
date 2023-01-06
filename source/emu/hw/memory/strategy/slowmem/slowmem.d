@@ -24,8 +24,6 @@ final class SlowMem : MemStrategy {
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
 
-        log_slowmem("region, offset: %x %x", region, offset);
-
         switch (region) {
             case 0x8:
             case 0xC:

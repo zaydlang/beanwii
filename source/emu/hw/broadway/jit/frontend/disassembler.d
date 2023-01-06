@@ -73,6 +73,19 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(GuestReg.PC, branch_address);
 }
 
+private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
+    bool lk = opcode.bit(0);
+    int  bo = opcode.bits(21, 25);
+    int  bi = opcode.bits(16, 20);
+    
+    assert (bo == 0b10100);
+
+    if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+
+    // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
+    ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
+}
+
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -151,6 +164,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, pc); break;
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
+        case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.MFLR:   emit_mflr  (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;

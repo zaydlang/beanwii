@@ -81,7 +81,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        ir.pretty_print();
+        // ir.pretty_print();
 
         for (int i = 0; i < ir.length(); i++) {
             emit(ir.instructions[i], i);

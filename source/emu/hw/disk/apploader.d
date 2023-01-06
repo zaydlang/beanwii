@@ -14,4 +14,3 @@ struct WiiApploader {
 static assert (WiiApploader.sizeof == 32);
 
 enum WII_APPLOADER_LOAD_ADDRESS = 0x81200000;
-
