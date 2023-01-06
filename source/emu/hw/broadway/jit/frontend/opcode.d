@@ -17,5 +17,6 @@ enum PrimaryOpcode {
 enum PrimaryOp31SecondaryOpcode {
     MFSPR  = 0x153,
     MTSPR  = 0x1D3,
+    OR     = 0x1BC,
     SUBF   = 0x028,
 }

@@ -148,6 +148,18 @@ private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(src, ir.get_reg(rd));
 }
 
+private void emit_or(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(rc == 0);
+
+    IRVariable result = ir.get_reg(rs) | ir.get_reg(rb);
+    ir.set_reg(ra, result);
+}
+
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -211,6 +223,7 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
     switch (secondary_opcode) {
         case PrimaryOp31SecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp31SecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
+        case PrimaryOp31SecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
         case PrimaryOp31SecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
