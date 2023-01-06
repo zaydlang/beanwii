@@ -71,9 +71,9 @@ struct IR {
     }
 
     void read_u32(IRVariable address, IRVariable value) {
-        emit(IRInstructionRead(value, address, u32.sizeof));
         address.update_lifetime();
         value.update_lifetime();
+        emit(IRInstructionRead(value, address, u32.sizeof));
     }
 
     void write_u32(IRVariable address, IRVariable value) {
@@ -157,7 +157,7 @@ struct IR {
                     case 1: mnemonic = "ldb"; break;
                 }
                 
-                log_ir("%s  v%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                log_ir("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             },
 
             (IRInstructionWrite i) {
@@ -168,7 +168,7 @@ struct IR {
                     case 1: mnemonic = "stb"; break;
                 }
                 
-                log_ir("%s  v%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                log_ir("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             }
         );
     }

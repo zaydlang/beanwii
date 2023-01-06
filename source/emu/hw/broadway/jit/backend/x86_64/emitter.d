@@ -81,7 +81,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        // ir.pretty_print();
+        ir.pretty_print();
 
         for (int i = 0; i < ir.length(); i++) {
             emit(ir.instructions[i], i);
@@ -293,17 +293,7 @@ final class Code : CodeGenerator {
                 break;
             
             case IRUnaryDataOp.MOV:
-                // if src_reg is going to be unbound after this instruction, then we can just bind
-                // dest_reg to src_reg's host register and save a mov
-
-                if (register_allocator.will_variable_be_unbound(ir_instruction.src, current_instruction_index)) {
-                    auto src_host_reg = register_allocator.get_bound_host_reg(ir_instruction.src);
-                    register_allocator.unbind_host_reg(src_host_reg);
-                    register_allocator.bind_variable_to_host_reg(ir_instruction.dest, src_host_reg);
-                    unbound_src = true;
-                } else {
-                    mov(dest_reg, src_reg);
-                }
+                mov(dest_reg, src_reg);
                 break;
 
             default: break;

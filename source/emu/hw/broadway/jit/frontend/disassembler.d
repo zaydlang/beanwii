@@ -130,6 +130,20 @@ private void emit_stw(IR* ir, u32 opcode, u32 pc) {
     ir.write_u32(address, ir.get_reg(rs));
 }
 
+private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int offset  = opcode.bits(0, 16);
+
+    assert (ra != 0);
+
+    IRVariable address = ir.get_reg(ra);
+    address = address + sext_32(offset, 16);
+
+    ir.set_reg(ra, address);
+    ir.write_u32(address, ir.get_reg(rs));
+}
+
 public void emit(IR* ir, u32 opcode, u32 pc) {
     int primary_opcode = opcode.bits(26, 31);
 
@@ -141,6 +155,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.MFLR:   emit_mflr  (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
+        case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
