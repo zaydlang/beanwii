@@ -217,6 +217,42 @@ struct IRVariable {
         return dest;
     }
 
+    public IRVariable greater(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GT, dest, this, other));
+
+        return dest;
+    }
+
+    public IRVariable lesser(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LT, dest, this, other));
+
+        return dest;
+    }
+
+    public IRVariable equal(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.EQ, dest, this, other));
+
+        return dest;
+    }
+
     // TODO: figure out how to make this work
     // @disable IRVariable opBinaryRight(string s)(IRVariable other);
     // @disable IRVariable opBinaryRight(string s)(int other);

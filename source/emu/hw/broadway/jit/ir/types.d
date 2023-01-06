@@ -10,7 +10,10 @@ enum IRBinaryDataOp {
     ADD,
     SUB,
     XOR,
-    ROL
+    ROL,
+    GT,
+    LT,
+    EQ
 }
 
 enum IRUnaryDataOp {

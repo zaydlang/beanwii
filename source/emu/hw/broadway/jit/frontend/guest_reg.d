@@ -36,6 +36,9 @@ enum GuestReg {
     R29,
     R30,
     R31,
+
+    CR,
+
     LR,
     PC,
 

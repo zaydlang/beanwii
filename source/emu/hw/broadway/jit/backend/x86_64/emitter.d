@@ -219,7 +219,7 @@ final class Code : CodeGenerator {
                 rol(dest_reg, src2);
                 break;
             
-            default: break;
+            default: assert(0);
         }
         
         register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
@@ -227,47 +227,62 @@ final class Code : CodeGenerator {
     }
 
     void emit_BINARY_DATA_OP_VAR(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
-        Reg dest_reg        = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
-        Reg src1            = register_allocator.get_bound_host_reg(ir_instruction.src1).to_xbyak_reg32();
-        HostReg_x86_64 src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
+        HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        HostReg_x86_64 src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
+        HostReg_x86_64 src2     = register_allocator.get_bound_host_reg(ir_instruction.src2);
         
         switch (ir_instruction.op) {
             case IRBinaryDataOp.AND:
-                mov(dest_reg, src1);
-                and(dest_reg, src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                and(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 break;
             
             case IRBinaryDataOp.ORR:
-                mov(dest_reg, src1);
-                or (dest_reg, src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                or (dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 break;
             
             case IRBinaryDataOp.LSL:
-                mov(dest_reg, src1);
-                shl(dest_reg, src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                shl(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.ADD:
-                mov(dest_reg, src1);
-                add(dest_reg, src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                add(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 break;
             
             case IRBinaryDataOp.SUB:
-                mov(dest_reg, src1);
-                sub(dest_reg, src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                sub(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 break;
             
             case IRBinaryDataOp.XOR:
-                mov(dest_reg, src1);
-                xor(dest_reg, src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                xor(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 break;
             
             case IRBinaryDataOp.ROL:
-                mov(dest_reg, src1);
-                rol(dest_reg, src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                rol(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
                 break;
             
-            default: break;
+            case IRBinaryDataOp.GT:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                setg(dest_reg.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.LT:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                setl(dest_reg.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.EQ:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                sete(dest_reg.to_xbyak_reg8());
+                break;
+            
+            default: assert(0);
         }
 
         register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);

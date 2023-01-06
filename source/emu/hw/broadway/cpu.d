@@ -28,6 +28,8 @@ final class BroadwayCpu {
             state.gprs[i] = 0;
         }
 
+        state.cr = 0;
+
         state.pc = 0;
         state.lr = 0;
     }
@@ -87,6 +89,8 @@ final class BroadwayCpu {
                 this.state.gprs[i + 4], this.state.gprs[i + 5], this.state.gprs[i + 6], this.state.gprs[i + 7]
             );
         }
+        
+        log_broadway("cr: 0x%08x", state.cr);
 
         log_broadway("lr: 0x%08x", state.lr);
         log_broadway("pc: 0x%08x", state.pc);

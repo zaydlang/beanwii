@@ -1,38 +1,13 @@
 module emu.hw.broadway.jit.frontend.disassembler;
 
 import emu.hw.broadway.jit.frontend.guest_reg;
+import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.frontend.opcode;
 import emu.hw.broadway.jit.ir.ir;
 import std.sumtype;
 import util.bitop;
 import util.log;
 import util.number;
-
-// void do_action(IR* ir, Word opcode) {
-//     decode_jumptable[opcode >> 8](ir, opcode);
-// }
-
-// void emit_branch_exchange__THUMB()(IR* ir, Word opcode) {
-//     GuestReg rm = cast(GuestReg) opcode[3..6];
-
-//     IRVariable address    = ir.get_reg(rm);
-//     IRVariable cpsr       = ir.get_reg(GuestReg.CPSR);
-//     IRVariable thumb_mode = address & 1;
-
-//     if (rm == GuestReg.PC) address = address - 2;
-    
-//     cpsr = cpsr & ~(1          << 5);
-//     cpsr = cpsr |  (thumb_mode << 5);
-
-//     ir.set_reg(GuestReg.CPSR, cpsr);
-
-//     // thanks Kelpsy for this hilarious hack
-//     address = address & ~((thumb_mode << 1) ^ 3);
-    
-//     ir.set_reg(GuestReg.PC, address);
-    
-//     log_jit("Emitting bx r%d", rm);
-// }
 
 private void emit_addi(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
@@ -87,6 +62,22 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
 
     // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
     ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
+}
+
+private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
+    int  crf_d = opcode.bits(23, 25);
+    int  uimm  = opcode.bits(0, 16);
+
+    assert(opcode.bit(21) == 0);
+    assert(opcode.bit(22) == 0);
+
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    IRVariable a = ir.get_reg(ra);
+
+    // TODO: there's some weirdness with the xer register I don't understand yet.
+    emit_set_cr_gt(ir, crf_d, a.greater(ir.constant(uimm)));
+    emit_set_cr_lt(ir, crf_d, a.lesser (ir.constant(uimm)));
+    emit_set_cr_eq(ir, crf_d, a.equal  (ir.constant(uimm)));
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
@@ -208,6 +199,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
+        case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
