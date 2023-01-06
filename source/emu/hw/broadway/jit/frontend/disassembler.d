@@ -103,7 +103,6 @@ private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     int spr     = opcode.bits(11, 20);
 
-    assert(opcode.bits(1, 10) == 339);
     assert(opcode.bit(0) == 0);
 
     assert(spr == 0b1000_00000);
@@ -114,6 +113,22 @@ private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     // if (spr == 8) src = GuestReg.CTR;
 
     ir.set_reg(rd, ir.get_reg(src));
+}
+
+private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    int spr     = opcode.bits(11, 20);
+
+    assert(opcode.bit(0) == 0);
+
+    assert(spr == 0b1000_00000);
+
+    GuestReg src;
+    // if (spr == 1) src = GuestReg.XER;
+    if (spr == 0b100000000) src = GuestReg.LR;
+    // if (spr == 8) src = GuestReg.CTR;
+
+    ir.set_reg(src, ir.get_reg(rd));
 }
 
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
@@ -161,6 +176,17 @@ private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
     ir.write_u32(address, ir.get_reg(rs));
 }
 
+private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
+    int secondary_opcode = opcode.bits(1, 10);
+
+    switch (secondary_opcode) {
+        case PrimaryOp31SecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
+        case PrimaryOp31SecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
+
+        default: error_jit("Unimplemented opcode: %x", opcode);
+    }
+}
+
 public void emit(IR* ir, u32 opcode, u32 pc) {
     int primary_opcode = opcode.bits(26, 31);
 
@@ -170,10 +196,11 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
-        case PrimaryOpcode.MFSPR:  emit_mfspr  (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
         case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;
+
+        case PrimaryOpcode.OP_31:  emit_op_31 (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
