@@ -6,5 +6,6 @@ enum PrimaryOpcode {
     B      = 0x12,
     RLWINM = 0x15,
     MFLR   = 0x1F,
+    LWZ    = 0x20,
     STW    = 0x24
 }

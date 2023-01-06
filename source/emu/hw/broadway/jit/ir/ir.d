@@ -15,7 +15,8 @@ alias IRInstruction = SumType!(
     IRInstructionUnaryDataOp,
     IRInstructionSetFlags,
     IRInstructionSetVarImm,
-    IRInstructionWrite,
+    IRInstructionRead,
+    IRInstructionWrite
 );
 
 struct IR {
@@ -67,6 +68,12 @@ struct IR {
         emit(IRInstructionSetVarImm(dest, constant));
         
         return dest;
+    }
+
+    void read_u32(IRVariable address, IRVariable value) {
+        emit(IRInstructionRead(value, address, u32.sizeof));
+        address.update_lifetime();
+        value.update_lifetime();
     }
 
     void write_u32(IRVariable address, IRVariable value) {
@@ -140,6 +147,17 @@ struct IR {
 
             (IRInstructionSetVarImm i) {
                 log_ir("ld   v%d, %x", i.dest.get_id(), i.imm);
+            },
+
+            (IRInstructionRead i) {
+                string mnemonic;
+                final switch (i.size) {
+                    case 4: mnemonic = "ldw"; break;
+                    case 2: mnemonic = "ldh"; break;
+                    case 1: mnemonic = "ldb"; break;
+                }
+                
+                log_ir("%s  v%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             },
 
             (IRInstructionWrite i) {
@@ -340,6 +358,12 @@ struct IRInstructionSetVarImm {
 struct IRInstructionSetFlags {
     IRVariable src;
     int flags;
+}
+
+struct IRInstructionRead {
+    IRVariable dest;
+    IRVariable address;
+    int size;
 }
 
 struct IRInstructionWrite {

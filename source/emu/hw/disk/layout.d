@@ -90,4 +90,5 @@ struct WiiPartitionData {
 
 static assert (WiiPartitionData.sizeof == 0x8000);
 
-enum WII_DOL_OFFSET = 0x420; // blaze it
+enum WII_DOL_OFFSET       = 0x420; // blaze it
+enum WII_APPLOADER_OFFSET = 0x02440;

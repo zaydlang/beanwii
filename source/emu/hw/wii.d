@@ -3,6 +3,7 @@ module emu.hw.wii;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
+import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.layout;
 import emu.hw.disk.readers.diskreader;
@@ -22,7 +23,10 @@ final class Wii {
     }
 
     public void run() {
+        // The following initial GPR states were taken from dolphin.
         broadway_cpu.set_gpr(1, 0x816ffff0); // ????
+        broadway_cpu.set_gpr(2, 0x81465cc0);
+        broadway_cpu.set_gpr(13, 0x81465320);
 
         while (true) {
             this.broadway_cpu.run_instruction();
@@ -85,6 +89,8 @@ final class Wii {
                     decrypted_offset += 0x7C00;
                 }
 
+                this.run_apploader(decrypted_data);
+
                 size_t dol_address = decrypted_data.read_be!u32(WII_DOL_OFFSET) << 2;
                 log_wbfs("Dol address: 0x%x", dol_address);
                 log_wbfs("Dol debug: 0x%x", decrypted_data.read_be!u32(dol_address + 0x2224));
@@ -97,8 +103,17 @@ final class Wii {
                 dol.data = decrypted_data[dol_address .. partition_data_size];
 
                 this.mem.map_dol(dol);
-                broadway_cpu.set_pc(cast(u32) dol.header.entry_point);
+                this.broadway_cpu.set_pc(cast(u32) dol.header.entry_point);
             }
         }
+    }
+
+    public void run_apploader(u8[] disk_data) {
+        WiiApploader* apploader = cast(WiiApploader*) &disk_data[WII_APPLOADER_OFFSET];
+        this.mem.map_buffer(cast(u8*) apploader, cast(s32) apploader.size, APPLOADER_LOAD_ADDRESS);
+
+        this.broadway_cpu.set_pc(cast(u32) apploader.entry_point);
+        this.broadway_cpu.run_until_return();
+        while (true) {}
     }
 }

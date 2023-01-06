@@ -133,6 +133,26 @@ final class Code : CodeGenerator {
         ret();
     }
 
+    void emit_push_caller_save_regs() {
+        push(rax);
+        push(rcx);
+        push(rdx);
+        push(r8);
+        push(r9);
+        push(r10);
+        push(r11);
+    }
+
+    void emit_pop_caller_save_regs() {
+        pop(rax);
+        pop(rcx);
+        pop(rdx);
+        pop(r8);
+        pop(r9);
+        pop(r10);
+        pop(r11);
+    }
+
     void emit_GET_REG(IRInstructionGetReg ir_instruction, int current_instruction_index) {
         GuestReg guest_reg = ir_instruction.src;
         HostReg_x86_64 host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
@@ -305,16 +325,40 @@ final class Code : CodeGenerator {
         mov(dest_reg, ir_instruction.imm);
     }
 
+    void emit_READ(IRInstructionRead ir_instruction, int current_instruction_index) {
+        // TODO: optimize this instead of just spilling all registers    
+        emit_push_caller_save_regs();
+
+        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg32();
+        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+
+        push(rsi);
+        push(rdi);
+
+        // TODO: if any of value_reg / address_reg are bound to rdi / rsi, then we need to... tbh i don't
+        // know exactly how to fix that but it's obviously a massive problem.
+
+        mov(rsi, address_reg);
+        mov(rdi, cast(u64) config.mem_handler_ctx);
+
+        final switch (ir_instruction.size) {
+            case 4: mov(rax, cast(u64) config.read_handler32); break;
+            case 2: mov(rax, cast(u64) config.read_handler16); break;
+            case 1: mov(rax, cast(u64) config.read_handler8);  break;
+        }
+
+        call(rax);
+        mov(value_reg, rax);
+
+        pop(rdi);
+        pop(rsi);
+
+        emit_pop_caller_save_regs();
+    }
+
     void emit_WRITE(IRInstructionWrite ir_instruction, int current_instruction_index) {
-        // TODO: optimize this instead of just spilling all registers
-        
-        push(rax);
-        push(rcx);
-        push(rdx);
-        push(r8);
-        push(r9);
-        push(r10);
-        push(r11);
+        // TODO: optimize this instead of just spilling all registers    
+        emit_push_caller_save_regs();
 
         Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg32();
         Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
@@ -342,13 +386,7 @@ final class Code : CodeGenerator {
         pop(rdi);
         pop(rsi);
 
-        pop(r11);
-        pop(r10);
-        pop(r9);
-        pop(r8);
-        pop(rdx);
-        pop(rcx);
-        pop(rax);
+        emit_pop_caller_save_regs();
     }
 
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
@@ -361,6 +399,7 @@ final class Code : CodeGenerator {
             (IRInstructionUnaryDataOp i)     => emit_UNARY_DATA_OP(i, current_instruction_index),
             (IRInstructionSetFlags i)        => emit_SET_FLAGS(i, current_instruction_index),
             (IRInstructionSetVarImm i)       => emit_SET_VAR_IMM(i, current_instruction_index),
+            (IRInstructionRead i)            => emit_READ(i, current_instruction_index),
             (IRInstructionWrite i)           => emit_WRITE(i, current_instruction_index)
         );
     }

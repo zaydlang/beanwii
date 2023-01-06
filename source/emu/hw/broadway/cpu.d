@@ -40,32 +40,39 @@ final class BroadwayCpu {
         u32 instruction = fetch();
         log_instruction(instruction);
 
-        IR* ir = new IR();
-        ir.setup();
-        ir.reset();
-        emit(ir, instruction, state.pc);
+        // IR* ir = new IR();
+        // ir.setup();
+        // ir.reset();
+        // emit(ir, instruction, state.pc);
 
-        JitConfig config = JitConfig(
-            cast(ReadHandler) ( &mem.read_be_u32) .funcptr,
-            cast(ReadHandler)  (&mem.read_be_u16) .funcptr,
-            cast(ReadHandler)  (&mem.read_be_u8)  .funcptr,
-            cast(WriteHandler) (&mem.write_be_u32).funcptr,
-            cast(WriteHandler) (&mem.write_be_u16).funcptr,
-            cast(WriteHandler) (&mem.write_be_u8) .funcptr,
-            cast(void*) mem
-        );
+        // JitConfig config = JitConfig(
+        //     cast(ReadHandler) ( &mem.read_be_u32) .funcptr,
+        //     cast(ReadHandler)  (&mem.read_be_u16) .funcptr,
+        //     cast(ReadHandler)  (&mem.read_be_u8)  .funcptr,
+        //     cast(WriteHandler) (&mem.write_be_u32).funcptr,
+        //     cast(WriteHandler) (&mem.write_be_u16).funcptr,
+        //     cast(WriteHandler) (&mem.write_be_u8) .funcptr,
+        //     cast(void*) mem
+        // );
 
-        Code code = new Code(config);
-        code.reset();
-        code.emit(ir);
+        // Code code = new Code(config);
+        // code.reset();
+        // code.emit(ir);
 
-        auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
+        // auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
 
-        // log_jit("before %x", &this.state);
-        generated_function(&this.state);
+        // // log_jit("before %x", &this.state);
+        // generated_function(&this.state);
         // log_jit("after %x", &this.state);
 
-        log_state();
+        // log_state();
+    }
+
+    public void run_until_return() {
+        // while (true) {
+        for (int i = 0; i < 10; i++) {
+            run_instruction();
+        }
     }
 
     private void log_state() {

@@ -74,7 +74,7 @@ final class SlowMem : MemStrategy {
     override public void write_be_u16(u32 address, u16 value) { write_be!u16(address, value); }
     override public void write_be_u8 (u32 address, u8  value) { write_be!u8 (address, value); }
 
-    private void map_buffer(u8* buffer, size_t buffer_size, u32 address) {
+    override public void map_buffer(u8* buffer, size_t buffer_size, u32 address) {
         for (int i = 0; i < buffer_size; i++) {
             this.write_be!u8(address + i, buffer[i]);
         }

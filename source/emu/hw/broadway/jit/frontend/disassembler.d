@@ -73,6 +73,32 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(GuestReg.PC, branch_address);
 }
 
+private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int d       = opcode.bits(0, 15);
+
+    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    address = address + sext_32(d, 16);
+    ir.read_u32(address, ir.get_reg(rd));
+}
+
+private void emit_mflr(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    int spr     = opcode.bits(11, 20);
+
+    assert (
+        spr == 0b1000_00000
+    );
+
+    GuestReg src;
+    // if (spr == 1) src = GuestReg.XER;
+    if (spr == 0b100000000) src = GuestReg.LR;
+    // if (spr == 8) src = GuestReg.CTR;
+
+    ir.set_reg(rd, ir.get_reg(src));
+}
+
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -104,22 +130,6 @@ private void emit_stw(IR* ir, u32 opcode, u32 pc) {
     ir.write_u32(address, ir.get_reg(rs));
 }
 
-private void emit_mflr(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    int spr     = opcode.bits(11, 20);
-
-    assert (
-        spr == 0b1000_00000
-    );
-
-    GuestReg src;
-    // if (spr == 1) src = GuestReg.XER;
-    if (spr == 0b100000000) src = GuestReg.LR;
-    // if (spr == 8) src = GuestReg.CTR;
-
-    ir.set_reg(rd, ir.get_reg(src));
-}
-
 public void emit(IR* ir, u32 opcode, u32 pc) {
     int primary_opcode = opcode.bits(26, 31);
 
@@ -127,8 +137,9 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, pc); break;
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
-        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
+        case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.MFLR:   emit_mflr  (ir, opcode, pc); break;
+        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
