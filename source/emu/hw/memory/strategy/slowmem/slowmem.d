@@ -27,17 +27,17 @@ final class SlowMem : MemStrategy {
         switch (region) {
             case 0x8:
             case 0xC:
-                assert (offset < MEM1_SIZE);
+                assert(offset < MEM1_SIZE);
                 return this.mem1.read_be!T(offset);
             
             case 0x9:
             case 0xD:
-                assert (offset < MEM2_SIZE);
+                assert(offset < MEM2_SIZE);
                 return this.mem2.read_be!T(offset);
             
             default:
                 error_slowmem("Read from invalid address 0x%08X", address);
-                assert (0);
+                assert(0);
         }
     }
 
@@ -48,17 +48,17 @@ final class SlowMem : MemStrategy {
         switch (region) {
             case 0x8:
             case 0xC:
-                assert (offset < MEM1_SIZE);
+                assert(offset < MEM1_SIZE);
                 return this.mem1.write_be!T(offset, value);
             
             case 0x9:
             case 0xD:
-                assert (offset < MEM2_SIZE);
+                assert(offset < MEM2_SIZE);
                 return this.mem2.write_be!T(offset, value);
             
             default:
                 error_slowmem("Write 0x%08x to invalid address 0x%08X", value, address);
-                assert (0);
+                assert(0);
         }
     }
     

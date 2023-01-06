@@ -261,7 +261,7 @@ struct IRVariable {
     }
 
     IRVariable rol(int amount) {
-        assert (0 <= amount && amount <= 31);
+        assert(0 <= amount && amount <= 31);
 
         IRVariable dest = ir.generate_new_variable();
         

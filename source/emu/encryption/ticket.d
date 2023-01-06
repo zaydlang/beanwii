@@ -11,14 +11,14 @@ struct WiiTicketHeader {
     u8[60]  padding;
 }
 
-static assert (WiiTicketHeader.sizeof == 0x140);
+static assert(WiiTicketHeader.sizeof == 0x140);
 
 struct WiiCcLimit {
     u32_be          limit_type;
     u32_be          maximum_usage;
 }
 
-static assert (WiiCcLimit.sizeof == 0x8);
+static assert(WiiCcLimit.sizeof == 0x8);
 
 struct WiiTicket {
     align(1):
@@ -46,4 +46,4 @@ struct WiiTicket {
     WiiCcLimit[8]   cclimits;         
 }
 
-static assert (WiiTicket.sizeof == 0x2A4);
+static assert(WiiTicket.sizeof == 0x2A4);

@@ -77,8 +77,11 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     bool lk = opcode.bit(0);
     int  bo = opcode.bits(21, 25);
     int  bi = opcode.bits(16, 20);
+
+    assert(opcode.bits(12, 16) == 0b00000);
+    assert(opcode.bits(1,  11) == 16);
     
-    assert (bo == 0b10100);
+    assert(bo == 0b10100);
 
     if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
 
@@ -96,13 +99,14 @@ private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
     ir.read_u32(address, ir.get_reg(rd));
 }
 
-private void emit_mflr(IR* ir, u32 opcode, u32 pc) {
+private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     int spr     = opcode.bits(11, 20);
 
-    assert (
-        spr == 0b1000_00000
-    );
+    assert(opcode.bits(1, 10) == 339);
+    assert(opcode.bit(0) == 0);
+
+    assert(spr == 0b1000_00000);
 
     GuestReg src;
     // if (spr == 1) src = GuestReg.XER;
@@ -120,7 +124,7 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     int      me = opcode.bits(1,  5);
     bool     rc = opcode.bit(0);
 
-    assert (mb <= me);
+    assert(mb <= me);
     int mask = cast(int) ((cast(u64) 1) << (cast(u64) (mb - me + 1)) - 1) << mb;
 
     IRVariable result = ir.get_reg(rs);
@@ -148,7 +152,7 @@ private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int offset  = opcode.bits(0, 16);
 
-    assert (ra != 0);
+    assert(ra != 0);
 
     IRVariable address = ir.get_reg(ra);
     address = address + sext_32(offset, 16);
@@ -166,7 +170,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
-        case PrimaryOpcode.MFLR:   emit_mflr  (ir, opcode, pc); break;
+        case PrimaryOpcode.MFSPR:  emit_mfspr  (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
         case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;

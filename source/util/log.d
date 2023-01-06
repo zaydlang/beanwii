@@ -57,7 +57,7 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
 static string pad_string_right(string s, ulong pad)() {
     import std.array;
 
-    static assert (s.length <= pad);
+    static assert(s.length <= pad);
     return s ~ (replicate(" ", pad - s.length));
 }
 
