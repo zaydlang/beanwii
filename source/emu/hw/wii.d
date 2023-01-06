@@ -109,8 +109,8 @@ final class Wii {
     }
 
     private void run_apploader(u8[] disk_data) {
-        WiiApploader* apploader = cast(WiiApploader*) &disk_data[WII_APPLOADER_OFFSET];
-        this.mem.map_buffer(cast(u8*) apploader, cast(s32) apploader.trailer_size + cast(s32) apploader.size, WII_APPLOADER_LOAD_ADDRESS);
+        WiiApploaderHeader* apploader = cast(WiiApploaderHeader*) &disk_data[WII_APPLOADER_OFFSET];
+        this.mem.map_buffer(&disk_data[WII_APPLOADER_OFFSET + WiiApploaderHeader.sizeof], cast(s32) apploader.size, WII_APPLOADER_LOAD_ADDRESS);
 
         log_disk("Apploader info:");
         log_disk("  Size:         %x", cast(s32) apploader.size);
