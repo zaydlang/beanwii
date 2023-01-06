@@ -65,11 +65,11 @@ final class BroadwayCpu {
 
         // log_jit("before %x", &this.state);
         
-        // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-        // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 128], 128);
-        // foreach (instr; res) {
-        //     log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
-        // }
+        auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 128], 128);
+        foreach (instr; res) {
+            log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
+        }
 
         generated_function(&this.state);
 
@@ -89,7 +89,7 @@ final class BroadwayCpu {
                 this.state.gprs[i + 4], this.state.gprs[i + 5], this.state.gprs[i + 6], this.state.gprs[i + 7]
             );
         }
-        
+
         log_broadway("cr: 0x%08x", state.cr);
 
         log_broadway("lr: 0x%08x", state.lr);

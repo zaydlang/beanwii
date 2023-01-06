@@ -6,6 +6,7 @@ import std.uni;
 enum IRBinaryDataOp {
     AND,
     LSL,
+    LSR,
     ORR,
     ADD,
     SUB,
@@ -13,7 +14,8 @@ enum IRBinaryDataOp {
     ROL,
     GT,
     LT,
-    EQ
+    EQ,
+    NE
 }
 
 enum IRUnaryDataOp {

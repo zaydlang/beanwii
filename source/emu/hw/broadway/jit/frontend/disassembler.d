@@ -48,6 +48,32 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(GuestReg.PC, branch_address);
 }
 
+private void emit_bc(IR* ir, u32 opcode, u32 pc) {
+    bool lk = opcode.bit(0);
+    bool aa = opcode.bit(1);
+    int  bo = opcode.bits(21, 25);
+    int  bi = opcode.bits(16, 20);
+    int  bd = opcode.bits(2, 15);
+
+    log_broadway("bc %x %x", aa, lk);
+
+    IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
+
+    if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+
+    ir._if(cond_ok, () {
+        if (lk) {
+            ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+        }
+
+        if (aa) {
+            ir.set_reg(GuestReg.PC, ir.constant(sext_32(bd, 16) << 2));
+        } else {
+            ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.PC) + (sext_32(bd, 16) << 2));
+        }
+    });
+}
+
 private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     bool lk = opcode.bit(0);
     int  bo = opcode.bits(21, 25);
@@ -66,7 +92,7 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     int  crf_d = opcode.bits(23, 25);
-    int  uimm  = opcode.bits(0, 16);
+    int  uimm  = opcode.bits(0, 15);
 
     assert(opcode.bit(21) == 0);
     assert(opcode.bit(22) == 0);
@@ -77,7 +103,7 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     // TODO: there's some weirdness with the xer register I don't understand yet.
     emit_set_cr_gt(ir, crf_d, a.greater(ir.constant(uimm)));
     emit_set_cr_lt(ir, crf_d, a.lesser (ir.constant(uimm)));
-    emit_set_cr_eq(ir, crf_d, a.equal  (ir.constant(uimm)));
+    emit_set_cr_eq(ir, crf_d, a.equals (ir.constant(uimm)));
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
@@ -145,7 +171,7 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
 private void emit_stw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    int offset  = opcode.bits(0, 16);
+    int offset  = opcode.bits(0, 15);
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(offset, 16);
@@ -156,7 +182,7 @@ private void emit_stw(IR* ir, u32 opcode, u32 pc) {
 private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    int offset  = opcode.bits(0, 16);
+    int offset  = opcode.bits(0, 15);
 
     assert(ra != 0);
 
@@ -198,6 +224,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, pc); break;
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
+        case PrimaryOpcode.BC:     emit_bc    (ir, opcode, pc); break;
         case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;

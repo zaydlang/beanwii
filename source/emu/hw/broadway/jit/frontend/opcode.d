@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.frontend.opcode;
 enum PrimaryOpcode {
     ADDI   = 0x0E,
     ADDIS  = 0x0F,
+    BC     = 0x10,
     B      = 0x12,
     BCLR   = 0x13,
     CMPLI  = 0x0A,

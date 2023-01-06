@@ -9,6 +9,28 @@ import util.bitop;
 import util.log;
 import util.number;
 
+public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
+    final switch (bo >> 2) {
+        case 0b000:
+        case 0b010:
+        case 0b100:
+        case 0b110:
+            assert(0);
+
+        case 0b101:
+        case 0b111:
+            return ir.constant(1);
+        
+        case 0b001: // if condition is false
+            IRVariable cr = ir.get_reg(GuestReg.CR);
+            return ((cr >> bi) & 1).equals(ir.constant(bo.bit(1)));
+
+        case 0b011: // if condition is true
+            IRVariable cr = ir.get_reg(GuestReg.CR);
+            return ((cr >> bi) & 1).notequals(ir.constant(bo.bit(1)));
+    }
+}
+
 private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
     int index = field * 4 + bit;
     

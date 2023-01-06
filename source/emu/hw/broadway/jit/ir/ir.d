@@ -16,15 +16,20 @@ alias IRInstruction = SumType!(
     IRInstructionSetFlags,
     IRInstructionSetVarImm,
     IRInstructionRead,
-    IRInstructionWrite
+    IRInstructionWrite,
+    IRInstructionConditionalBranch
 );
 
 struct IR {
     enum MAX_IR_INSTRUCTIONS = 0x10000;
     enum MAX_IR_VARIABLES    = 0x1000;
+    enum MAX_IR_LABELS       = 0x1000;
 
     IRInstruction* instructions;
     size_t current_instruction_index;
+
+    IRLabel* labels;
+    size_t current_label_index;
 
     // keeps track of a variables lifetime. this corresponds to an IR instruction. when this IR instruction
     // is executed, the variable is deleted (in other words, it gets unbound from the host register)
@@ -39,15 +44,21 @@ struct IR {
         // so we have to do this silly workaround
 
         instructions = cast(IRInstruction*) new ubyte[IRInstruction.sizeof * MAX_IR_INSTRUCTIONS];
+        labels       = cast(IRLabel*)       new ubyte[IRLabel.sizeof * MAX_IR_LABELS];
     }
 
     void reset() {
         current_variable_id = 0;
         current_instruction_index = 0;
+        current_label_index = 0;
     }
 
-    size_t length() {
+    size_t num_instructions() {
         return current_instruction_index;
+    }
+
+    size_t num_labels() {
+        return current_label_index;
     }
 
     int current_variable_id;
@@ -101,8 +112,21 @@ struct IR {
         emit(IRInstructionSetFlags(variable, flags));
     }
 
+    void _if(IRVariable cond, void delegate() true_case) {
+        IRLabel after_true_label;
+        this.emit(IRInstructionConditionalBranch(cond, &after_true_label));
+
+        true_case();
+        this.bind_label(after_true_label);
+    }
+
+    void bind_label(IRLabel label) {
+        label.instruction_index = cast(int) this.current_instruction_index;
+        this.labels[this.current_label_index++] = label;
+    }
+
     void pretty_print() {
-        for (int i = 0; i < this.length(); i++) {
+        for (int i = 0; i < this.num_instructions(); i++) {
             pretty_print_instruction(instructions[i]);
         }
     }
@@ -169,7 +193,11 @@ struct IR {
                 }
                 
                 log_ir("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
-            }
+            },
+
+            (IRInstructionConditionalBranch i) {
+                log_ir("bne  v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
+            },
         );
     }
 }
@@ -241,7 +269,7 @@ struct IRVariable {
         return dest;
     }
 
-    public IRVariable equal(IRVariable other) {
+    public IRVariable equals(IRVariable other) {
         IRVariable dest = ir.generate_new_variable();
 
         this.update_lifetime();
@@ -249,6 +277,18 @@ struct IRVariable {
         other.update_lifetime();
 
         ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.EQ, dest, this, other));
+
+        return dest;
+    }
+
+    public IRVariable notequals(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.NE, dest, this, other));
 
         return dest;
     }
@@ -309,6 +349,9 @@ struct IRVariable {
         return dest;
     }
 
+    // void _if(IRVariable cond, void delegate(void) true_case, void delegate(void) false_case) {
+    // }
+
     void update_lifetime() {
         ir.update_lifetime(this.variable_id);
     }
@@ -322,6 +365,7 @@ struct IRVariable {
             case "+":  return IRBinaryDataOp.ADD;
             case "-":  return IRBinaryDataOp.SUB;
             case "<<": return IRBinaryDataOp.LSL;
+            case ">>": return IRBinaryDataOp.LSR;
             case "|":  return IRBinaryDataOp.ORR;
             case "&":  return IRBinaryDataOp.AND;
             case "^":  return IRBinaryDataOp.XOR;
@@ -338,6 +382,10 @@ struct IRVariable {
     int get_id() {
         return variable_id;
     }
+}
+
+struct IRLabel {
+    int instruction_index;
 }
 
 struct IRConstant {
@@ -406,4 +454,9 @@ struct IRInstructionWrite {
     IRVariable dest;
     IRVariable address;
     int size;
+}
+
+struct IRInstructionConditionalBranch {
+    IRVariable cond;
+    IRLabel* after_true_label;
 }

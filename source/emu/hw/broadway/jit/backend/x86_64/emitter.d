@@ -1,6 +1,7 @@
 module emu.hw.broadway.jit.backend.x86_64.emitter;
 
 import emu.hw.broadway.jit.backend.x86_64.host_reg;
+import emu.hw.broadway.jit.backend.x86_64.label;
 import emu.hw.broadway.jit.backend.x86_64.register_allocator;
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.ir.ir;
@@ -83,8 +84,13 @@ final class Code : CodeGenerator {
 
         // ir.pretty_print();
 
-        for (int i = 0; i < ir.length(); i++) {
+        for (int i = 0; i < ir.num_instructions(); i++) {
             emit(ir.instructions[i], i);
+            for (int j = 0; j < ir.num_labels(); j++) {
+                if (ir.labels[j].instruction_index == i) {
+                    L(ir.labels[j].to_xbyak_label());
+                }
+            }
         }
 
         emit_epilogue();
@@ -199,6 +205,11 @@ final class Code : CodeGenerator {
                 shl(dest_reg, src2);
                 break;
             
+            case IRBinaryDataOp.LSR:
+                mov(dest_reg, src1);
+                shr(dest_reg, src2);
+                break;
+            
             case IRBinaryDataOp.ADD:
                 mov(dest_reg, src1);
                 add(dest_reg, src2);
@@ -280,6 +291,11 @@ final class Code : CodeGenerator {
             case IRBinaryDataOp.EQ:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 sete(dest_reg.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.NE:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                setne(dest_reg.to_xbyak_reg8());
                 break;
             
             default: assert(0);
@@ -394,18 +410,26 @@ final class Code : CodeGenerator {
         emit_pop_caller_save_regs();
     }
 
+    void emit_CONDITIONAL_BRANCH(IRInstructionConditionalBranch ir_instruction, int current_instruction_index) {
+        Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond).to_xbyak_reg32();
+
+        cmp(cond_reg, 0);
+        je((*ir_instruction.after_true_label).to_xbyak_label());
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
-            (IRInstructionGetReg i)          => emit_GET_REG(i, current_instruction_index),
-            (IRInstructionSetRegVar i)       => emit_SET_REG_VAR(i, current_instruction_index),
-            (IRInstructionSetRegImm i)       => emit_SET_REG_IMM(i, current_instruction_index),
-            (IRInstructionBinaryDataOpImm i) => emit_BINARY_DATA_OP_IMM(i, current_instruction_index),
-            (IRInstructionBinaryDataOpVar i) => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
-            (IRInstructionUnaryDataOp i)     => emit_UNARY_DATA_OP(i, current_instruction_index),
-            (IRInstructionSetFlags i)        => emit_SET_FLAGS(i, current_instruction_index),
-            (IRInstructionSetVarImm i)       => emit_SET_VAR_IMM(i, current_instruction_index),
-            (IRInstructionRead i)            => emit_READ(i, current_instruction_index),
-            (IRInstructionWrite i)           => emit_WRITE(i, current_instruction_index)
+            (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
+            (IRInstructionSetRegVar i)         => emit_SET_REG_VAR(i, current_instruction_index),
+            (IRInstructionSetRegImm i)         => emit_SET_REG_IMM(i, current_instruction_index),
+            (IRInstructionBinaryDataOpImm i)   => emit_BINARY_DATA_OP_IMM(i, current_instruction_index),
+            (IRInstructionBinaryDataOpVar i)   => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
+            (IRInstructionUnaryDataOp i)       => emit_UNARY_DATA_OP(i, current_instruction_index),
+            (IRInstructionSetFlags i)          => emit_SET_FLAGS(i, current_instruction_index),
+            (IRInstructionSetVarImm i)         => emit_SET_VAR_IMM(i, current_instruction_index),
+            (IRInstructionRead i)              => emit_READ(i, current_instruction_index),
+            (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),
+            (IRInstructionConditionalBranch i) => emit_CONDITIONAL_BRANCH(i, current_instruction_index),
         );
     }
 
