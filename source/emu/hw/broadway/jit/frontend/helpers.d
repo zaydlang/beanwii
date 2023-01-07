@@ -34,6 +34,7 @@ public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2
 }
 
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
+    log_jit("jit BO: %x %x", bo, bi);
     final switch (bo >> 2) {
         case 0b000:
         case 0b010:
@@ -47,11 +48,11 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
         
         case 0b001: // if condition is false
             IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1).equals(ir.constant(bo.bit(1)));
+            return ((cr >> bi) & 1).notequals(ir.constant(bo.bit(1)));
 
         case 0b011: // if condition is true
             IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1).notequals(ir.constant(bo.bit(1)));
+            return ((cr >> bi) & 1).equals(ir.constant(bo.bit(1)));
     }
 }
 

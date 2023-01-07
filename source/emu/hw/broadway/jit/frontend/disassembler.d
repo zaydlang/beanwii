@@ -82,6 +82,8 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     bool lk = opcode.bit(0);
     int  li = opcode.bits(2, 25);
 
+    log_jit("%x %x %x", aa, lk, sext_32(li, 24) << 2);
+
     u32 branch_address = sext_32(li, 24) << 2;
     if (!aa) branch_address += pc;
 
@@ -97,7 +99,7 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
     int  bi = opcode.bits(16, 20);
     int  bd = opcode.bits(2, 15);
 
-    log_broadway("bc %x %x %x", aa, lk, (sext_32(bd, 14) << 2));
+    log_broadway("bc %x %x %x %x", bd, aa, lk, (sext_32(bd, 14) << 2));
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
 
