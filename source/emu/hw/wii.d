@@ -112,6 +112,13 @@ final class Wii {
         WiiApploaderHeader* apploader = cast(WiiApploaderHeader*) &disk_data[WII_APPLOADER_OFFSET];
         this.mem.map_buffer(&disk_data[WII_APPLOADER_OFFSET + WiiApploaderHeader.sizeof], cast(s32) apploader.size, WII_APPLOADER_LOAD_ADDRESS);
 
+    import std.file;
+    import std.stdio;
+
+    auto f = File("apploader.bin", "w+");
+    f.rawWrite(cast(byte[]) (&disk_data[WII_APPLOADER_OFFSET + WiiApploaderHeader.sizeof])[0..cast(s32)apploader.size]);
+    f.close();
+
         log_disk("Apploader info:");
         log_disk("  Size:         %x", cast(s32) apploader.size);
         log_disk("  Trailer size: %x", cast(s32) apploader.trailer_size);

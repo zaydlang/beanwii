@@ -65,11 +65,11 @@ final class BroadwayCpu {
 
         // log_jit("before %x", &this.state);
         
-        auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-        auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 128], 128);
-        foreach (instr; res) {
-            log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
-        }
+        // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 128], 128);
+        // foreach (instr; res) {
+        //     log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
+        // }
 
         generated_function(&this.state);
 
@@ -77,6 +77,8 @@ final class BroadwayCpu {
     }
 
     public void run_until_return() {
+        this.state.lr = 0xDEADBEEF;
+
         while (true) {
             run_instruction();
         }
@@ -105,6 +107,7 @@ final class BroadwayCpu {
 
     private u32 fetch() {
         u32 instruction = cast(u32) mem.read_be_u32(state.pc);
+        log_broadway("Fetching %x from %x", instruction, state.pc);
         state.pc += 4;
         return instruction;
     }

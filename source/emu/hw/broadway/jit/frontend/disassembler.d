@@ -9,6 +9,20 @@ import util.bitop;
 import util.log;
 import util.number;
 
+private void emit_add(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     oe = opcode.bit(10);
+    bool     rc = opcode.bit(0);
+
+    assert(!oe);
+    assert(!rc);
+
+    IRVariable result = ir.get_reg(ra) + ir.get_reg(rb);
+    ir.set_reg(rd, result);
+}
+
 private void emit_addi(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -55,7 +69,7 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
     int  bi = opcode.bits(16, 20);
     int  bd = opcode.bits(2, 15);
 
-    log_broadway("bc %x %x", aa, lk);
+    log_broadway("bc %x %x %x", aa, lk, (sext_32(bd, 14) << 2));
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
 
@@ -67,9 +81,9 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
         }
 
         if (aa) {
-            ir.set_reg(GuestReg.PC, ir.constant(sext_32(bd, 16) << 2));
+            ir.set_reg(GuestReg.PC, ir.constant(sext_32(bd, 14) << 2));
         } else {
-            ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.PC) + (sext_32(bd, 16) << 2));
+            ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.PC) + (sext_32(bd, 14) << 2));
         }
     });
 }
@@ -221,6 +235,7 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
+        case PrimaryOp31SecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
         case PrimaryOp31SecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp31SecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
         case PrimaryOp31SecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
