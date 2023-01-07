@@ -10,6 +10,7 @@ enum PrimaryOpcode {
     RLWINM = 0x15,
     OP_31  = 0x1F,
     LWZ    = 0x20,
+    LBZU   = 0x23,
     STW    = 0x24,
     STWU   = 0x25,
     STBU   = 0x27

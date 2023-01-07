@@ -120,6 +120,19 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     emit_set_cr_eq(ir, crf_d, a.equals (ir.constant(uimm)));
 }
 
+private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int d       = opcode.bits(0, 15);
+
+    assert(ra != 0);
+    assert(ra != rd);
+
+    IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
+    ir.read_u8(address, ir.get_reg(rd));
+    ir.set_reg(ra, address);
+}
+
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -269,6 +282,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.BC:     emit_bc    (ir, opcode, pc); break;
         case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
+        case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, pc); break;
