@@ -417,6 +417,18 @@ final class Code : CodeGenerator {
         je((*ir_instruction.after_true_label).to_xbyak_label());
     }
 
+    void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
+        HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        setc(dest_reg.to_xbyak_reg8());
+        movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+    }
+
+    void emit_GET_HOST_OVERFLOW(IRInstructionGetHostOverflow ir_instruction, int current_instruction_index) {
+        HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        seto(dest_reg.to_xbyak_reg8());
+        movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
             (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
@@ -430,6 +442,8 @@ final class Code : CodeGenerator {
             (IRInstructionRead i)              => emit_READ(i, current_instruction_index),
             (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),
             (IRInstructionConditionalBranch i) => emit_CONDITIONAL_BRANCH(i, current_instruction_index),
+            (IRInstructionGetHostCarry i)      => emit_GET_HOST_CARRY(i, current_instruction_index),
+            (IRInstructionGetHostOverflow i)   => emit_GET_HOST_OVERFLOW(i, current_instruction_index),
         );
     }
 

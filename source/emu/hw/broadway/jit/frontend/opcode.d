@@ -2,6 +2,8 @@ module emu.hw.broadway.jit.frontend.opcode;
 
 enum PrimaryOpcode {
     ADDI   = 0x0E,
+    ADDIC  = 0x0C,
+    ADDIC_ = 0x0D, // since I can't do ADDIC., I'll use ADDIC_ instead
     ADDIS  = 0x0F,
     BC     = 0x10,
     B      = 0x12,

@@ -28,10 +28,11 @@ final class BroadwayCpu {
             state.gprs[i] = 0;
         }
 
-        state.cr = 0;
+        state.cr  = 0;
+        state.xer = 0;
 
-        state.pc = 0;
-        state.lr = 0;
+        state.pc  = 0;
+        state.lr  = 0;
     }
 
     public void set_pc(u32 pc) {
@@ -92,10 +93,11 @@ final class BroadwayCpu {
             );
         }
 
-        log_broadway("cr: 0x%08x", state.cr);
+        log_broadway("cr:  0x%08x", state.cr);
+        log_broadway("xer: 0x%08x", state.xer);
 
-        log_broadway("lr: 0x%08x", state.lr);
-        log_broadway("pc: 0x%08x", state.pc);
+        log_broadway("lr:  0x%08x", state.lr);
+        log_broadway("pc:  0x%08x", state.pc);
     }
 
     private void log_instruction(u32 instruction) {

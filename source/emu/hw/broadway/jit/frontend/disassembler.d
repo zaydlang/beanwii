@@ -36,6 +36,34 @@ private void emit_addi(IR* ir, u32 opcode, u32 pc) {
     }
 }
 
+private void emit_addic(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+
+    emit_add_generic(
+        ir,
+        rd, ir.get_reg(ra), ir.get_reg(rb),
+        false, // record bit
+        true,  // XER CA
+        false, // XER SO & OV
+    );
+}
+
+private void emit_addic_(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd   = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra   = cast(GuestReg) opcode.bits(16, 20);
+    int      simm = sext_32(opcode.bits(0, 15), 16);
+
+    emit_add_generic(
+        ir,
+        rd, ir.get_reg(ra), ir.constant(simm),
+        true,  // record bit
+        true,  // XER CA
+        false, // XER SO & OV
+    );
+}
+
 private void emit_addis(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -277,6 +305,8 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
 
     switch (primary_opcode) {
         case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, pc); break;
+        case PrimaryOpcode.ADDIC:  emit_addic (ir, opcode, pc); break;
+        case PrimaryOpcode.ADDIC_: emit_addic_(ir, opcode, pc);  break;
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BC:     emit_bc    (ir, opcode, pc); break;

@@ -17,7 +17,9 @@ alias IRInstruction = SumType!(
     IRInstructionSetVarImm,
     IRInstructionRead,
     IRInstructionWrite,
-    IRInstructionConditionalBranch
+    IRInstructionConditionalBranch,
+    IRInstructionGetHostCarry,
+    IRInstructionGetHostOverflow,
 );
 
 struct IR {
@@ -151,6 +153,18 @@ struct IR {
         this.labels[this.current_label_index++] = label;
     }
 
+    IRVariable get_carry() {
+        IRVariable carry = generate_new_variable();
+        this.emit(IRInstructionGetHostCarry(carry));
+        return carry;
+    }
+
+    IRVariable get_overflow() {
+        IRVariable overflow = generate_new_variable();
+        this.emit(IRInstructionGetHostOverflow(overflow));
+        return overflow;
+    }
+
     void pretty_print() {
         for (int i = 0; i < this.num_instructions(); i++) {
             pretty_print_instruction(instructions[i]);
@@ -224,6 +238,14 @@ struct IR {
             (IRInstructionConditionalBranch i) {
                 log_ir("bne  v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
             },
+
+            (IRInstructionGetHostCarry i) {
+                log_ir("getc v%d", i.dest.get_id());
+            },
+
+            (IRInstructionGetHostOverflow i) {
+                log_ir("getv v%d", i.dest.get_id());
+            }
         );
     }
 }
@@ -485,4 +507,12 @@ struct IRInstructionWrite {
 struct IRInstructionConditionalBranch {
     IRVariable cond;
     IRLabel* after_true_label;
+}
+
+struct IRInstructionGetHostCarry {
+    IRVariable dest;
+}
+
+struct IRInstructionGetHostOverflow {
+    IRVariable dest;
 }

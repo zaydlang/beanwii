@@ -38,11 +38,11 @@ enum GuestReg {
     R31,
 
     CR,
+    XER,
 
     LR,
     PC,
 
-    XER,
     CTR,
 }
 
