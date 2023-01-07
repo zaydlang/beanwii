@@ -81,10 +81,32 @@ struct IR {
         return dest;
     }
 
+    void read_u8(IRVariable address, IRVariable value) {
+        address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionRead(value, address, u8.sizeof));
+    }
+
+    void read_u16(IRVariable address, IRVariable value) {
+        address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionRead(value, address, u16.sizeof));
+    }
+
     void read_u32(IRVariable address, IRVariable value) {
         address.update_lifetime();
         value.update_lifetime();
         emit(IRInstructionRead(value, address, u32.sizeof));
+    }
+
+    void write_u8(IRVariable address, IRVariable value) {
+        emit(IRInstructionWrite(value, address, u8.sizeof));
+        address.update_lifetime();
+    }
+
+    void write_u16(IRVariable address, IRVariable value) {
+        emit(IRInstructionWrite(value, address, u16.sizeof));
+        address.update_lifetime();
     }
 
     void write_u32(IRVariable address, IRVariable value) {
@@ -95,6 +117,10 @@ struct IR {
     IRVariable get_reg(GuestReg reg) {
         IRVariable variable = generate_new_variable();
         emit(IRInstructionGetReg(variable, reg));
+
+        if (reg == GuestReg.PC) {
+            variable = variable - 4;
+        }
 
         return variable;
     }

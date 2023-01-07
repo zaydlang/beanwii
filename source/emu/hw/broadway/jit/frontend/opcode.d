@@ -11,7 +11,8 @@ enum PrimaryOpcode {
     OP_31  = 0x1F,
     LWZ    = 0x20,
     STW    = 0x24,
-    STWU   = 0x25
+    STWU   = 0x25,
+    STBU   = 0x27
 }
 
 enum PrimaryOp31SecondaryOpcode {
