@@ -21,26 +21,31 @@ final class SlowMem : MemStrategy {
     }
 
     private T read_be(T)(u32 address) {
-        log_slowmem("Read from address 0x%08x", address);
-
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
+
+        T result;
 
         switch (region) {
             case 0x8:
             case 0xC:
                 assert(offset < MEM1_SIZE);
-                return this.mem1.read_be!T(offset);
+                result = this.mem1.read_be!T(offset);
+                break;
             
             case 0x9:
             case 0xD:
                 assert(offset < MEM2_SIZE);
-                return this.mem2.read_be!T(offset);
+                result = this.mem2.read_be!T(offset);
+                break;
             
             default:
                 error_slowmem("Read from invalid address 0x%08X", address);
                 assert(0);
         }
+
+        log_slowmem("Read 0x%08x from address 0x%08x", result, address);
+        return result;
     }
 
     private void write_be(T)(u32 address, T value) {

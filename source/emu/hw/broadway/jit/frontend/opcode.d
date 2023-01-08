@@ -21,6 +21,7 @@ enum PrimaryOpcode {
 }
 
 enum PrimaryOp13SecondaryOpcode {
+    BCCTR  = 0x210,
     BCLR   = 0x010,
     CRXOR  = 0x0C1
 }

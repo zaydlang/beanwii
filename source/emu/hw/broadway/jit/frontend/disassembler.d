@@ -118,6 +118,23 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
     });
 }
 
+private void emit_bcctr(IR* ir, u32 opcode, u32 pc) {
+    bool lk = opcode.bit(0);
+    int  bo = opcode.bits(21, 25);
+    int  bi = opcode.bits(16, 20);
+
+    assert(opcode.bits(11, 15) == 0);
+
+    IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
+    
+    ir._if(cond_ok, () { 
+        if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+
+        // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
+        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR) << 2);
+    });
+}
+
 private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     bool lk = opcode.bit(0);
     int  bo = opcode.bits(21, 25);
@@ -191,7 +208,7 @@ private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     assert(ra != rd);
 
     IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
-    ir.read_u8(address, ir.get_reg(rd));
+    ir.set_reg(rd, ir.read_u8(address));
     ir.set_reg(rd, address);
 }
 
@@ -202,7 +219,7 @@ private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(d, 16);
-    ir.read_u32(address, ir.get_reg(rd));
+    ir.set_reg(rd, ir.read_u32(address));
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
@@ -342,6 +359,7 @@ private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
+        case PrimaryOp13SecondaryOpcode.BCCTR: emit_bcctr(ir, opcode, pc); break;
         case PrimaryOp13SecondaryOpcode.BCLR:  emit_bclr (ir, opcode, pc); break;
         case PrimaryOp13SecondaryOpcode.CRXOR: emit_crxor(ir, opcode, pc); break;
 

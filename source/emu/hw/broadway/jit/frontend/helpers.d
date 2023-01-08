@@ -55,11 +55,11 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
         
         case 0b001: // if condition is false
             IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1).notequals(ir.constant(bo.bit(1)));
+            return ((cr >> bi) & 1) ^ 1;
 
         case 0b011: // if condition is true
             IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1).equals(ir.constant(bo.bit(1)));
+            return ((cr >> bi) & 1);
     }
 }
 

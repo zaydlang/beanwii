@@ -383,10 +383,14 @@ final class Code : CodeGenerator {
         call(rax);
         mov(value_reg, rax);
 
-        pop(rdi);
-        pop(rsi);
-
-        emit_pop_caller_save_regs();
+        foreach (Reg reg; [rdi, rsi, r11, r10, r9, r8, rdx, rcx, rax]) {
+            log_jit("%x vs %x", reg.getIdx(), value_reg.getIdx());
+            if (reg.getIdx() == value_reg.getIdx()) {
+                add(sp, 8);
+            } else {
+                pop(reg);
+            }
+        }
     }
 
     void emit_WRITE(IRInstructionWrite ir_instruction, int current_instruction_index) {

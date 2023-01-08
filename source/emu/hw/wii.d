@@ -135,6 +135,11 @@ final class Wii {
 
         this.broadway_cpu.set_pc(cast(u32) apploader.entry_point);
         this.broadway_cpu.run_until_return();
+
+        log_disk("Apploader entry() returned.");
+        log_disk("Apploader init  ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0000));
+        log_disk("Apploader main  ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0004));
+        log_disk("Apploader close ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0008));
         while (true) {}
     }
 }

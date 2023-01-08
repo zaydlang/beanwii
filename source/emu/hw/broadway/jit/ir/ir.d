@@ -83,22 +83,34 @@ struct IR {
         return dest;
     }
 
-    void read_u8(IRVariable address, IRVariable value) {
+    IRVariable read_u8(IRVariable address) {
+        IRVariable value = generate_new_variable();
+
         address.update_lifetime();
         value.update_lifetime();
         emit(IRInstructionRead(value, address, u8.sizeof));
+
+        return value;
     }
 
-    void read_u16(IRVariable address, IRVariable value) {
+    IRVariable read_u16(IRVariable address) {
+        IRVariable value = generate_new_variable();
+
         address.update_lifetime();
         value.update_lifetime();
         emit(IRInstructionRead(value, address, u16.sizeof));
+
+        return value;
     }
 
-    void read_u32(IRVariable address, IRVariable value) {
+    IRVariable read_u32(IRVariable address) {
+        IRVariable value = generate_new_variable();
+        
         address.update_lifetime();
         value.update_lifetime();
         emit(IRInstructionRead(value, address, u32.sizeof));
+
+        return value;
     }
 
     void write_u8(IRVariable address, IRVariable value) {

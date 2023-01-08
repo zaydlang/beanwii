@@ -72,7 +72,7 @@ final class BroadwayCpu {
 
         log_jit("before %x", &this.state);
         
-        if (instruction == 0x4e800020) {
+        if (instruction == 0x80010024) {
             auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
             auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
             foreach (instr; res) {
@@ -88,7 +88,7 @@ final class BroadwayCpu {
     public void run_until_return() {
         this.state.lr = 0xDEADBEEF;
 
-        while (true) {
+        while (this.state.pc != 0xDEADBEEF) {
             run_instruction();
         }
     }
@@ -103,6 +103,7 @@ final class BroadwayCpu {
 
         log_broadway("cr:  0x%08x", state.cr);
         log_broadway("xer: 0x%08x", state.xer);
+        log_broadway("ctr: 0x%08x", state.xer);
 
         log_broadway("lr:  0x%08x", state.lr);
         log_broadway("pc:  0x%08x", state.pc);
@@ -124,5 +125,9 @@ final class BroadwayCpu {
 
     public void set_gpr(int gpr, u32 value) {
         this.state.gprs[gpr] = value;
+    }
+
+    public u32 get_gpr(int gpr) {
+        return this.state.gprs[gpr];
     }
 }
