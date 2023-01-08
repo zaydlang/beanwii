@@ -148,6 +148,8 @@ struct IR {
         IRLabel* after_true_label = generate_new_label();
         this.emit(IRInstructionConditionalBranch(cond, after_true_label));
 
+        this.update_lifetime(cond.variable_id);
+
         true_case();
         this.bind_label(after_true_label);
     }
@@ -399,9 +401,6 @@ struct IRVariable {
 
         return dest;
     }
-
-    // void _if(IRVariable cond, void delegate(void) true_case, void delegate(void) false_case) {
-    // }
 
     void update_lifetime() {
         ir.update_lifetime(this.variable_id);

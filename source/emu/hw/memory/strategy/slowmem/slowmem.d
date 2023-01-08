@@ -21,8 +21,8 @@ final class SlowMem : MemStrategy {
     }
 
     private T read_be(T)(u32 address) {
-        log_slowmem("Read from address 0x%08X", address);
-        
+        log_slowmem("Read from address 0x%08x", address);
+
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
 
@@ -44,7 +44,7 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T)(u32 address, T value) {
-        log_slowmem("Write 0x%08x to address 0x%08X", value, address);
+        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
