@@ -134,6 +134,19 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
 }
 
+private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
+    int crbD = opcode.bits(21, 25);
+    int crbA = opcode.bits(16, 20);
+    int crbB = opcode.bits(11, 15);
+
+    assert(opcode.bit(0) == 0);
+
+    IRVariable cr = ir.get_reg(GuestReg.CR);
+    cr = cr & ~(1 << crbD);
+    cr = cr | ((((cr >> crbA) & 1) ^ ((cr >> crbB) & 1)) << crbD);
+    ir.set_reg(GuestReg.CR, cr);
+}
+
 private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     int  crf_d = opcode.bits(23, 25);
     int  uimm  = opcode.bits(0, 15);
@@ -288,15 +301,26 @@ private void emit_subf(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, result);
 }
 
+private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
+    int secondary_opcode = opcode.bits(1, 10);
+
+    switch (secondary_opcode) {
+        case PrimaryOp13SecondaryOpcode.BCLR:  emit_bclr (ir, opcode, pc); break;
+        case PrimaryOp13SecondaryOpcode.CRXOR: emit_crxor(ir, opcode, pc); break;
+
+        default: error_jit("Unimplemented opcode: %x", opcode);
+    }
+}
+
 private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp31SecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
-        case PrimaryOp31SecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
-        case PrimaryOp31SecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
-        case PrimaryOp31SecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
-        case PrimaryOp31SecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
@@ -312,7 +336,6 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, pc); break;
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BC:     emit_bc    (ir, opcode, pc); break;
-        case PrimaryOpcode.BCLR:   emit_bclr  (ir, opcode, pc); break;
         case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
         case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
@@ -321,7 +344,8 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
         case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;
 
-        case PrimaryOpcode.OP_31:  emit_op_31 (ir, opcode, pc); break;
+        case PrimaryOpcode.OP_13:  emit_op_13 (ir, opcode, pc); break;
+        case PrimaryOpcode.OP_1F:  emit_op_31 (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }

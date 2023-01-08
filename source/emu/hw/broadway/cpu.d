@@ -71,11 +71,11 @@ final class BroadwayCpu {
 
         log_jit("before %x", &this.state);
         
-        auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-        auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-        foreach (instr; res) {
-            log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-        }
+        // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
+        // foreach (instr; res) {
+        //     log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+        // }
 
         generated_function(&this.state);
 
