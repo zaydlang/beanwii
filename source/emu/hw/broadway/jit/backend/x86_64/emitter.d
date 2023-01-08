@@ -426,7 +426,7 @@ final class Code : CodeGenerator {
         Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond).to_xbyak_reg32();
 
         cmp(cond_reg, 0);
-        je((*ir_instruction.after_true_label).to_xbyak_label());
+        jne((*ir_instruction.after_true_label).to_xbyak_label());
     }
 
     void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
