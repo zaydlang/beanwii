@@ -123,15 +123,14 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     int  bo = opcode.bits(21, 25);
     int  bi = opcode.bits(16, 20);
 
-    assert(opcode.bits(12, 16) == 0b00000);
-    assert(opcode.bits(1,  11) == 16);
+    IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
-    assert(bo == 0b10100);
+    ir._if(cond_ok, () { 
+        if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
 
-    if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
-
-    // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
-    ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
+        // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
+        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
+    });
 }
 
 private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
