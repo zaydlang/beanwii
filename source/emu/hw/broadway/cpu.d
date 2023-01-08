@@ -71,7 +71,7 @@ final class BroadwayCpu {
 
         log_jit("before %x", &this.state);
         
-        if (instruction == 0x41820014) {
+        if (instruction == 0x4e800020) {
             auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
             auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
             foreach (instr; res) {
