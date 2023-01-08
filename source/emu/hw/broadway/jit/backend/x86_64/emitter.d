@@ -93,6 +93,14 @@ final class Code : CodeGenerator {
             }
         }
 
+        for (int j = 0; j < ir.num_labels(); j++) {
+            if (ir.labels[j].instruction_index == ir.num_instructions()) {
+                L(ir.labels[j].to_xbyak_label());
+            }
+        }
+
+        assert(!this.hasUndefinedLabel()); // xbyak function
+
         emit_epilogue();
     }
 
@@ -280,26 +288,26 @@ final class Code : CodeGenerator {
             
             case IRBinaryDataOp.GT:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                mov(dest_reg.to_xbyak_reg32(), 0);
                 setg(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.LT:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                mov(dest_reg.to_xbyak_reg32(), 0);
                 setl(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.EQ:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                mov(dest_reg.to_xbyak_reg32(), 0);
                 sete(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.NE:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                mov(dest_reg.to_xbyak_reg32(), 0);
                 setne(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
             default: assert(0);

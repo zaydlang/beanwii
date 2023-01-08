@@ -160,7 +160,7 @@ private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
     ir.read_u8(address, ir.get_reg(rd));
-    ir.set_reg(ra, address);
+    ir.set_reg(rd, address);
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {

@@ -18,9 +18,9 @@ public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2
     ir.set_reg(rd, result);
 
     if (rc) {
-        emit_set_cr_lt(ir, 0, result.lesser (op1));
-        emit_set_cr_gt(ir, 0, result.greater(op1));
-        emit_set_cr_eq(ir, 0, result.equals (op1));
+        emit_set_cr_lt(ir, 0, result.lesser (ir.constant(0)));
+        emit_set_cr_gt(ir, 0, result.greater(ir.constant(0)));
+        emit_set_cr_eq(ir, 0, result.equals (ir.constant(0)));
         emit_set_cr_so(ir, 0, overflow);
     }
 
@@ -58,10 +58,12 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
 
 private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
     int index = field * 4 + bit;
+
+    log_jit("emit_set_cr_flag %d %d %d", field, bit, index);
     
     IRVariable cr = ir.get_reg(GuestReg.CR);
-    cr = cr & ~(1 << index);
-    cr = cr | value;
+    cr = cr & ~(1     << index);
+    cr = cr |  (value << index);
     ir.set_reg(GuestReg.CR, cr);
 }
 

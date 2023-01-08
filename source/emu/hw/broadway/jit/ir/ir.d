@@ -140,17 +140,20 @@ struct IR {
         emit(IRInstructionSetFlags(variable, flags));
     }
 
+    IRLabel* generate_new_label() {
+        return &labels[current_label_index++];
+    }
+
     void _if(IRVariable cond, void delegate() true_case) {
-        IRLabel after_true_label;
-        this.emit(IRInstructionConditionalBranch(cond, &after_true_label));
+        IRLabel* after_true_label = generate_new_label();
+        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
 
         true_case();
         this.bind_label(after_true_label);
     }
 
-    void bind_label(IRLabel label) {
+    void bind_label(IRLabel* label) {
         label.instruction_index = cast(int) this.current_instruction_index;
-        this.labels[this.current_label_index++] = label;
     }
 
     IRVariable get_carry() {

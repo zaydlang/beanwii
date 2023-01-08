@@ -31,9 +31,9 @@ Reg8 to_xbyak_reg8(HostReg_x86_64 host_reg) {
         case HostReg_x86_64.EDX: return dl;
         case HostReg_x86_64.EBX: return bl;
         case HostReg_x86_64.ESP: return ah;
-        case HostReg_x86_64.EBP: return ch;
-        case HostReg_x86_64.ESI: return dh;
-        case HostReg_x86_64.EDI: return bh;
+        case HostReg_x86_64.EBP: return bpl;
+        case HostReg_x86_64.ESI: return sil;
+        case HostReg_x86_64.EDI: return dil;
         
         default: error_jit("Could not turn host register %s into an 8-bit xbyak register", host_reg); return al;
     }

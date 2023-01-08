@@ -8,7 +8,7 @@ struct BroadwayState {
    
     u32[32] gprs;
 
-    u32     cr;
+    u32     cr; 
     u32     xer;
 
     u32     lr;
