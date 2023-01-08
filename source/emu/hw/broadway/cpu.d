@@ -41,7 +41,7 @@ final class BroadwayCpu {
 
     public void run_instruction() {
         u32 instruction = fetch();
-        log_instruction(instruction);
+        log_instruction(instruction, state.pc - 4);
 
         IR* ir = new IR();
         ir.setup();
@@ -100,10 +100,10 @@ final class BroadwayCpu {
         log_broadway("pc:  0x%08x", state.pc);
     }
 
-    private void log_instruction(u32 instruction) {
-        auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], 4);
+    private void log_instruction(u32 instruction, u32 pc) {
+        auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
         foreach (instr; res) {
-            log_broadway("0x%08x | %s\t\t%s", instruction, instr.mnemonic, instr.opStr);
+            log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
         }
     }
 

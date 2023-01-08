@@ -120,6 +120,10 @@ struct IR {
         IRVariable variable = generate_new_variable();
         emit(IRInstructionGetReg(variable, reg));
 
+        if (reg == GuestReg.PC) {
+            variable = variable - 4;
+        }
+
         return variable;
     }
 
