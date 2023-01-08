@@ -47,6 +47,7 @@ final class BroadwayCpu {
 
         state.cr  = 0;
         state.xer = 0;
+        state.ctr = 0;
 
         state.pc  = 0;
         state.lr  = 0;

@@ -227,12 +227,15 @@ private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
 
     assert(opcode.bit(0) == 0);
 
-    assert(spr == 0b1000_00000);
+    assert(
+        spr == 0b1000_00000 ||
+        spr == 0b1001_00000
+    );
 
     GuestReg src;
     // if (spr == 1) src = GuestReg.XER;
     if (spr == 0b100000000) src = GuestReg.LR;
-    // if (spr == 8) src = GuestReg.CTR;
+    if (spr == 0b100100000) src = GuestReg.CTR;
 
     ir.set_reg(src, ir.get_reg(rd));
 }

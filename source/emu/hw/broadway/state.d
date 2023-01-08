@@ -10,6 +10,7 @@ struct BroadwayState {
 
     u32     cr; 
     u32     xer;
+    u32     ctr;
 
     u32     lr;
     u32     pc;

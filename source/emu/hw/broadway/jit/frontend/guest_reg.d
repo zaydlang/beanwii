@@ -39,11 +39,10 @@ enum GuestReg {
 
     CR,
     XER,
+    CTR,
 
     LR,
     PC,
-
-    CTR,
 }
 
 string to_string(GuestReg reg) {
