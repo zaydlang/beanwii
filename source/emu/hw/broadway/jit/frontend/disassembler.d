@@ -156,10 +156,30 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     IRVariable a = ir.get_reg(ra);
 
-    // TODO: there's some weirdness with the xer register I don't understand yet.
-    emit_set_cr_gt(ir, crf_d, a.greater(ir.constant(uimm)));
-    emit_set_cr_lt(ir, crf_d, a.lesser (ir.constant(uimm)));
-    emit_set_cr_eq(ir, crf_d, a.equals (ir.constant(uimm)));
+    emit_cmp_generic(
+        ir,
+        a,
+        ir.constant(uimm),
+        crf_d
+    );
+}
+
+private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
+    int crf_d    = opcode.bits(23, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int simm    = sext_32(opcode.bits(0, 15), 16);
+
+    assert(opcode.bit(21) == 0);
+    assert(opcode.bit(22) == 0);
+
+    IRVariable a = ir.get_reg(ra);
+
+    emit_cmp_generic(
+        ir,
+        a,
+        ir.constant(simm),
+        crf_d
+    );
 }
 
 private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
@@ -352,6 +372,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.B:      emit_b     (ir, opcode, pc); break;
         case PrimaryOpcode.BC:     emit_bc    (ir, opcode, pc); break;
         case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
+        case PrimaryOpcode.CMPI:   emit_cmpi  (ir, opcode, pc); break;
         case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;

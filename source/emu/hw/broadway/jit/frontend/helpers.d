@@ -33,6 +33,13 @@ public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2
     }
 }
 
+public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d) {
+    emit_set_cr_gt(ir, crf_d, op1.greater(op2));
+    emit_set_cr_lt(ir, crf_d, op1.lesser (op2));
+    emit_set_cr_eq(ir, crf_d, op1.equals (op2));
+    emit_set_cr_so(ir, crf_d, emit_get_xer_so(ir));
+}
+
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
     log_jit("jit BO: %x %x", bo, bi);
     final switch (bo >> 2) {
@@ -81,6 +88,11 @@ public void emit_set_cr_eq(IR* ir, int field, IRVariable value) {
 
 public void emit_set_cr_so(IR* ir, int field, IRVariable value) {
     emit_set_cr_flag(ir, field, 3, value);
+}
+
+public IRVariable emit_get_xer_so(IR* ir) {
+    IRVariable xer = ir.get_reg(GuestReg.XER);
+    return (xer >> 3) & 1;
 }
 
 public void emit_set_xer_ca(IR* ir, IRVariable value) {

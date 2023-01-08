@@ -7,15 +7,17 @@ enum PrimaryOpcode {
     ADDIS  = 0x0F,
     BC     = 0x10,
     B      = 0x12,
-    OP_13  = 0x13,
     CMPLI  = 0x0A,
-    RLWINM = 0x15,
-    OP_1F  = 0x1F,
+    CMPI   = 0x0B,
     LWZ    = 0x20,
     LBZU   = 0x23,
+    RLWINM = 0x15,
     STW    = 0x24,
+    STBU   = 0x27,
     STWU   = 0x25,
-    STBU   = 0x27
+
+    OP_13  = 0x13,
+    OP_1F  = 0x1F,
 }
 
 enum PrimaryOp13SecondaryOpcode {
