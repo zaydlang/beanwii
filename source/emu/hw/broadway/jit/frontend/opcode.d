@@ -27,6 +27,7 @@ enum PrimaryOp1FSecondaryOpcode {
     ADD    = 0x10A,
     MFSPR  = 0x153,
     MTSPR  = 0x1D3,
+    NOR    = 0x07C,
     OR     = 0x1BC,
     SUBF   = 0x028,
 }

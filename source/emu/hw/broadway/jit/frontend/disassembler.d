@@ -217,6 +217,18 @@ private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(src, ir.get_reg(rd));
 }
 
+private void emit_nor(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(rc == 0);
+
+    IRVariable result = ~(ir.get_reg(rs) | ir.get_reg(rb));
+    ir.set_reg(ra, result);
+}
+
 private void emit_or(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -245,7 +257,10 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(ra, result);
 
     if (rc) {
-        error_broadway("rlwinm record bit unimplemented");
+        emit_set_cr_lt(ir, 0, result.lesser (ir.constant(0)));
+        emit_set_cr_gt(ir, 0, result.greater(ir.constant(0)));
+        emit_set_cr_eq(ir, 0, result.equals (ir.constant(0)));
+        emit_set_cr_so(ir, 0, ir.constant(0)); // TODO: what does overflow even mean in the context of rlwinm????
     }
 }
 
@@ -318,6 +333,7 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.NOR:   emit_nor  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
 
