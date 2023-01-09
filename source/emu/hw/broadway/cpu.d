@@ -70,20 +70,20 @@ final class BroadwayCpu {
         u32 instruction = fetch();
         log_instruction(instruction, state.pc - 4);
 
-        emit(ir, instruction, state.pc);
+        emit(ir, instruction, state.pc - 4);
 
         code.reset();
         code.emit(ir);
 
         auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
         
-        if (instruction == 0x80010024) {
-            auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-            auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-            foreach (instr; res) {
-                log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-            }
-        }
+        // if (instruction == 0x80010024) {
+        //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        //     auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
+        //     foreach (instr; res) {
+        //         log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+        //     }
+        // }
 
         generated_function(&this.state);
 
