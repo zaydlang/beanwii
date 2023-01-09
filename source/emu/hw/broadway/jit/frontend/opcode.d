@@ -11,6 +11,7 @@ enum PrimaryOpcode {
     CMPI   = 0x0B,
     LWZ    = 0x20,
     LBZU   = 0x23,
+    ORI    = 0x18,
     RLWINM = 0x15,
     STW    = 0x24,
     STBU   = 0x27,
