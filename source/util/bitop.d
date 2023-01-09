@@ -58,6 +58,13 @@ public s32 sext_32(T)(T value, u32 size) {
     return result;
 }
 
+public u8 get_byte(T)(T value, int index) {
+    assert(is_number!T);
+    assert(index < T.sizeof);
+
+    return (value >> (index * 8)) & 0xFF;
+}
+
 private auto create_mask(size_t start, size_t end) {
     if (end - start >= 31) return 0xFFFFFFFF;
 

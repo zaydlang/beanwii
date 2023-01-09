@@ -1,8 +1,10 @@
 module emu.hw.memory.strategy.slowmem.slowmem;
 
 import emu.hw.broadway.hle;
+import emu.hw.cp.cp;
 import emu.hw.disk.dol;
 import emu.hw.memory.strategy.memstrategy;
+import emu.hw.memory.strategy.slowmem.mmio_spec;
 import util.array;
 import util.log;
 import util.number;
@@ -14,14 +16,17 @@ final class SlowMem : MemStrategy {
     enum MEM2_SIZE = 0x4000000;
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
-    u8[] mem1;
-    u8[] mem2;
-    u8[] hle_trampoline;
+    private u8[] mem1;
+    private u8[] mem2;
+    private u8[] hle_trampoline;
 
-    this() {
-        mem1 = new u8[MEM1_SIZE];
-        mem2 = new u8[MEM2_SIZE];
-        hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
+    private Mmio mmio;
+
+    this(CommandProcessor command_processor) {
+        this.mem1 = new u8[MEM1_SIZE];
+        this.mem2 = new u8[MEM2_SIZE];
+        this.hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
+        this.mmio = new Mmio(command_processor);
     }
 
     private T read_be(T)(u32 address) {
@@ -31,8 +36,14 @@ final class SlowMem : MemStrategy {
         T result;
 
         switch (region) {
-            case 0x8:
             case 0xC:
+                if (offset > 0xC00_0000) {
+                    result = this.mmio.read!T(address);
+                    break;
+                } else {
+                    goto case 0x8;
+                }
+            case 0x8:
                 assert(offset < MEM1_SIZE);
                 result = this.mem1.read_be!T(offset);
                 break;
@@ -64,8 +75,13 @@ final class SlowMem : MemStrategy {
         auto offset = address & 0xFFF_FFFF;
 
         switch (region) {
-            case 0x8:
             case 0xC:
+                if (offset > 0xC00_0000) {
+                    return this.mmio.write!T(address, value);
+                } else {
+                    goto case 0x8;
+                }
+            case 0x8:
                 assert(offset < MEM1_SIZE);
                 return this.mem1.write_be!T(offset, value);
             

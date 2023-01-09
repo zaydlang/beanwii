@@ -4,6 +4,7 @@ import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
 import emu.hw.broadway.hle;
+import emu.hw.cp.cp;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.layout;
@@ -15,12 +16,16 @@ import util.log;
 import util.number;
 
 final class Wii {
-    private BroadwayCpu broadway_cpu;
-    private Mem         mem;
+    private BroadwayCpu      broadway_cpu;
+    private Mem              mem;
+
+    private CommandProcessor command_processor;
 
     this() {
-        this.mem          = new Mem();
-        this.broadway_cpu = new BroadwayCpu(mem);
+        this.command_processor = new CommandProcessor();
+
+        this.mem               = new Mem(this.command_processor);
+        this.broadway_cpu      = new BroadwayCpu(mem);
     }
 
     public void run() {
