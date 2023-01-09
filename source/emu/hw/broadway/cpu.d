@@ -1,6 +1,7 @@
 module emu.hw.broadway.cpu;
 
 import capstone;
+import emu.hw.broadway.hle;
 import emu.hw.broadway.jit.frontend.disassembler;
 import emu.hw.broadway.jit.backend.x86_64.emitter;
 import emu.hw.broadway.jit.ir.ir;
@@ -13,34 +14,40 @@ import util.number;
 final class BroadwayCpu {
     private Mem           mem;
     private BroadwayState state;
+
     private IR*           ir;
-
-    private JitConfig config;
-    private Code      code;
-
+    private JitConfig     config;
+    private Code          code;
     private Capstone      capstone;
 
-    this(Mem mem) {
-        this.mem      = mem;
-        this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
-        this.ir       = new IR();
-        this.config   = JitConfig(
-            cast(ReadHandler)  (&mem.read_be_u32) .funcptr,
-            cast(ReadHandler)  (&mem.read_be_u16) .funcptr,
-            cast(ReadHandler)  (&mem.read_be_u8)  .funcptr,
-            cast(WriteHandler) (&mem.write_be_u32).funcptr,
-            cast(WriteHandler) (&mem.write_be_u16).funcptr,
-            cast(WriteHandler) (&mem.write_be_u8) .funcptr,
-            cast(void*) mem
-        );
-        this.code     = new Code(config);
+    private HleContext    hle_context;
 
+    this(Mem mem) {
+        this.mem = mem;
+        this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
+        this.ir = new IR();
+
+        this.config = JitConfig(
+            cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
+            cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
+            cast(ReadHandler)  (&this.mem.read_be_u8)   .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u32) .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u16) .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u8)  .funcptr,
+            cast(HleHandler)   (&this.hle_handler)      .funcptr,
+            cast(void*) this.mem,
+            cast(void*) this.hle_context
+        );
+
+        this.code = new Code(config);
+
+        this.hle_context = new HleContext(&this.mem);
 
         this.ir.setup();
         this.reset();
     }
 
-    void reset() {
+    public void reset() {
         for (int i = 0; i < 32; i++) {
             state.gprs[i] = 0;
         }
@@ -129,5 +136,14 @@ final class BroadwayCpu {
 
     public u32 get_gpr(int gpr) {
         return this.state.gprs[gpr];
+    }
+
+    public HleContext* get_hle_context() {
+        return &this.hle_context;
+    }
+
+    private void hle_handler(int function_id) {
+        this.hle_context.hle_handler(&this.state, function_id);
+        this.state.pc = this.state.lr;
     }
 }

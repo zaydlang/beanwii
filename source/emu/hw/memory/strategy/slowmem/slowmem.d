@@ -1,5 +1,6 @@
 module emu.hw.memory.strategy.slowmem.slowmem;
 
+import emu.hw.broadway.hle;
 import emu.hw.disk.dol;
 import emu.hw.memory.strategy.memstrategy;
 import util.array;
@@ -11,13 +12,16 @@ import util.number;
 final class SlowMem : MemStrategy {
     enum MEM1_SIZE = 0x1800000;
     enum MEM2_SIZE = 0x4000000;
+    enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
     u8[] mem1;
     u8[] mem2;
+    u8[] hle_trampoline;
 
     this() {
         mem1 = new u8[MEM1_SIZE];
         mem2 = new u8[MEM2_SIZE];
+        hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
     }
 
     private T read_be(T)(u32 address) {
@@ -37,6 +41,11 @@ final class SlowMem : MemStrategy {
             case 0xD:
                 assert(offset < MEM2_SIZE);
                 result = this.mem2.read_be!T(offset);
+                break;
+            
+            case 0x2:
+                assert(offset < HLE_TRAMPOLINE_SIZE);
+                result = this.hle_trampoline.read_be!T(offset);
                 break;
             
             default:
@@ -64,6 +73,10 @@ final class SlowMem : MemStrategy {
             case 0xD:
                 assert(offset < MEM2_SIZE);
                 return this.mem2.write_be!T(offset, value);
+            
+            case 0x2:
+                assert(offset < HLE_TRAMPOLINE_SIZE);
+                return this.hle_trampoline.write_be!T(offset, value);
             
             default:
                 error_slowmem("Write 0x%08x to invalid address 0x%08X", value, address);

@@ -3,6 +3,7 @@ module emu.hw.wii;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
+import emu.hw.broadway.hle;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.layout;
@@ -112,17 +113,10 @@ final class Wii {
         WiiApploaderHeader* apploader = cast(WiiApploaderHeader*) &disk_data[WII_APPLOADER_OFFSET];
         this.mem.map_buffer(&disk_data[WII_APPLOADER_OFFSET + WiiApploaderHeader.sizeof], cast(s32) apploader.size, WII_APPLOADER_LOAD_ADDRESS);
 
-    import std.file;
-    import std.stdio;
-
-    auto f = File("apploader.bin", "w+");
-    f.rawWrite(cast(byte[]) (&disk_data[WII_APPLOADER_OFFSET + WiiApploaderHeader.sizeof])[0..cast(s32)apploader.size]);
-    f.close();
-
-        log_disk("Apploader info:");
-        log_disk("  Size:         %x", cast(s32) apploader.size);
-        log_disk("  Trailer size: %x", cast(s32) apploader.trailer_size);
-        log_disk("  Entry point:  %x", cast(u32) apploader.entry_point);
+        log_apploader("Apploader info:");
+        log_apploader("  Size:         %x", cast(s32) apploader.size);
+        log_apploader("  Trailer size: %x", cast(s32) apploader.trailer_size);
+        log_apploader("  Entry point:  %x", cast(u32) apploader.entry_point);
 
         // r1 is reserved for the stack, so let's just set the stack somewhere arbitrary that won't
         // conflict with the apploader code
@@ -133,13 +127,24 @@ final class Wii {
         this.broadway_cpu.set_gpr(4, 0x8000_0004);
         this.broadway_cpu.set_gpr(5, 0x8000_0008);
 
+        log_apploader("Running apploader entry... returned.");
         this.broadway_cpu.set_pc(cast(u32) apploader.entry_point);
         this.broadway_cpu.run_until_return();
 
-        log_disk("Apploader entry() returned.");
-        log_disk("Apploader init  ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0000));
-        log_disk("Apploader main  ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0004));
-        log_disk("Apploader close ptr = %08x", cast(u32) this.mem.read_be_u32(0x8000_0008));
+        u32 init_ptr  = cast(u32) this.mem.read_be_u32(0x8000_0000);
+        u32 main_ptr  = cast(u32) this.mem.read_be_u32(0x8000_0004);
+        u32 close_ptr = cast(u32) this.mem.read_be_u32(0x8000_0008);
+
+        log_apploader("Apploader entry() returned.");
+        log_apploader("Apploader init  ptr = %08x", init_ptr);
+        log_apploader("Apploader main  ptr = %08x", main_ptr);
+        log_apploader("Apploader close ptr = %08x", close_ptr);
+
+        this.broadway_cpu.set_pc(init_ptr);
+        u32 hle_func_addr = this.broadway_cpu.get_hle_context().add_hle_func(&hle_os_report, &this.mem);
+        this.broadway_cpu.set_gpr(3, hle_func_addr);
+        this.broadway_cpu.run_until_return();
+
         while (true) {}
     }
 }

@@ -28,6 +28,7 @@ enum PrimaryOp13SecondaryOpcode {
 
 enum PrimaryOp1FSecondaryOpcode {
     ADD    = 0x10A,
+    HLE    = 0x357,
     MFSPR  = 0x153,
     MTSPR  = 0x1D3,
     NOR    = 0x07C,

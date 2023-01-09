@@ -199,6 +199,11 @@ private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
     );
 }
 
+private void emit_hle(IR* ir, u32 opcode, u32 pc) {
+    int hle_function_id = opcode.bits(21, 25);
+    ir.run_hle_func(hle_function_id);
+}
+
 private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -372,6 +377,7 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
 
     switch (secondary_opcode) {
         case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.HLE:   emit_hle  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.NOR:   emit_nor  (ir, opcode, pc); break;

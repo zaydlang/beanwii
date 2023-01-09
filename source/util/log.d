@@ -9,7 +9,9 @@ enum LogSource {
     SLOWMEM,
     IR,
     JIT,
-    XBYAK
+    XBYAK,
+    WII,
+    APPLOADER
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

@@ -14,6 +14,7 @@ import xbyak;
 
 alias ReadHandler  = u32 function(u32 address);
 alias WriteHandler = void function(u32 address, u32 value);
+alias HleHandler   = void function(int param);
 
 struct JitConfig {
     ReadHandler  read_handler32;
@@ -22,8 +23,10 @@ struct JitConfig {
     WriteHandler write_handler32;
     WriteHandler write_handler16;
     WriteHandler write_handler8;
+    HleHandler   hle_handler;
 
-    void*        mem_handler_ctx;
+    void*        mem_handler_context;
+    void*        hle_handler_context;
 }
 
 final class Code : CodeGenerator {
@@ -372,7 +375,7 @@ final class Code : CodeGenerator {
         // know exactly how to fix that but it's obviously a massive problem.
 
         mov(rsi, address_reg);
-        mov(rdi, cast(u64) config.mem_handler_ctx);
+        mov(rdi, cast(u64) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
             case 4: mov(rax, cast(u64) config.read_handler32); break;
@@ -384,7 +387,6 @@ final class Code : CodeGenerator {
         mov(value_reg, rax);
 
         foreach (Reg reg; [rdi, rsi, r11, r10, r9, r8, rdx, rcx, rax]) {
-            log_jit("%x vs %x", reg.getIdx(), value_reg.getIdx());
             if (reg.getIdx() == value_reg.getIdx()) {
                 add(sp, 8);
             } else {
@@ -409,7 +411,7 @@ final class Code : CodeGenerator {
 
         mov(rdx, value_reg);
         mov(rsi, address_reg);
-        mov(rdi, cast(u64) config.mem_handler_ctx);
+        mov(rdi, cast(u64) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
             case 4: mov(rax, cast(u64) config.write_handler32); break;
@@ -445,6 +447,17 @@ final class Code : CodeGenerator {
         movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
     }
 
+    void emit_HLE_FUNC(IRInstructionHleFunc ir_instruction, int current_instruction_index) {
+        emit_push_caller_save_regs();
+
+        mov(rdx, cast(u64) config.hle_handler_context);
+        mov(rsi, ir_instruction.function_id);
+        mov(rax, cast(u64) config.hle_handler);
+        call(rax);
+
+        emit_pop_caller_save_regs();
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
             (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
@@ -460,6 +473,7 @@ final class Code : CodeGenerator {
             (IRInstructionConditionalBranch i) => emit_CONDITIONAL_BRANCH(i, current_instruction_index),
             (IRInstructionGetHostCarry i)      => emit_GET_HOST_CARRY(i, current_instruction_index),
             (IRInstructionGetHostOverflow i)   => emit_GET_HOST_OVERFLOW(i, current_instruction_index),
+            (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index)
         );
     }
 

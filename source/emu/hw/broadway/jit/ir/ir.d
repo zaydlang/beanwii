@@ -20,6 +20,7 @@ alias IRInstruction = SumType!(
     IRInstructionConditionalBranch,
     IRInstructionGetHostCarry,
     IRInstructionGetHostOverflow,
+    IRInstructionHleFunc
 );
 
 struct IR {
@@ -170,6 +171,10 @@ struct IR {
         label.instruction_index = cast(int) this.current_instruction_index;
     }
 
+    void run_hle_func(int function_id) {
+        this.emit(IRInstructionHleFunc(function_id));
+    }
+
     IRVariable get_carry() {
         IRVariable carry = generate_new_variable();
         this.emit(IRInstructionGetHostCarry(carry));
@@ -262,6 +267,10 @@ struct IR {
 
             (IRInstructionGetHostOverflow i) {
                 log_ir("getv v%d", i.dest.get_id());
+            },
+
+            (IRInstructionHleFunc i) {
+                log_ir("hle  %d", i.function_id);
             }
         );
     }
@@ -529,4 +538,8 @@ struct IRInstructionGetHostCarry {
 
 struct IRInstructionGetHostOverflow {
     IRVariable dest;
+}
+
+struct IRInstructionHleFunc {
+    int function_id;
 }
