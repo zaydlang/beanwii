@@ -358,6 +358,19 @@ private void emit_stbu(IR* ir, u32 opcode, u32 pc) {
     ir.write_u8(address, ir.get_reg(rs));
 }
 
+private void emit_sth(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int offset  = opcode.bits(0, 15);
+
+    
+    if (ra == 0) {
+        ir.write_u16(ir.constant(sext_32(offset, 16)), ir.get_reg(rs));
+    } else {
+        ir.write_u16(ir.get_reg(ra) + sext_32(offset, 16), ir.get_reg(rs));
+    }
+}
+
 private void emit_stw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -442,6 +455,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, pc); break;
+        case PrimaryOpcode.STH:    emit_sth   (ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
         case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;
 
