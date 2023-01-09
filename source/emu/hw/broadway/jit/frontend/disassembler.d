@@ -314,12 +314,12 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int      sh = opcode.bits(11, 15);
-    int      mb = opcode.bits(6,  10);
-    int      me = opcode.bits(1,  5);
+    int      mb = 31 - opcode.bits(6, 10);
+    int      me = 31 - opcode.bits(1, 5);
     bool     rc = opcode.bit(0);
 
-    assert(mb <= me);
-    int mask = cast(int) (((cast(u64) 1) << (cast(u64) (me - mb + 1))) - 1) << mb;
+    assert(mb >= me);
+    int mask = cast(int) (((cast(u64) 1) << (cast(u64) (mb - me + 1))) - 1) << me;
 
     log_jit("rlwinm: sh 0x%x mb 0x%x me 0x%x rc %x. mask: 0x%08x", sh, mb, me, rc, mask);
 

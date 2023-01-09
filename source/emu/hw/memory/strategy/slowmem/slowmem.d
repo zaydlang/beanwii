@@ -58,7 +58,7 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T)(u32 address, T value) {
-        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
+        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
@@ -106,7 +106,7 @@ final class SlowMem : MemStrategy {
             u32 text_offset  = cast(u32) dol.header.text_offset[i];
             u32 text_size    = cast(u32) dol.header.text_size[i];
 
-            u32 dol_data_offset = text_offset + cast(u32) WiiDolHeader.sizeof;
+            u32 dol_data_offset = text_offset;
 
             if (text_size == 0) continue;
 
@@ -119,7 +119,7 @@ final class SlowMem : MemStrategy {
             u32 data_offset  = cast(u32) dol.header.data_offset[i];
             u32 data_size    = cast(u32) dol.header.data_size[i];
 
-            u32 dol_data_offset = data_offset + cast(u32) WiiDolHeader.sizeof;
+            u32 dol_data_offset = data_offset;
 
             if (data_size == 0) continue;
             

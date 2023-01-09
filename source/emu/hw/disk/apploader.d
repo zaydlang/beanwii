@@ -3,7 +3,16 @@ module emu.hw.disk.apploader;
 import util.endian;
 import util.number;
 
+struct WiiApploader {
+    align(1):
+
+    WiiApploaderHeader header;
+    u8 data;
+}
+
 struct WiiApploaderHeader {
+    align(1):
+
     u8[16] revision;
     u32_be entry_point;
     s32_be size;
