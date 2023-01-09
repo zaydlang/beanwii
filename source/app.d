@@ -6,11 +6,14 @@ import emu.hw.disk.readers.diskreader;
 import emu.hw.disk.readers.dol;
 import emu.hw.disk.readers.wbfs;
 import emu.hw.wii;
+import ui.cli;
 import util.file;
 import util.log;
 
-void main() {
-	auto disk_data = load_file_as_bytes("./spm.wbfs");
+void main(string[] args) {
+	CliArgs cli_args = parse_cli_args(args);
+
+	auto disk_data = load_file_as_bytes(cli_args.rom_path);
 
 	Wii wii = new Wii();
 
