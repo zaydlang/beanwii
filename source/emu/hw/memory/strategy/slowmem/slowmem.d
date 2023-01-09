@@ -106,12 +106,12 @@ final class SlowMem : MemStrategy {
             u32 text_offset  = cast(u32) dol.header.text_offset[i];
             u32 text_size    = cast(u32) dol.header.text_size[i];
 
-            u32 dol_data_offset = text_offset;
+            u32 dol_data_offset = text_offset - cast(int) WiiDolHeader.sizeof;
 
             if (text_size == 0) continue;
 
             log_disk("Mapping text section %d at 0x%08X, offset 0x%08X, size 0x%08X", i, text_address, text_offset, text_size);
-            map_buffer(&dol.data[dol_data_offset], text_size, text_address);
+            map_buffer(&dol.data.ptr[dol_data_offset], text_size, text_address);
         }
 
         for (int i = 0; i < WII_DOL_NUM_DATA_SECTIONS; i++) {
@@ -119,12 +119,12 @@ final class SlowMem : MemStrategy {
             u32 data_offset  = cast(u32) dol.header.data_offset[i];
             u32 data_size    = cast(u32) dol.header.data_size[i];
 
-            u32 dol_data_offset = data_offset;
+            u32 dol_data_offset = data_offset - cast(int) WiiDolHeader.sizeof;
 
             if (data_size == 0) continue;
             
             log_disk("Mapping data section %d at 0x%08X, offset 0x%08X, size 0x%08X", i, data_address, data_offset, data_size);
-            map_buffer(&dol.data[dol_data_offset], data_size, data_address);
+            map_buffer(&dol.data.ptr[dol_data_offset], data_size, data_address);
         }
 
         u32 bss_address = cast(u32) dol.header.bss_address;

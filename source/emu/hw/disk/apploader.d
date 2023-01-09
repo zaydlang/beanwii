@@ -7,7 +7,7 @@ struct WiiApploader {
     align(1):
 
     WiiApploaderHeader header;
-    u8 data;
+    u8[0] data;
 }
 
 struct WiiApploaderHeader {

@@ -27,5 +27,5 @@ struct WiiDol {
     align(1):
 
     WiiDolHeader header;
-    u8[] data;
+    u8[0] data;
 }

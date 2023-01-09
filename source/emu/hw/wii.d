@@ -130,7 +130,7 @@ final class Wii {
         log_apploader("  Trailer size: %x", cast(s32) apploader.header.trailer_size);
         log_apploader("  Entry point:  %x", cast(u32) apploader.header.entry_point);
 
-        this.mem.map_buffer(&apploader.data, cast(s32) apploader.header.size, WII_APPLOADER_LOAD_ADDRESS);
+        this.mem.map_buffer(apploader.data.ptr, cast(s32) apploader.header.size, WII_APPLOADER_LOAD_ADDRESS);
 
         // r1 is reserved for the stack, so let's just set the stack somewhere arbitrary that won't
         // conflict with the apploader code
