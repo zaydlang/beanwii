@@ -319,7 +319,9 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
 
     assert(mb <= me);
-    int mask = cast(int) ((cast(u64) 1) << (cast(u64) (me - mb + 1)) - 1) << mb;
+    int mask = cast(int) (((cast(u64) 1) << (cast(u64) (me - mb + 1))) - 1) << mb;
+
+    log_jit("rlwinm: sh 0x%x mb 0x%x me 0x%x rc %x. mask: 0x%08x", sh, mb, me, rc, mask);
 
     IRVariable result = ir.get_reg(rs);
     result = result.rol(sh) & mask;
