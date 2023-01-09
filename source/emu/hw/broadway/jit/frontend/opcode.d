@@ -5,8 +5,8 @@ enum PrimaryOpcode {
     ADDIC  = 0x0C,
     ADDIC_ = 0x0D, // since I can't do ADDIC., I'll use ADDIC_ instead
     ADDIS  = 0x0F,
-    BC     = 0x10,
     B      = 0x12,
+    BC     = 0x10,
     CMPLI  = 0x0A,
     CMPI   = 0x0B,
     LWZ    = 0x20,
@@ -28,6 +28,7 @@ enum PrimaryOp13SecondaryOpcode {
 
 enum PrimaryOp1FSecondaryOpcode {
     ADD    = 0x10A,
+    CMPL   = 0x20,
     HLE    = 0x357,
     MFSPR  = 0x153,
     MTSPR  = 0x1D3,

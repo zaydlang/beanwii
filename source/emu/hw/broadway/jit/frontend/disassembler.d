@@ -85,7 +85,7 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     u32 branch_address = sext_32(li, 24) << 2;
     if (!aa) branch_address += pc;
 
-    if (lk) ir.set_reg(GuestReg.LR, pc);
+    if (lk) ir.set_reg(GuestReg.LR, pc + 4);
 
     ir.set_reg(GuestReg.PC, branch_address);
 }
@@ -101,17 +101,17 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
 
-    if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+    if (lk) ir.set_reg(GuestReg.LR, pc + 4);
 
     ir._if(cond_ok, () {
         if (lk) {
-            ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+            ir.set_reg(GuestReg.LR, pc + 4);
         }
 
         if (aa) {
             ir.set_reg(GuestReg.PC, ir.constant(sext_32(bd, 14) << 2));
         } else {
-            ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.PC) + (sext_32(bd, 14) << 2));
+            ir.set_reg(GuestReg.PC, pc + (sext_32(bd, 14) << 2));
         }
     });
 }
@@ -126,7 +126,7 @@ private void emit_bcctr(IR* ir, u32 opcode, u32 pc) {
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
     ir._if(cond_ok, () { 
-        if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+        if (lk) ir.set_reg(GuestReg.LR, pc + 4);
 
         // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
         ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR) << 2);
@@ -141,24 +141,31 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
     ir._if(cond_ok, () { 
-        if (lk) ir.set_reg(GuestReg.LR, ir.get_reg(GuestReg.PC));
+        if (lk) ir.set_reg(GuestReg.LR, pc + 4);
 
         // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
         ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
     });
 }
 
-private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
-    int crbD = opcode.bits(21, 25);
-    int crbA = opcode.bits(16, 20);
-    int crbB = opcode.bits(11, 15);
+private void emit_cmpl(IR* ir, u32 opcode, u32 pc) {
+    int crf_d = opcode.bits(23, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
 
-    assert(opcode.bit(0) == 0);
+    assert(opcode.bit(0)  == 0);
+    assert(opcode.bit(21) == 0);
+    assert(opcode.bit(22) == 0);
 
-    IRVariable cr = ir.get_reg(GuestReg.CR);
-    cr = cr & ~(1 << crbD);
-    cr = cr | ((((cr >> crbA) & 1) ^ ((cr >> crbB) & 1)) << crbD);
-    ir.set_reg(GuestReg.CR, cr);
+    IRVariable a = ir.get_reg(ra);
+    IRVariable b = ir.get_reg(rb);
+
+    emit_cmp_generic(
+        ir,
+        a,
+        b,
+        crf_d
+    );
 }
 
 private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
@@ -195,6 +202,19 @@ private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
         ir.constant(simm),
         crf_d
     );
+}
+
+private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
+    int crbD = opcode.bits(21, 25);
+    int crbA = opcode.bits(16, 20);
+    int crbB = opcode.bits(11, 15);
+
+    assert(opcode.bit(0) == 0);
+
+    IRVariable cr = ir.get_reg(GuestReg.CR);
+    cr = cr & ~(1 << crbD);
+    cr = cr | ((((cr >> crbA) & 1) ^ ((cr >> crbB) & 1)) << crbD);
+    ir.set_reg(GuestReg.CR, cr);
 }
 
 private void emit_hle(IR* ir, u32 opcode, u32 pc) {
@@ -375,6 +395,7 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
 
     switch (secondary_opcode) {
         case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.CMPL:  emit_cmpl (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.HLE:   emit_hle  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
