@@ -352,10 +352,6 @@ final class Code : CodeGenerator {
         }
     }
 
-    void emit_SET_FLAGS(IRInstructionSetFlags ir_instruction, int current_instruction_index) {
-        log_jit("emitting set_flags");
-    }
-
     void emit_SET_VAR_IMM(IRInstructionSetVarImm ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
         mov(dest_reg, ir_instruction.imm);
@@ -466,7 +462,6 @@ final class Code : CodeGenerator {
             (IRInstructionBinaryDataOpImm i)   => emit_BINARY_DATA_OP_IMM(i, current_instruction_index),
             (IRInstructionBinaryDataOpVar i)   => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
             (IRInstructionUnaryDataOp i)       => emit_UNARY_DATA_OP(i, current_instruction_index),
-            (IRInstructionSetFlags i)          => emit_SET_FLAGS(i, current_instruction_index),
             (IRInstructionSetVarImm i)         => emit_SET_VAR_IMM(i, current_instruction_index),
             (IRInstructionRead i)              => emit_READ(i, current_instruction_index),
             (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),

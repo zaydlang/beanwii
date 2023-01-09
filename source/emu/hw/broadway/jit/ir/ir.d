@@ -13,7 +13,6 @@ alias IRInstruction = SumType!(
     IRInstructionBinaryDataOpImm,
     IRInstructionBinaryDataOpVar,
     IRInstructionUnaryDataOp,
-    IRInstructionSetFlags,
     IRInstructionSetVarImm,
     IRInstructionRead,
     IRInstructionWrite,
@@ -149,10 +148,6 @@ struct IR {
         emit(IRInstructionSetRegImm(reg, imm));
     }
 
-    void set_flags(int flags, IRVariable variable) {
-        emit(IRInstructionSetFlags(variable, flags));
-    }
-
     IRLabel* generate_new_label() {
         return &labels[current_label_index++];
     }
@@ -225,10 +220,6 @@ struct IR {
 
             (IRInstructionUnaryDataOp i) {
                 log_ir("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
-            },
-
-            (IRInstructionSetFlags i) {
-                log_ir("setf v%d, %d", i.src.get_id(), i.flags);
             },
 
             (IRInstructionSetVarImm i) {
@@ -508,11 +499,6 @@ struct IRInstructionSetRegImm {
 struct IRInstructionSetVarImm {
     IRVariable dest;
     u32 imm;
-}
-
-struct IRInstructionSetFlags {
-    IRVariable src;
-    int flags;
 }
 
 struct IRInstructionRead {

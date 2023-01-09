@@ -82,8 +82,6 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     bool lk = opcode.bit(0);
     int  li = opcode.bits(2, 25);
 
-    log_jit("%x %x %x", aa, lk, sext_32(li, 24) << 2);
-
     u32 branch_address = sext_32(li, 24) << 2;
     if (!aa) branch_address += pc;
 

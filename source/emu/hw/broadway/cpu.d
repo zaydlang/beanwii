@@ -76,8 +76,6 @@ final class BroadwayCpu {
         code.emit(ir);
 
         auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
-
-        log_jit("before %x", &this.state);
         
         if (instruction == 0x80010024) {
             auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));

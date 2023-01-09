@@ -41,7 +41,6 @@ public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d) 
 }
 
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
-    log_jit("jit BO: %x %x", bo, bi);
     final switch (bo >> 2) {
         case 0b000:
         case 0b010:
@@ -65,8 +64,6 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
 
 private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
     int index = field * 4 + bit;
-
-    log_jit("emit_set_cr_flag %d %d %d", field, bit, index);
     
     IRVariable cr = ir.get_reg(GuestReg.CR);
     cr = cr & ~(1     << index);
