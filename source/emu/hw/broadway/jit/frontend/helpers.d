@@ -41,24 +41,51 @@ public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d) 
 }
 
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
+    IRVariable cond_ok() {
+        IRVariable cr = ir.get_reg(GuestReg.CR);
+        return ((cr >> bi) & 1);
+    }
+
+    IRVariable ctr_ok() {
+        IRVariable ctr = ir.get_reg(GuestReg.CTR);
+        ctr = ctr - 1;
+        ir.set_reg(GuestReg.CTR, ctr);
+
+        return ctr.equals(ir.constant(0));
+    }
+
     final switch (bo >> 2) {
         case 0b000:
+            if (bo.bit(1)) {
+                return ctr_ok() & (cond_ok() ^ 1);
+            } else {
+                return (ctr_ok() ^ 1) & (cond_ok() ^ 1);
+            }
+
         case 0b010:
+            if (bo.bit(1)) {
+                return ctr_ok() & cond_ok();
+            } else {
+                return (ctr_ok() ^ 1) & cond_ok();
+            }
+
         case 0b100:
         case 0b110:
-            assert(0);
+            if (bo.bit(1)) {
+                return ctr_ok();
+            } else {
+                return ctr_ok() ^ 1;
+            }
 
         case 0b101:
         case 0b111:
             return ir.constant(1);
         
         case 0b001: // if condition is false
-            IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1) ^ 1;
+            return cond_ok() ^ 1;
 
         case 0b011: // if condition is true
-            IRVariable cr = ir.get_reg(GuestReg.CR);
-            return ((cr >> bi) & 1);
+            return cond_ok();
     }
 }
 
