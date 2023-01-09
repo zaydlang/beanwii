@@ -28,7 +28,8 @@ enum PrimaryOp13SecondaryOpcode {
 
 enum PrimaryOp1FSecondaryOpcode {
     ADD    = 0x10A,
-    CMPL   = 0x20,
+    CMPL   = 0x020,
+    DCBST  = 0x036,
     HLE    = 0x357,
     MFSPR  = 0x153,
     MTSPR  = 0x1D3,
