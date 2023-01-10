@@ -249,7 +249,6 @@ private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
-    ir.set_reg(ra, address);
 }
 
 private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
@@ -260,6 +259,7 @@ private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
+    ir.set_reg(ra, address);
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
