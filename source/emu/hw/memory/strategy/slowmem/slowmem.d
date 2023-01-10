@@ -5,6 +5,7 @@ import emu.hw.cp.cp;
 import emu.hw.disk.dol;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.memory.strategy.slowmem.mmio_spec;
+import emu.hw.vi.vi;
 import util.array;
 import util.log;
 import util.number;
@@ -22,11 +23,11 @@ final class SlowMem : MemStrategy {
 
     private Mmio mmio;
 
-    this(CommandProcessor command_processor) {
+    this(CommandProcessor command_processor, VideoInterface video_interface) {
         this.mem1 = new u8[MEM1_SIZE];
         this.mem2 = new u8[MEM2_SIZE];
         this.hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
-        this.mmio = new Mmio(command_processor);
+        this.mmio = new Mmio(command_processor, video_interface);
     }
 
     private T read_be(T)(u32 address) {

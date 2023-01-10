@@ -11,6 +11,7 @@ import emu.hw.disk.layout;
 import emu.hw.disk.readers.diskreader;
 import emu.hw.disk.readers.wbfs;
 import emu.hw.memory.strategy.memstrategy;
+import emu.hw.vi.vi;
 import util.array;
 import util.log;
 import util.number;
@@ -20,11 +21,13 @@ final class Wii {
     private Mem              mem;
 
     private CommandProcessor command_processor;
+    private VideoInterface   video_interface;
 
     this() {
         this.command_processor = new CommandProcessor();
+        this.video_interface   = new VideoInterface();
 
-        this.mem               = new Mem(this.command_processor);
+        this.mem               = new Mem(this.command_processor, this.video_interface);
         this.broadway_cpu      = new BroadwayCpu(mem);
     }
 

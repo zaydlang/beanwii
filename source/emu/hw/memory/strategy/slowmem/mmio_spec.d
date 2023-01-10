@@ -2,12 +2,14 @@ module emu.hw.memory.strategy.slowmem.mmio_spec;
 
 import emu.hw.cp.cp;
 import emu.hw.memory.strategy.slowmem.mmio_gen;
+import emu.hw.vi.vi;
 import util.number;
 
 final class Mmio {
     private MmioGen!(mmio_spec, Mmio) gen;
 
     public CommandProcessor command_processor;
+    public VideoInterface   video_interface;
 
     static const mmio_spec = [
         MmioRegister("command_processor", "CP_FIFO_STATUS", 0xCC00_0000, 2, READ_WRITE),
@@ -17,12 +19,14 @@ final class Mmio {
         MmioRegister("command_processor", "CP_FIFO_START",  0xCC00_0020, 4, READ_WRITE),
         MmioRegister("command_processor", "CP_FIFO_END",    0xCC00_0024, 4, READ_WRITE),
         MmioRegister("command_processor", "CP_FIFO_WP",     0xCC00_0034, 4, READ_WRITE),
+        MmioRegister("video_interface",   "DCR",            0xCC00_2002, 2, READ_WRITE),
     ];
 
-    this(CommandProcessor command_processor) {
+    this(CommandProcessor command_processor, VideoInterface video_interface) {
         this.gen = new MmioGen!(mmio_spec, Mmio)(this);
 
         this.command_processor = command_processor;
+        this.video_interface   = video_interface;
     }
 
     public T read(T)(u32 address) {
