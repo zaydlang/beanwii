@@ -19,14 +19,59 @@ final class VideoInterface {
         ALWAYS_ON     = 3
     }
 
+    enum ClockSelect {
+        MHZ_27 = 0,
+        MHZ_54 = 1
+    }
+
     VideoFormat video_format;
     DisplayLatchSetting display_latch_0;
     DisplayLatchSetting display_latch_1;
     bool display_mode_3;
     bool non_interlaced;
+    
+    int hsync_start_to_color_burst_start;
+    int hsync_start_to_color_burst_end;
+    int halfline_width;
+
+    int halfline_to_hblank_start;
+    int hsync_start_to_hblank_end;
+    int hsync_width;
+
+    int active_video;
+    int equalization_pulse;
+
+    int post_blanking_halflines_interval_odd;
+    int pre_blanking_halflines_interval_odd;
+    int post_blanking_halflines_interval_even;
+    int pre_blanking_halflines_interval_even;
+
+    int field3_start_to_burst_blanking_end;
+    int field3_start_to_burst_blanking_start;
+    int field1_start_to_burst_blanking_end;
+    int field1_start_to_burst_blanking_start;
+
+    int field4_start_to_burst_blanking_end;
+    int field4_start_to_burst_blanking_start;
+    int field2_start_to_burst_blanking_end;
+    int field2_start_to_burst_blanking_start;
+
+    int top_field_page_offset;
+    int horizontal_offset_of_left_pixel;
+    int top_field_fbb_address;
+
+    int bottom_field_page_offset;
+    int bottom_field_fbb_address;
+
+    int horizontal_scaling_enable;
+    int horizontal_scaling_step_size; // u1.8
+    
+    int[24] tap;
+
+    ClockSelect clock_select;
 
     u8 read_DCR(int target_byte) {
-        error_vi("Unimplementd: DCR Read");
+        error_vi("Unimplemented: DCR Read");
         return 0; // TODO
     }
 
@@ -52,5 +97,349 @@ final class VideoInterface {
                 assert(value.bits(2, 7) == 0);
                 break;
         }
+    }
+
+    u8 read_HTR0(int target_byte) {
+        error_vi("Unimplemented: HTR0 Read");
+        return 0; // TODO
+    }
+
+    void write_HTR0(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                hsync_start_to_color_burst_start &= 0x100;
+                hsync_start_to_color_burst_start |= value;
+                break;
+            
+            case 1:
+                assert(value.bits(1, 7) == 0);
+                hsync_start_to_color_burst_start &= 0xFF;
+                hsync_start_to_color_burst_start |= value.bit(0) << 8;
+                break;
+
+            case 2:
+                assert(value.bit(7) == 0);
+                hsync_start_to_color_burst_end = value;
+                break;
+            
+            case 3:
+                assert(value.bit(7) == 0);
+                halfline_width = value;
+                break;
+        }
+    }
+
+    u8 read_HTR1(int target_byte) {
+        error_vi("Unimplemented: HTR1 Read");
+        return 0; // TODO
+    }
+
+    void write_HTR1(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                halfline_to_hblank_start = value.bits(0, 6);
+                hsync_start_to_hblank_end &= 0x3FE;
+                hsync_start_to_hblank_end |= value.bit(7);
+                break;
+            
+            case 1:
+                hsync_start_to_hblank_end &= 0x201;
+                hsync_start_to_hblank_end |= value << 1;
+                break;
+
+            case 2:
+                hsync_start_to_hblank_end &= 0x1FF;
+                hsync_start_to_hblank_end |= value.bit(0) << 9;
+                hsync_width &= 0x380;
+                hsync_width |= value.bits(1, 7);
+                break;
+            
+            case 3:
+                assert(value.bits(3, 7) == 0);
+                hsync_width &= 0x7F;
+                hsync_width |= value.bits(0, 2) << 7;
+                break;
+        }
+    }
+
+    u8 read_VTR(int target_byte) {
+        error_vi("Unimplemented: VTR Read");
+        return 0; // TODO
+    }
+
+    void write_VTR(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                equalization_pulse = value.bits(0, 3);
+                active_video &= 0x3F0;
+                active_video |= value.bits(4, 7);
+                break;
+            
+            case 1:
+                active_video &= 0xF;
+                active_video |= value << 4;
+                break;
+        }
+    }
+
+    u8 read_VTO(int target_byte) {
+        error_vi("Unimplemented: VTO Read");
+        return 0; // TODO
+    }
+
+    void write_VTO(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                post_blanking_halflines_interval_odd &= 0x300;
+                post_blanking_halflines_interval_odd |= value;
+                break;
+            
+            case 1:
+                post_blanking_halflines_interval_odd &= 0xFF;
+                post_blanking_halflines_interval_odd |= value.bits(0, 1) << 8;
+                break;
+            
+            case 2:
+                pre_blanking_halflines_interval_odd &= 0x300;
+                pre_blanking_halflines_interval_odd |= value;
+                break;
+            
+            case 3:
+                pre_blanking_halflines_interval_odd &= 0xFF;
+                pre_blanking_halflines_interval_odd |= value.bits(0, 1) << 8;
+                break;
+        }
+    }
+
+    u8 read_VTE(int target_byte) {
+        error_vi("Unimplemented: VTE Read");
+        return 0; // TODO
+    }
+
+    void write_VTE(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                post_blanking_halflines_interval_even &= 0x300;
+                post_blanking_halflines_interval_even |= value;
+                break;
+            
+            case 1:
+                post_blanking_halflines_interval_even &= 0xFF;
+                post_blanking_halflines_interval_even |= value.bits(0, 1) << 8;
+                break;
+            
+            case 2:
+                pre_blanking_halflines_interval_even &= 0x300;
+                pre_blanking_halflines_interval_even |= value;
+                break;
+            
+            case 3:
+                pre_blanking_halflines_interval_even &= 0xFF;
+                pre_blanking_halflines_interval_even |= value.bits(0, 1) << 8;
+                break;
+        }
+    }
+
+    u8 read_BBEI(int target_byte) {
+        error_vi("Unimplemented: BBEI Read");
+        return 0; // TODO
+    }
+
+    void write_BBEI(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                field1_start_to_burst_blanking_start = value.bits(0, 4);
+                field1_start_to_burst_blanking_end &= 0x7E0;
+                field1_start_to_burst_blanking_end |= value.bits(5, 7);
+                break;
+
+            case 1:
+                field1_start_to_burst_blanking_end &= 0x7;
+                field1_start_to_burst_blanking_end |= value << 3;
+                break;
+            
+            case 2:
+                field3_start_to_burst_blanking_start = value.bits(0, 4);
+                field3_start_to_burst_blanking_end &= 0x7E0;
+                field3_start_to_burst_blanking_end |= value.bits(5, 7);
+                break;
+            
+            case 3:
+                field3_start_to_burst_blanking_end &= 0x7;
+                field3_start_to_burst_blanking_end |= value << 3;
+                break;
+        }
+    }
+
+    u8 read_BBOI(int target_byte) {
+        error_vi("Unimplemented: BBOI Read");
+        return 0; // TODO
+    }
+
+    void write_BBOI(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                field2_start_to_burst_blanking_end = value.bits(0, 4);
+                field2_start_to_burst_blanking_start &= 0x7E0;
+                field2_start_to_burst_blanking_start |= value.bits(5, 7);
+                break;
+            
+            case 1:
+                field2_start_to_burst_blanking_start &= 0x7;
+                field2_start_to_burst_blanking_start |= value << 3;
+                break;
+            
+            case 2:
+                field4_start_to_burst_blanking_end = value.bits(0, 4);
+                field4_start_to_burst_blanking_start &= 0x7E0;
+                field4_start_to_burst_blanking_start |= value.bits(5, 7);
+                break;
+            
+            case 3:
+                field4_start_to_burst_blanking_start &= 0x7;
+                field4_start_to_burst_blanking_start |= value << 3;
+                break;
+        }
+    }
+
+    u8 read_TFBL(int target_byte) {
+        error_vi("Unimplemented: TFBL Read");
+        return 0; // TODO
+    }
+
+    void write_TFBL(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0: break;
+
+            case 1:
+                top_field_fbb_address &= 0x7F80;
+                top_field_fbb_address |= value.bits(1, 7);
+                break;
+            
+            case 2:
+                top_field_fbb_address &= 0x7F;
+                top_field_fbb_address |= value << 7;
+                break;
+            
+            case 3:
+                horizontal_offset_of_left_pixel = value.bits(0, 3);
+                top_field_page_offset = value.bit(4);
+                break;
+        }
+    }
+
+    u8 read_BFBL(int target_byte) {
+        error_vi("Unimplemented: BFBL Read");
+        return 0; // TODO
+    }
+
+    void write_BFBL(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0: break;
+
+            case 1:
+                bottom_field_fbb_address &= 0x7F80;
+                bottom_field_fbb_address |= value.bits(1, 7);
+                break;
+            
+            case 2:
+                bottom_field_fbb_address &= 0x7F;
+                bottom_field_fbb_address |= value << 7;
+                break;
+            
+            case 3:
+                bottom_field_page_offset = value.bit(4);
+                break;
+        }
+    }
+
+    u8 read_HSR(int target_byte) {
+        error_vi("Unimplemented: HSR Read");
+        return 0; // TODO
+    }
+
+    void write_HSR(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                horizontal_scaling_step_size &= 0x100;
+                horizontal_scaling_step_size |= value;
+                break;
+            
+            case 1:
+                horizontal_scaling_step_size &= 0xFF;
+                horizontal_scaling_step_size |= value.bit(0) << 8;
+                horizontal_scaling_enable = value.bit(4);
+                break;
+        }
+    }
+
+    u8 read_FCTx(int target_byte, int x) {
+        error_vi("Unimplemented: FCT%d Read", x);
+        return 0; // TODO
+    }
+
+    void write_FCTx(int target_byte, u8 value, int x) {
+        if (x < 3) {
+            int tap_offset = x * 3;
+            final switch (target_byte) {
+                case 0:
+                    tap[tap_offset + 0] &= 0x300;
+                    tap[tap_offset + 0] |= value;
+                    break;
+                
+                case 1:
+                    tap[tap_offset + 0] &= 0xFF;
+                    tap[tap_offset + 0] |= value.bits(0, 1) << 8;
+                    tap[tap_offset + 1] &= 0x3C0;
+                    tap[tap_offset + 1] |= value.bits(2, 7);
+                    break;
+                
+                case 2:
+                    tap[tap_offset + 1] &= 0x3F;
+                    tap[tap_offset + 1] |= value.bits(0, 3) << 6;
+                    tap[tap_offset + 2] &= 0x1F0;
+                    tap[tap_offset + 2] |= value.bits(4, 7);
+                    break;
+                
+                case 3:
+                    tap[tap_offset + 2] &= 0xF;
+                    tap[tap_offset + 2] |= value.bits(0, 5) << 4;
+                    break;
+            }
+        } else {
+            int tap_offset = 9 + (x - 3) * 4;
+            int tap_index = tap_offset + target_byte;
+
+            if (tap_index == 24) {
+                return; // tap[24] is all zeros apparently
+            } else {
+                tap[tap_offset + target_byte] = value;
+            }
+        }
+    }
+
+    u8 read_VICLK(int target_byte) {
+        error_vi("Unimplemented: VICLK Read");
+        return 0; // TODO
+    }
+
+    void write_VICLK(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                clock_select = cast(ClockSelect) value.bit(0);
+                break;
+            
+            case 1:
+                break;
+        }
+    }
+
+    u8 read_UNKNOWN(int target_byte) {
+        log_vi("Unimplemented: UNKNOWN Read");
+        return 0; // TODO
+    }
+
+    void write_UNKNOWN(int target_byte, u8 value) {
+        log_vi("Unimplemented: UNKNOWN Write (%08x)", value);
     }
 }

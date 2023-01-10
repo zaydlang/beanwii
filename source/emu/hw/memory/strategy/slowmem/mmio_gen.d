@@ -81,10 +81,22 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     // }
 
     string get_mmio_reg_from_address(u32 address, out int offset) {
+        import std.array;
+        import std.conv;
+
         static foreach (MmioRegister mr; mmio_registers) {
-            if (address >= mr.address && address < mr.address + mr.size) {
-                offset = address - mr.address;
-                return mr.name;
+            static if (mr.stride == -1) {
+                if (address >= mr.address && address < mr.address + mr.size) {
+                    offset = address - mr.address;
+                    return mr.name;
+                }
+            } else {
+                static foreach (int i; 0..mr.cnt) {
+                    if (address >= mr.address + i * mr.stride && address < mr.address + i * mr.stride + mr.size) {
+                        offset = address - (mr.address + i * mr.stride);
+                        return mr.name.replace("x", to!string(i));
+                    }
+                }
             }
         }
 
