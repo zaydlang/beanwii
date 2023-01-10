@@ -80,7 +80,33 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     //     mixin("enum %s = %d;".format(mr.name, mr.address));
     // }
 
+    string get_mmio_reg_from_address(u32 address, out int offset) {
+        static foreach (MmioRegister mr; mmio_registers) {
+            if (address >= mr.address && address < mr.address + mr.size) {
+                offset = address - mr.address;
+                return mr.name;
+            }
+        }
+
+        return "???";
+    }
+
+    private void log_read(T)(u32 address) {
+        int offset;
+        string reg = get_mmio_reg_from_address(address, offset);
+
+        log_slowmem("MMIO: Reading from %s (offset = %d) (size = %d)", reg, offset, T.sizeof);
+    }
+
+    private void log_write(T)(u32 address, T value) {
+        int offset;
+        string reg = get_mmio_reg_from_address(address, offset);
+
+        log_slowmem("MMIO: Writing to %s (offset = %d) (size = %d) (value = %d)", reg, offset, T.sizeof, value);
+    }
+
     T read(T)(u32 address) {
+        this.log_read!T(address);
         import std.format;
 
         // log_slowmem("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
@@ -157,13 +183,14 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 }
             }
 
-            default: log_slowmem("Unimplemented read: [%x]", address);
+            default: error_slowmem("Unimplemented read: [%x]", address);
         }
 
         return u8(0);
     }
 
     void write(T)(u32 address, T value) {
+        this.log_write!T(address, value);
         // log_slowmem("VERBOSE MMIO: Writing %x to %x (size = %d) (%X %X)", value, address, T.sizeof,  arm9.regs[pc], arm7.regs[pc]);
 
         import std.format;
@@ -233,7 +260,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 }
             }
 
-            default: log_slowmem("Unimplemented write: [%x] = %x", address, value);
+            default: error_slowmem("Unimplemented write: [%x] = %x", address, value);
         }
     }
 }

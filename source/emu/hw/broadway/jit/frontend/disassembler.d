@@ -238,10 +238,21 @@ private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u8(address));
-    ir.set_reg(rd, address);
+    ir.set_reg(ra, address);
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int d       = opcode.bits(0, 15);
+
+    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    address = address + sext_32(d, 16);
+    ir.set_reg(rd, ir.read_u32(address));
+    ir.set_reg(ra, address);
+}
+
+private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
     int d       = opcode.bits(0, 15);
@@ -452,6 +463,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.CMPI:   emit_cmpi  (ir, opcode, pc); break;
         case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
+        case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, pc); break;
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, pc); break;

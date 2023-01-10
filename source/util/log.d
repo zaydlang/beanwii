@@ -11,7 +11,8 @@ enum LogSource {
     JIT,
     XBYAK,
     WII,
-    APPLOADER
+    APPLOADER,
+    CP
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

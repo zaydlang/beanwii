@@ -1,5 +1,6 @@
 module emu.hw.cp.cp;
 
+import util.log;
 import util.number;
 
 final class CommandProcessor {
@@ -32,30 +33,23 @@ final class CommandProcessor {
     }
 
     void write_CP_FIFO_STATUS(int target_byte, u8 value) {
-
     }
 
     void write_CP_CONTROL(int target_byte, u8 value) {
-
     }
 
     void write_CP_CLEAR(int target_byte, u8 value) {
-
     }
 
     void write_CP_TOKEN(int target_byte, u8 value) {
-
     }
 
     void write_CP_FIFO_START(int target_byte, u8 value) {
-
     }
 
     void write_CP_FIFO_END(int target_byte, u8 value) {
-
     }
 
     void write_CP_FIFO_WP(int target_byte, u8 value) {
-
     }
 }
