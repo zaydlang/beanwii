@@ -22,10 +22,13 @@ final class Broadway {
 
     private HleContext    hle_context;
 
-    this(Mem mem) {
-        this.mem = mem;
+    this() {
         this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
         this.ir = new IR();
+    }
+
+    public void connect_mem(Mem mem) {
+        this.mem = mem;
 
         this.config = JitConfig(
             cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
@@ -68,7 +71,7 @@ final class Broadway {
         this.ir.reset();
 
         u32 instruction = fetch();
-        log_instruction(instruction, state.pc - 4);
+        // log_instruction(instruction, state.pc - 4);
 
         emit(ir, instruction, state.pc - 4);
 
@@ -87,7 +90,7 @@ final class Broadway {
 
         generated_function(&this.state);
 
-        log_state();
+        // log_state();
     }
 
     public void run_until_return() {

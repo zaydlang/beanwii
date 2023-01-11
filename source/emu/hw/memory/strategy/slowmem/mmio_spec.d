@@ -35,11 +35,8 @@ final class Mmio {
         MmioRegister("video_interface",   "VICLK",          0xCC00_206C, 2, READ_WRITE),
     ];
 
-    this(CommandProcessor command_processor, VideoInterface video_interface) {
+    this() {
         this.gen = new MmioGen!(mmio_spec, Mmio)(this);
-
-        this.command_processor = command_processor;
-        this.video_interface   = video_interface;
     }
 
     public T read(T)(u32 address) {
@@ -48,5 +45,13 @@ final class Mmio {
 
     public void write(T)(u32 address, T value) {
         this.gen.write!(T)(address, value);
+    }
+
+    public void connect_command_processor(CommandProcessor command_processor) {
+        this.command_processor = command_processor;
+    }
+
+    public void connect_video_interface(VideoInterface video_interface) {
+        this.video_interface = video_interface;
     }
 }

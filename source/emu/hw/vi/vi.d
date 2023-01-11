@@ -1,10 +1,16 @@
 module emu.hw.vi.vi;
 
+import emu.hw.memory.strategy.memstrategy;
+import emu.hw.vi.vi;
+import ui.device;
 import util.bitop;
 import util.log;
 import util.number;
 
 final class VideoInterface {
+    enum XBFR_WIDTH  = 640;
+    enum XBFR_HEIGHT = 480;
+
     enum VideoFormat {
         NTSC  = 0,
         PAL   = 1,
@@ -70,12 +76,16 @@ final class VideoInterface {
 
     ClockSelect clock_select;
 
-    u8 read_DCR(int target_byte) {
+    private VideoBuffer video_buffer;
+    private Mem mem;
+    private PresentVideoBufferCallback present_videobuffer_callback;
+
+    public u8 read_DCR(int target_byte) {
         error_vi("Unimplemented: DCR Read");
         return 0; // TODO
     }
 
-    void write_DCR(int target_byte, u8 value) {
+    public void write_DCR(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 if (value.bit(0)) {
@@ -99,22 +109,22 @@ final class VideoInterface {
         }
     }
 
-    u8 read_HTR0(int target_byte) {
+    public u8 read_HTR0(int target_byte) {
         error_vi("Unimplemented: HTR0 Read");
         return 0; // TODO
     }
 
-    void write_HTR0(int target_byte, u8 value) {
+    public void write_HTR0(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
-                hsync_start_to_color_burst_start &= 0x100;
-                hsync_start_to_color_burst_start |= value;
+                halfline_width &= 0x100;
+                halfline_width |= value;
                 break;
             
             case 1:
                 assert(value.bits(1, 7) == 0);
-                hsync_start_to_color_burst_start &= 0xFF;
-                hsync_start_to_color_burst_start |= value.bit(0) << 8;
+                halfline_width &= 0xFF;
+                halfline_width |= value.bit(0) << 8;
                 break;
 
             case 2:
@@ -124,17 +134,17 @@ final class VideoInterface {
             
             case 3:
                 assert(value.bit(7) == 0);
-                halfline_width = value;
+                hsync_start_to_color_burst_start = value;
                 break;
         }
     }
 
-    u8 read_HTR1(int target_byte) {
+    public u8 read_HTR1(int target_byte) {
         error_vi("Unimplemented: HTR1 Read");
         return 0; // TODO
     }
 
-    void write_HTR1(int target_byte, u8 value) {
+    public void write_HTR1(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 halfline_to_hblank_start = value.bits(0, 6);
@@ -162,12 +172,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_VTR(int target_byte) {
+    public u8 read_VTR(int target_byte) {
         error_vi("Unimplemented: VTR Read");
         return 0; // TODO
     }
 
-    void write_VTR(int target_byte, u8 value) {
+    public void write_VTR(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 equalization_pulse = value.bits(0, 3);
@@ -182,12 +192,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_VTO(int target_byte) {
+    public u8 read_VTO(int target_byte) {
         error_vi("Unimplemented: VTO Read");
         return 0; // TODO
     }
 
-    void write_VTO(int target_byte, u8 value) {
+    public void write_VTO(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 post_blanking_halflines_interval_odd &= 0x300;
@@ -211,12 +221,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_VTE(int target_byte) {
+    public u8 read_VTE(int target_byte) {
         error_vi("Unimplemented: VTE Read");
         return 0; // TODO
     }
 
-    void write_VTE(int target_byte, u8 value) {
+    public void write_VTE(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 post_blanking_halflines_interval_even &= 0x300;
@@ -240,12 +250,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_BBEI(int target_byte) {
+    public u8 read_BBEI(int target_byte) {
         error_vi("Unimplemented: BBEI Read");
         return 0; // TODO
     }
 
-    void write_BBEI(int target_byte, u8 value) {
+    public void write_BBEI(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 field1_start_to_burst_blanking_start = value.bits(0, 4);
@@ -271,12 +281,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_BBOI(int target_byte) {
+    public u8 read_BBOI(int target_byte) {
         error_vi("Unimplemented: BBOI Read");
         return 0; // TODO
     }
 
-    void write_BBOI(int target_byte, u8 value) {
+    public void write_BBOI(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 field2_start_to_burst_blanking_end = value.bits(0, 4);
@@ -302,12 +312,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_TFBL(int target_byte) {
+    public u8 read_TFBL(int target_byte) {
         error_vi("Unimplemented: TFBL Read");
         return 0; // TODO
     }
 
-    void write_TFBL(int target_byte, u8 value) {
+    public void write_TFBL(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0: break;
 
@@ -328,12 +338,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_BFBL(int target_byte) {
+    public u8 read_BFBL(int target_byte) {
         error_vi("Unimplemented: BFBL Read");
         return 0; // TODO
     }
 
-    void write_BFBL(int target_byte, u8 value) {
+    public void write_BFBL(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0: break;
 
@@ -353,12 +363,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_HSR(int target_byte) {
+    public u8 read_HSR(int target_byte) {
         error_vi("Unimplemented: HSR Read");
         return 0; // TODO
     }
 
-    void write_HSR(int target_byte, u8 value) {
+    public void write_HSR(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 horizontal_scaling_step_size &= 0x100;
@@ -373,12 +383,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_FCTx(int target_byte, int x) {
+    public u8 read_FCTx(int target_byte, int x) {
         error_vi("Unimplemented: FCT%d Read", x);
         return 0; // TODO
     }
 
-    void write_FCTx(int target_byte, u8 value, int x) {
+    public void write_FCTx(int target_byte, u8 value, int x) {
         if (x < 3) {
             int tap_offset = x * 3;
             final switch (target_byte) {
@@ -418,12 +428,12 @@ final class VideoInterface {
         }
     }
 
-    u8 read_VICLK(int target_byte) {
+    public u8 read_VICLK(int target_byte) {
         error_vi("Unimplemented: VICLK Read");
         return 0; // TODO
     }
 
-    void write_VICLK(int target_byte, u8 value) {
+    public void write_VICLK(int target_byte, u8 value) {
         final switch (target_byte) {
             case 0:
                 clock_select = cast(ClockSelect) value.bit(0);
@@ -434,12 +444,51 @@ final class VideoInterface {
         }
     }
 
-    u8 read_UNKNOWN(int target_byte) {
+    public u8 read_UNKNOWN(int target_byte) {
         log_vi("Unimplemented: UNKNOWN Read");
         return 0; // TODO
     }
 
-    void write_UNKNOWN(int target_byte, u8 value) {
+    public void write_UNKNOWN(int target_byte, u8 value) {
         log_vi("Unimplemented: UNKNOWN Write (%08x)", value);
+    }
+
+    public void scanout() {
+        for (int field = 0; field < 2; field++) {
+            u32 base_address = (this.top_field_fbb_address << 9) + 0x8000_0000 + (field * XBFR_WIDTH * 2);
+            for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
+            for (int y = field; y < XBFR_HEIGHT; y += 2) {
+                u32 ycbycr = mem.read_be_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
+
+                float cr = ycbycr.get_byte(0);
+                float y2 = ycbycr.get_byte(1);
+                float cb = ycbycr.get_byte(2);
+                float y1 = ycbycr.get_byte(3);
+
+                video_buffer[x + 0][y] = ycbycr_to_rgb(y1, cr, cb);
+                video_buffer[x + 1][y] = ycbycr_to_rgb(y2, cr, cb);
+            }
+            }
+        }
+
+        this.present_videobuffer_callback(video_buffer);
+    }
+
+    private Pixel ycbycr_to_rgb(float y, float cr, float cb) {
+        import std.algorithm.comparison;
+
+        return Pixel(
+            cast(u8) clamp((y + 1.371f * (cr - 128)), 0, 255),
+            cast(u8) clamp((y - 0.698f * (cr - 128) - 0.336f * (cb - 128)), 0, 255),
+            cast(u8) clamp((y + 1.732f * (cb - 128)), 0, 255)
+        );
+    }
+
+    public void set_present_videobuffer_callback(PresentVideoBufferCallback callback) {
+        this.present_videobuffer_callback = callback;
+    }
+
+    public void connect_mem(Mem mem) {
+        this.mem = mem;
     }
 }

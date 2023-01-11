@@ -23,11 +23,11 @@ final class SlowMem : MemStrategy {
 
     private Mmio mmio;
 
-    this(CommandProcessor command_processor, VideoInterface video_interface) {
+    this() {
         this.mem1 = new u8[MEM1_SIZE];
         this.mem2 = new u8[MEM2_SIZE];
         this.hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
-        this.mmio = new Mmio(command_processor, video_interface);
+        this.mmio = new Mmio();
     }
 
     private T read_be(T)(u32 address) {
@@ -155,5 +155,13 @@ final class SlowMem : MemStrategy {
         }
 
         log_disk("Entrypoint: %x", cast(u32) dol.header.entry_point);
+    }
+
+    public void connect_command_processor(CommandProcessor cp) {
+        this.mmio.connect_command_processor(cp);
+    }
+
+    public void connect_video_interface(VideoInterface vi) {
+        this.mmio.connect_video_interface(vi);
     }
 }

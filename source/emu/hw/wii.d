@@ -30,16 +30,22 @@ final class Wii {
         this.command_processor = new CommandProcessor();
         this.video_interface   = new VideoInterface();
 
-        this.mem               = new Mem(this.command_processor, this.video_interface);
-        this.broadway          = new Broadway(mem);
+        this.mem               = new Mem();
+        this.broadway          = new Broadway();
         this.hollywood         = new Hollywood();
+
+        this.broadway.connect_mem(this.mem);
+        this.video_interface.connect_mem(this.mem);
+        this.mem.connect_command_processor(this.command_processor);
+        this.mem.connect_video_interface(this.video_interface);
     }
 
     public void cycle(int num_cycles) {
         for (int i = 0; i < num_cycles / 2; i++) {
             this.broadway.run_instruction();
         }
-        this.hollywood.test();
+        
+        this.video_interface.scanout();
     }
 
     public void load_wii_disk(WiiApploader* apploader, WiiDol* dol) {
@@ -52,13 +58,13 @@ final class Wii {
         this.mem.map_dol(dol);
         this.broadway.set_pc(cast(u32) dol.header.entry_point);
 
-        this.broadway.set_gpr(1, 0x816ffff0); // ????
-        this.broadway.set_gpr(2, 0x81465cc0);
+        this.broadway.set_gpr(1,  0x816ffff0); // ????
+        this.broadway.set_gpr(2,  0x81465cc0);
         this.broadway.set_gpr(13, 0x81465320);
     }
 
     public void connect_multimedia_device(MultiMediaDevice device) {
-        this.hollywood.set_present_videobuffer_callback(&device.present_videobuffer);
+        this.video_interface.set_present_videobuffer_callback(&device.present_videobuffer);
     }
 
     private void run_apploader(WiiApploader* apploader) {
