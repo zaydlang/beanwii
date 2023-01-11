@@ -159,7 +159,6 @@ final class WbfsReader : DiskReader {
                 }
 
                 WiiDol* dol = cast(WiiDol*) &decrypted_data[dol_address];
-                dol.data = decrypted_data[dol_address .. partition_data_size];
 
                 *out_apploader = cast(WiiApploader*) &decrypted_data[WII_APPLOADER_OFFSET];
                 *out_dol = dol;

@@ -44,7 +44,7 @@ final class Wii {
         int cycles_elapsed = 0;
 
         while (cycles_elapsed < num_cycles) {
-            cycles_elapsed += this.broadway.run();
+            cycles_elapsed += this.broadway.run() * 2;
         }
 
         this.video_interface.scanout();
@@ -86,7 +86,7 @@ final class Wii {
         this.broadway.set_gpr(4, 0x8000_0004);
         this.broadway.set_gpr(5, 0x8000_0008);
 
-        log_apploader("Running apploader entry... returned.");
+        log_apploader("Running apploader entry...");
         this.broadway.set_pc(cast(u32) apploader.header.entry_point);
         this.broadway.run_until_return();
 

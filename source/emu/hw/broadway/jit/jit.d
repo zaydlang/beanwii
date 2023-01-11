@@ -1,5 +1,6 @@
 module emu.hw.broadway.jit.jit;
 
+import capstone;
 import dklib.khash;
 import emu.hw.broadway.jit.frontend.disassembler;
 import emu.hw.broadway.jit.backend.x86_64.emitter;
@@ -30,11 +31,12 @@ final class Jit {
     private alias JitFunction = void function(BroadwayState* state);
     private alias JitHashMap = khash!(u32, JitFunction);
 
-    private Mem mem;
-    private Code code;
-    private IR* ir;
-
+    private Mem         mem;
+    private Code        code;
+    private IR*         ir;
     private JitHashMap* jit_hash_map;
+
+    private Capstone    capstone;
 
     this(JitConfig config, Mem mem) {
         this.mem          = mem;
@@ -42,28 +44,32 @@ final class Jit {
         this.code         = new Code(config);
         this.ir           = new IR();
         this.jit_hash_map = new JitHashMap();
+
+        this.capstone     = create(Arch.ppc, ModeFlags(Mode.bit32));
         
         this.ir.setup();
     }
 
-    private u32 fetch(BroadwayState state) {
+    private u32 fetch(BroadwayState* state) {
         u32 instruction = cast(u32) mem.read_be_u32(state.pc);
         log_broadway("Fetching %x from %x", instruction, state.pc);
         return instruction;
     }
 
     // returns the number of instructions executed
-    public u32 run(BroadwayState state) {
+    public u32 run(BroadwayState* state) {
         JitFunction cached_function = jit_hash_map.require(state.pc, null);
 
-        if (cached_function != null) {
-            cached_function(&state);
+        log_broadway("magic: %x", mem.read_be_u32(0x8132ffe0 + 0x20));
+
+        if (cached_function != null && false) {
+            cached_function(state);
             return 1;
         } else {
             ir.reset();
 
             u32 instruction = fetch(state);
-            // log_instruction(instruction, state.pc - 4);
+            log_instruction(instruction, state.pc);
 
             emit(ir, instruction, state.pc);
 
@@ -75,9 +81,16 @@ final class Jit {
             jit_hash_map.opIndexAssign(generated_function, state.pc);
 
             state.pc += 4;
-            generated_function(&state);
+            generated_function(state);
 
             return 1;
+        }
+    }
+
+    private void log_instruction(u32 instruction, u32 pc) {
+        auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
+        foreach (instr; res) {
+            log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
         }
     }
 }

@@ -228,6 +228,10 @@ private void emit_hle(IR* ir, u32 opcode, u32 pc) {
     ir.run_hle_func(hle_function_id);
 }
 
+private void emit_icbi(IR* ir, u32 opcode, u32 pc) {
+    // i'm just not going to emulate cache stuff
+}
+
 private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -260,6 +264,10 @@ private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
     ir.set_reg(ra, address);
+}
+
+private void emit_isync(IR* ir, u32 opcode, u32 pc) {
+    // not needed for emulation
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
@@ -355,6 +363,11 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     }
 }
 
+private void emit_sc(IR* ir, u32 opcode, u32 pc) {
+    // apparently syscalls are only used for "sync" and "isync" on the Wii
+    // and that's something i don't need to emulate
+}
+
 private void emit_stbu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -419,6 +432,10 @@ private void emit_subf(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, result);
 }
 
+private void emit_sync(IR* ir, u32 opcode, u32 pc) {
+    // not needed for emulation
+}
+
 private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
@@ -426,6 +443,7 @@ private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp13SecondaryOpcode.BCCTR: emit_bcctr(ir, opcode, pc); break;
         case PrimaryOp13SecondaryOpcode.BCLR:  emit_bclr (ir, opcode, pc); break;
         case PrimaryOp13SecondaryOpcode.CRXOR: emit_crxor(ir, opcode, pc); break;
+        case PrimaryOp13SecondaryOpcode.ISYNC: emit_isync(ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
@@ -439,11 +457,13 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp1FSecondaryOpcode.CMPL:  emit_cmpl (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.DCBST: emit_dcbst(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.HLE:   emit_hle  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ICBI:  emit_icbi (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.NOR:   emit_nor  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SYNC:  emit_sync (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
@@ -466,6 +486,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, pc); break;
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
+        case PrimaryOpcode.SC:     emit_sc    (ir, opcode, pc); break;
         case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, pc); break;
         case PrimaryOpcode.STH:    emit_sth   (ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;

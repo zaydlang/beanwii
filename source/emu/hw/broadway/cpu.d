@@ -1,6 +1,5 @@
 module emu.hw.broadway.cpu;
 
-import capstone;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.state;
 import emu.hw.broadway.jit.jit;
@@ -13,14 +12,7 @@ final class Broadway {
     private Mem           mem;
     private BroadwayState state;
     private Jit           jit;
-
-    private Capstone      capstone;
-
     private HleContext    hle_context;
-
-    this() {
-        this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
-    }
 
     public void connect_mem(Mem mem) {
         this.mem = mem;
@@ -59,10 +51,13 @@ final class Broadway {
 
     // returns the number of instructions executed
     public u32 run() {
-        return jit.run(state);
+        log_state();
+        return jit.run(&state);
     }
 
     public void run_until_return() {
+        assert(this.state.pc != 0xDEADBEEF);
+
         this.state.lr = 0xDEADBEEF;
 
         while (this.state.pc != 0xDEADBEEF) {
@@ -84,13 +79,6 @@ final class Broadway {
 
         log_broadway("lr:  0x%08x", state.lr);
         log_broadway("pc:  0x%08x", state.pc);
-    }
-
-    private void log_instruction(u32 instruction, u32 pc) {
-        auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
-        foreach (instr; res) {
-            log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
-        }
     }
 
     public void set_gpr(int gpr, u32 value) {
