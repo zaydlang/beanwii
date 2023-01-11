@@ -7,6 +7,8 @@ import emu.hw.disk.readers.dol;
 import emu.hw.disk.readers.wbfs;
 import emu.hw.wii;
 import ui.cli;
+import ui.reng.device;
+import ui.runner;
 import util.file;
 import util.log;
 
@@ -32,6 +34,9 @@ void main(string[] args) {
 		error_wii("Unrecognized rom file format.");
 	}
 	
+	auto reng = new RengMultimediaDevice(1, false);
+	wii.connect_multimedia_device(reng);
+	
 	wii.load_wii_disk(apploader, dol);
-	wii.run();
+	new Runner(wii, reng).run();
 }

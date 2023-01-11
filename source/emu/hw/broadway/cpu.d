@@ -11,7 +11,7 @@ import util.endian;
 import util.log;
 import util.number;
 
-final class BroadwayCpu {
+final class Broadway {
     private Mem           mem;
     private BroadwayState state;
 

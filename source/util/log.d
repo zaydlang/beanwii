@@ -13,7 +13,8 @@ enum LogSource {
     WII,
     APPLOADER,
     CP,
-    VI
+    VI,
+    HOLLYWOOD
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
