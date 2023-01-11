@@ -275,13 +275,13 @@ final class Code : CodeGenerator {
             
             case IRBinaryDataOp.GT:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                setg(dest_reg.to_xbyak_reg8());
+                setb(dest_reg.to_xbyak_reg8());
                 movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.LT:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
-                setl(dest_reg.to_xbyak_reg8());
+                seta(dest_reg.to_xbyak_reg8());
                 movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             

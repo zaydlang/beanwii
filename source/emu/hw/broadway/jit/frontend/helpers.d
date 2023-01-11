@@ -43,7 +43,7 @@ public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d) 
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
     IRVariable cond_ok() {
         IRVariable cr = ir.get_reg(GuestReg.CR);
-        return ((cr >> bi) & 1);
+        return ((cr >> (31 - bi)) & 1);
     }
 
     IRVariable ctr_ok() {
@@ -90,7 +90,7 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
 }
 
 private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
-    int index = field * 4 + bit;
+    int index = (7 - field) * 4 + bit;
     
     IRVariable cr = ir.get_reg(GuestReg.CR);
     cr = cr & ~(1     << index);
@@ -99,19 +99,19 @@ private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
 }
 
 public void emit_set_cr_lt(IR* ir, int field, IRVariable value) {
-    emit_set_cr_flag(ir, field, 0, value);
+    emit_set_cr_flag(ir, field, 3, value);
 }
 
 public void emit_set_cr_gt(IR* ir, int field, IRVariable value) {
-    emit_set_cr_flag(ir, field, 1, value);
-}
-
-public void emit_set_cr_eq(IR* ir, int field, IRVariable value) {
     emit_set_cr_flag(ir, field, 2, value);
 }
 
+public void emit_set_cr_eq(IR* ir, int field, IRVariable value) {
+    emit_set_cr_flag(ir, field, 1, value);
+}
+
 public void emit_set_cr_so(IR* ir, int field, IRVariable value) {
-    emit_set_cr_flag(ir, field, 3, value);
+    emit_set_cr_flag(ir, field, 0, value);
 }
 
 public IRVariable emit_get_xer_so(IR* ir) {

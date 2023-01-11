@@ -160,6 +160,8 @@ private void emit_cmpl(IR* ir, u32 opcode, u32 pc) {
     IRVariable a = ir.get_reg(ra);
     IRVariable b = ir.get_reg(rb);
 
+    log_broadway("%x %x", ra, rb);
+
     emit_cmp_generic(
         ir,
         a,
@@ -205,9 +207,9 @@ private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
-    int crbD = opcode.bits(21, 25);
-    int crbA = opcode.bits(16, 20);
-    int crbB = opcode.bits(11, 15);
+    int crbD = 31 - opcode.bits(21, 25);
+    int crbA = 31 - opcode.bits(16, 20);
+    int crbB = 31 - opcode.bits(11, 15);
 
     assert(opcode.bit(0) == 0);
 
