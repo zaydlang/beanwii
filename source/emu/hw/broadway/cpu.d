@@ -2,10 +2,8 @@ module emu.hw.broadway.cpu;
 
 import capstone;
 import emu.hw.broadway.hle;
-import emu.hw.broadway.jit.frontend.disassembler;
-import emu.hw.broadway.jit.backend.x86_64.emitter;
-import emu.hw.broadway.jit.ir.ir;
 import emu.hw.broadway.state;
+import emu.hw.broadway.jit.jit;
 import emu.hw.memory.strategy.memstrategy;
 import util.endian;
 import util.log;
@@ -14,23 +12,20 @@ import util.number;
 final class Broadway {
     private Mem           mem;
     private BroadwayState state;
+    private Jit           jit;
 
-    private IR*           ir;
-    private JitConfig     config;
-    private Code          code;
     private Capstone      capstone;
 
     private HleContext    hle_context;
 
     this() {
         this.capstone = create(Arch.ppc, ModeFlags(Mode.bit32));
-        this.ir = new IR();
     }
 
     public void connect_mem(Mem mem) {
         this.mem = mem;
 
-        this.config = JitConfig(
+        jit = new Jit(JitConfig(
             cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
             cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
             cast(ReadHandler)  (&this.mem.read_be_u8)   .funcptr,
@@ -40,14 +35,9 @@ final class Broadway {
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(void*) this.mem,
             cast(void*) this.hle_context
-        );
-
-        this.code = new Code(config);
+        ), mem);
 
         this.hle_context = new HleContext(&this.mem);
-
-        this.ir.setup();
-        this.reset();
     }
 
     public void reset() {
@@ -67,37 +57,16 @@ final class Broadway {
         state.pc = pc;
     }
 
-    public void run_instruction() {
-        this.ir.reset();
-
-        u32 instruction = fetch();
-        // log_instruction(instruction, state.pc - 4);
-
-        emit(ir, instruction, state.pc - 4);
-
-        code.reset();
-        code.emit(ir);
-
-        auto generated_function = cast(void function(BroadwayState* state)) code.getCode();
-        
-        if (instruction == 0x4200fff8) {
-            // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-            // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-            // foreach (instr; res) {
-            //     log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-            // }
-        }
-
-        generated_function(&this.state);
-
-        // log_state();
+    // returns the number of instructions executed
+    public u32 run() {
+        return jit.run(state);
     }
 
     public void run_until_return() {
         this.state.lr = 0xDEADBEEF;
 
         while (this.state.pc != 0xDEADBEEF) {
-            run_instruction();
+            run();
         }
     }
 
@@ -122,13 +91,6 @@ final class Broadway {
         foreach (instr; res) {
             log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
         }
-    }
-
-    private u32 fetch() {
-        u32 instruction = cast(u32) mem.read_be_u32(state.pc);
-        log_broadway("Fetching %x from %x", instruction, state.pc);
-        state.pc += 4;
-        return instruction;
     }
 
     public void set_gpr(int gpr, u32 value) {

@@ -6,28 +6,12 @@ import emu.hw.broadway.jit.backend.x86_64.register_allocator;
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.ir.ir;
 import emu.hw.broadway.jit.ir.types;
+import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.state;
 import std.sumtype;
 import util.log;
 import util.number;
 import xbyak;
-
-alias ReadHandler  = u32 function(u32 address);
-alias WriteHandler = void function(u32 address, u32 value);
-alias HleHandler   = void function(int param);
-
-struct JitConfig {
-    ReadHandler  read_handler32;
-    ReadHandler  read_handler16;
-    ReadHandler  read_handler8;
-    WriteHandler write_handler32;
-    WriteHandler write_handler16;
-    WriteHandler write_handler8;
-    HleHandler   hle_handler;
-
-    void*        mem_handler_context;
-    void*        hle_handler_context;
-}
 
 final class Code : CodeGenerator {
     JitConfig         config;

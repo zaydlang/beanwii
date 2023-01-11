@@ -34,6 +34,8 @@ final class Runner {
     }
 
     void tick() {
+        fps++;
+        
         if (stopwatch.peek.total!"msecs" > 1000) {
             frontend.set_fps(fps);
             stopwatch.reset();
