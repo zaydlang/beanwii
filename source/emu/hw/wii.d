@@ -103,6 +103,7 @@ final class Wii {
         u32 hle_func_addr = this.broadway.get_hle_context().add_hle_func(&hle_os_report, &this.mem);
         this.broadway.set_gpr(3, hle_func_addr);
         this.broadway.run_until_return();
+        log_apploader("Apploader init() returned.");
 
         while (true) {}
     }

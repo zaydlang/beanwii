@@ -234,6 +234,10 @@ private void emit_icbi(IR* ir, u32 opcode, u32 pc) {
     // i'm just not going to emulate cache stuff
 }
 
+private void emit_isync(IR* ir, u32 opcode, u32 pc) {
+    // not needed for emulation
+}
+
 private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -245,6 +249,16 @@ private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u8(address));
     ir.set_reg(ra, address);
+}
+
+private void emit_lhz(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int d       = opcode.bits(0, 15);
+
+    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    address = address + sext_32(d, 16);
+    ir.set_reg(rd, ir.read_u16(address));
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
@@ -266,10 +280,6 @@ private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
     ir.set_reg(ra, address);
-}
-
-private void emit_isync(IR* ir, u32 opcode, u32 pc) {
-    // not needed for emulation
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
@@ -368,6 +378,19 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
 private void emit_sc(IR* ir, u32 opcode, u32 pc) {
     // apparently syscalls are only used for "sync" and "isync" on the Wii
     // and that's something i don't need to emulate
+}
+
+private void emit_stb(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int offset  = opcode.bits(0, 15);
+
+    assert(ra != 0);
+
+    IRVariable address = ir.get_reg(ra);
+    address = address + sext_32(offset, 16);
+
+    ir.write_u8(address, ir.get_reg(rs));
 }
 
 private void emit_stbu(IR* ir, u32 opcode, u32 pc) {
@@ -484,11 +507,13 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, pc); break;
         case PrimaryOpcode.CMPI:   emit_cmpi  (ir, opcode, pc); break;
         case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, pc); break;
+        case PrimaryOpcode.LHZ:    emit_lhz   (ir, opcode, pc); break;
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, pc); break;
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.SC:     emit_sc    (ir, opcode, pc); break;
+        case PrimaryOpcode.STB:    emit_stb   (ir, opcode, pc); break;
         case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, pc); break;
         case PrimaryOpcode.STH:    emit_sth   (ir, opcode, pc); break;
         case PrimaryOpcode.STW:    emit_stw   (ir, opcode, pc); break;
