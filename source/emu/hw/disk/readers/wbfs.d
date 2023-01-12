@@ -103,7 +103,7 @@ final class WbfsReader : DiskReader {
             error_disk("Wii magic word not found: %x != %x");
         }
 
-        log_disk("Found game: %s", cast(char[64]) wii_header.game_title);
+        // log_disk("Found game: %s", cast(char[64]) wii_header.game_title);
 
         WiiPartitionInfoTable* partition_info_table = new WiiPartitionInfoTable();
         this.disk_read(0, PARTITION_INFO_TABLE_OFFSET, partition_info_table, WiiPartitionInfoTableEntry.sizeof);
