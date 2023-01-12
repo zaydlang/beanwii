@@ -219,6 +219,10 @@ private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(GuestReg.CR, cr);
 }
 
+private void emit_dcbi(IR* ir, u32 opcode, u32 pc) {
+    // i'm just not going to emulate cache stuff
+}
+
 private void emit_dcbst(IR* ir, u32 opcode, u32 pc) {
     // TODO: do i really have to emulate this opcode? it sounds awful for performance.
     // for now i'll just do this silly hack...
@@ -280,6 +284,16 @@ private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
     ir.set_reg(ra, address);
+}
+
+private void emit_lwzx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+
+    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    address = address + ir.get_reg(rb);
+    ir.set_reg(rd, ir.read_u32(address));
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
@@ -378,6 +392,44 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
 private void emit_sc(IR* ir, u32 opcode, u32 pc) {
     // apparently syscalls are only used for "sync" and "isync" on the Wii
     // and that's something i don't need to emulate
+}
+
+private void emit_slw(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(rc == 0);
+
+    IRVariable shift = ir.get_reg(rb) & 0x3F;
+    ir._if(shift.greater(ir.constant(31)),
+        () {
+            shift = ir.constant(31);
+        }
+    );
+
+    IRVariable result = ir.get_reg(rs) << shift;
+    ir.set_reg(ra, result);
+}
+
+private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(rc == 0);
+
+    IRVariable shift = ir.get_reg(rb) & 0x3F;
+    ir._if(shift.greater(ir.constant(31)),
+        () {
+            shift = ir.constant(31);
+        }
+    );
+
+    IRVariable result = ir.get_reg(rs) >> shift;
+    ir.set_reg(ra, result);
 }
 
 private void emit_stb(IR* ir, u32 opcode, u32 pc) {
@@ -480,13 +532,17 @@ private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
     switch (secondary_opcode) {
         case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.CMPL:  emit_cmpl (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.DCBI:  emit_dcbi(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.DCBST: emit_dcbst(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.HLE:   emit_hle  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ICBI:  emit_icbi (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.LWZX:  emit_lwzx (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.NOR:   emit_nor  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SLW:   emit_slw  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SRAW:  emit_sraw (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.SYNC:  emit_sync (ir, opcode, pc); break;
 

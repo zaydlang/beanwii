@@ -7,6 +7,7 @@ enum IRBinaryDataOp {
     AND,
     LSL,
     LSR,
+    ASR,
     ORR,
     ADD,
     SUB,

@@ -205,6 +205,11 @@ final class Code : CodeGenerator {
                 shr(dest_reg, src2);
                 break;
             
+            case IRBinaryDataOp.ASR:
+                mov(dest_reg, src1);
+                sar(dest_reg, src2);
+                break;
+
             case IRBinaryDataOp.ADD:
                 mov(dest_reg, src1);
                 add(dest_reg, src2);
@@ -251,6 +256,11 @@ final class Code : CodeGenerator {
             case IRBinaryDataOp.LSL:
                 mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
                 shl(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.ASR:
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                sar(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.ADD:

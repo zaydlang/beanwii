@@ -424,13 +424,14 @@ struct IRVariable {
 
     IRBinaryDataOp get_binary_data_op(string s)() {
         final switch (s) {
-            case "+":  return IRBinaryDataOp.ADD;
-            case "-":  return IRBinaryDataOp.SUB;
-            case "<<": return IRBinaryDataOp.LSL;
-            case ">>": return IRBinaryDataOp.LSR;
-            case "|":  return IRBinaryDataOp.ORR;
-            case "&":  return IRBinaryDataOp.AND;
-            case "^":  return IRBinaryDataOp.XOR;
+            case "+":   return IRBinaryDataOp.ADD;
+            case "-":   return IRBinaryDataOp.SUB;
+            case "<<":  return IRBinaryDataOp.LSL;
+            case ">>>": return IRBinaryDataOp.LSR;
+            case ">>":  return IRBinaryDataOp.ASR;
+            case "|":   return IRBinaryDataOp.ORR;
+            case "&":   return IRBinaryDataOp.AND;
+            case "^":   return IRBinaryDataOp.XOR;
         }
     }
 

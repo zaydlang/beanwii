@@ -86,7 +86,7 @@ final class Wii {
         this.broadway.set_gpr(4, 0x8000_0004);
         this.broadway.set_gpr(5, 0x8000_0008);
 
-        log_apploader("Running apploader entry...");
+        log_apploader("Running apploader...");
         this.broadway.set_pc(cast(u32) apploader.header.entry_point);
         this.broadway.run_until_return();
 
@@ -104,6 +104,20 @@ final class Wii {
         this.broadway.set_gpr(3, hle_func_addr);
         this.broadway.run_until_return();
         log_apploader("Apploader init() returned.");
+
+        do {
+            this.broadway.set_gpr(3, 0x8000_0000);
+            this.broadway.set_gpr(4, 0x8000_0004);
+            this.broadway.set_gpr(5, 0x8000_0008);
+            this.broadway.set_pc(main_ptr);
+            this.broadway.run_until_return();
+            
+            log_apploader("Apploader main() returned.");
+        } while (this.broadway.get_gpr(3) != 0);
+
+        this.broadway.set_pc(close_ptr);
+        this.broadway.run_until_return();
+        log_apploader("Apploader close() returned.");
 
         while (true) {}
     }
