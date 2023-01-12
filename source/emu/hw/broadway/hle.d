@@ -67,21 +67,44 @@ final class HleContext {
         assert(hle_function_id <= 31);
         assert(hle_function_id >= 0);
         
-        return 0x7C0006AC | (hle_function_id << 21);
+        return 0x7C0006AE | (hle_function_id << 21);
     }
 }
 
 public void hle_os_report(void* context, BroadwayState* state) {
+    // shoot me, i have to implement printf
+
     Mem* mem = cast(Mem*) context;
     u32 string_ptr = state.gprs[3];
 
-    u8[] str;
-    u8 next_char;
+    string output = "";
+    char next_char;
+
+
+    // gprs[3] is the string pointer
+    // gprs[4..] are the arguments
+    int current_gpr_arg = 4; 
 
     do {
         next_char = mem.read_be_u8(string_ptr++);
-        str ~= next_char;
+        if (next_char == '%') {
+            char format_type = mem.read_be_u8(string_ptr++);
+            final switch (format_type) {
+                case 's':
+                    char inserted_char;
+                    u32 current_address = state.gprs[current_gpr_arg++];
+                    do {
+                        inserted_char = mem.read_be_u8(current_address++);
+                        output ~= inserted_char;
+                    } while (inserted_char != 0);
+                    break;
+            }
+        } else {
+            output ~= next_char;
+        }
     } while (next_char != 0);
 
-    log_wii("OSReport: %s", str);
+    log_os_report(output);
+
+    return;
 }

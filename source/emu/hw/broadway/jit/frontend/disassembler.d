@@ -129,7 +129,7 @@ private void emit_bcctr(IR* ir, u32 opcode, u32 pc) {
         if (lk) ir.set_reg(GuestReg.LR, pc + 4);
 
         // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
-        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR) << 2);
+        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR));
     });
 }
 

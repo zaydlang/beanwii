@@ -16,6 +16,7 @@ final class Broadway {
 
     public void connect_mem(Mem mem) {
         this.mem = mem;
+        this.hle_context = new HleContext(&this.mem);
 
         jit = new Jit(JitConfig(
             cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
@@ -26,10 +27,8 @@ final class Broadway {
             cast(WriteHandler) (&this.mem.write_be_u8)  .funcptr,
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(void*) this.mem,
-            cast(void*) this.hle_context
+            cast(void*) this
         ), mem);
-
-        this.hle_context = new HleContext(&this.mem);
     }
 
     public void reset() {

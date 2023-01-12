@@ -14,7 +14,8 @@ enum LogSource {
     APPLOADER,
     CP,
     VI,
-    HOLLYWOOD
+    HOLLYWOOD,
+    OS_REPORT
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
@@ -37,6 +38,7 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
     import core.runtime;
     import core.stdc.stdio;
     import core.stdc.stdlib;
+    import std.array;
     import std.conv;
     import std.format;
     import std.stdio;
@@ -45,8 +47,12 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         return;
     } else {
         ulong timestamp = 0; // scheduler.get_current_time_relative_to_cpu();
-        writef("%016x [%s] : ", timestamp, pad_string_right!(to!string(log_source), logsource_padding));
-        writefln(fmt, args);
+        string prefix = format("%016x [%s] : ", timestamp, pad_string_right!(to!string(log_source), logsource_padding));
+        string written_string = format(fmt, args);
+        written_string = written_string.replace("\n", "\n" ~ prefix);
+
+        writef(prefix);
+        writefln(written_string);
 
         if (fatal) {
             auto trace = defaultTraceHandler(null);

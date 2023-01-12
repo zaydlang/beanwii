@@ -430,7 +430,11 @@ final class Code : CodeGenerator {
     void emit_HLE_FUNC(IRInstructionHleFunc ir_instruction, int current_instruction_index) {
         emit_push_caller_save_regs();
 
-        mov(rdx, cast(u64) config.hle_handler_context);
+        log_broadway("%x", cast(u64) config.hle_handler_context);
+
+        // it is safe to clobber these registers, because if an HLE opcode gets emitted, it will
+        // be the only IR opcode.
+        mov(rdi, cast(u64) config.hle_handler_context);
         mov(rsi, ir_instruction.function_id);
         mov(rax, cast(u64) config.hle_handler);
         call(rax);
