@@ -3,6 +3,7 @@ module emu.hw.memory.strategy.slowmem.slowmem;
 import emu.hw.broadway.hle;
 import emu.hw.cp.cp;
 import emu.hw.disk.dol;
+import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.memory.strategy.slowmem.mmio_spec;
 import emu.hw.vi.vi;
@@ -13,8 +14,6 @@ import util.number;
 // NOTE: this memstrategy is VERY slow! It's very simplistic, and only
 // here for basic testing purposes.
 final class SlowMem : MemStrategy {
-    enum MEM1_SIZE = 0x1800000;
-    enum MEM2_SIZE = 0x4000000;
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
     private u8[] mem1;
@@ -31,6 +30,9 @@ final class SlowMem : MemStrategy {
     }
 
     private T read_be(T)(u32 address) {
+        // See: wii.setup_global_memory_value(u8[] wii_disk_data);
+        assert(address != 0x8000_3198);
+
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
 

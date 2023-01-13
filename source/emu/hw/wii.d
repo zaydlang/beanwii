@@ -8,8 +8,9 @@ import emu.hw.cp.cp;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.layout;
-import emu.hw.disk.readers.diskreader;
+import emu.hw.disk.readers.filereader;
 import emu.hw.disk.readers.wbfs;
+import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
 import emu.hw.vi.vi;
@@ -50,13 +51,18 @@ final class Wii {
         this.video_interface.scanout();
     }
 
-    public void load_wii_disk(WiiApploader* apploader, WiiDol* dol) {
-        if (apploader !is null) {
-            this.run_apploader(apploader);
-        }
+    public void load_disk(u8[] wii_disk_data) {
+        this.setup_global_memory_value(wii_disk_data);
 
-        assert(dol !is null);
+        WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
+        this.run_apploader(apploader);
 
+        size_t dol_address = wii_disk_data.read_be!u32(WII_DOL_OFFSET) << 2;
+        WiiDol* dol = cast(WiiDol*) &wii_disk_data[dol_address];
+        this.load_dol(dol);
+    }
+
+    public void load_dol(WiiDol* dol) {
         this.mem.map_dol(dol);
         this.broadway.set_pc(cast(u32) dol.header.entry_point);
 
@@ -120,5 +126,68 @@ final class Wii {
         log_apploader("Apploader close() returned.");
 
         while (true) {}
+    }
+
+    private void setup_global_memory_value(u8[] wii_disk_data) {
+        WiiHeader* header = cast(WiiHeader*) wii_disk_data.ptr;
+
+        // https://wiibrew.org/wiki/Memory_map
+
+        this.mem.write_be_u32(0x8000_0000, cast(u32) wii_disk_data.read_be!u32(0));
+        this.mem.write_be_u16(0x8000_0004, cast(u16) header.maker_code);
+        this.mem.write_be_u8 (0x8000_0006, header.disk_number);
+        this.mem.write_be_u8 (0x8000_0007, header.disk_version);
+        this.mem.write_be_u8 (0x8000_0008, header.audio_streaming_enabled);
+        this.mem.write_be_u8 (0x8000_0009, header.stream_buffer_size);
+        this.mem.write_be_u32(0x8000_0018, WII_MAGIC_WORD);
+        this.mem.write_be_u32(0x8000_0020, 0x0D15_EA5E); // Nintendo Standard Boot Code
+        this.mem.write_be_u32(0x8000_0028, MEM1_SIZE); 
+        this.mem.write_be_u32(0x8000_002C, 0x0000_0023); // Production Board Model
+        this.mem.write_be_u32(0x8000_0030, 0x0000_0000); // Arena Low
+        this.mem.write_be_u32(0x8000_0034, 0x817F_EC60); // Arena High
+        this.mem.write_be_u32(0x8000_0038, cast(u32) wii_disk_data.read_be!u32(WII_FILE_SYSTEM_START_OFFSET));
+        this.mem.write_be_u32(0x8000_003C, cast(u32) wii_disk_data.read_be!u32(WII_FILE_SYSTEM_MAX_SIZE_OFFSET));
+        this.mem.write_be_u32(0x8000_0048, 0x8134_0000); // DB exception destination
+        this.mem.write_be_u32(0x8000_00C4, 0xFFFF_FF00); // User interrupt mask
+        this.mem.write_be_u32(0x8000_00C0, 0); // Revolution OS interrupt mask
+        this.mem.write_be_u32(0x8000_00CC, 0); // NTSC TODO: is it okay to just keep this as NTSC?
+        this.mem.write_be_u32(0x8000_00D8, 0); // OSContext to save FPRs to
+        this.mem.write_be_u32(0x8000_00EC, 0); // Dev Debugger Monitor Address (Not present)
+        this.mem.write_be_u32(0x8000_00F0, 0x0180_0000); // Simulated Memory Size
+        this.mem.write_be_u32(0x8000_00F8, 0x0E7B_E2C0); // Console Bus Speed
+        this.mem.write_be_u32(0x8000_00FC, 0x2B73_A840); // Console CPU Speed
+        this.mem.write_be_u64(0x8000_30D8, 0x0054_98F0_5340_7000); // System Time
+        this.mem.write_be_u32(0x8000_30F0, 0); // DOL Execute Parameters
+        this.mem.write_be_u32(0x8000_3118, 0x0400_0000); // Physical MEM2 size
+        this.mem.write_be_u32(0x8000_311C, 0x0400_0000); // Simulated MEM2 size
+        this.mem.write_be_u32(0x8000_3120, 0x9340_0000); // End of MEM2 addressable to PPC
+        this.mem.write_be_u32(0x8000_3124, 0x9000_0800); // Usable MEM2 Start
+        this.mem.write_be_u32(0x8000_3128, 0x933E_0000); // Usable MEM2 End
+        this.mem.write_be_u32(0x8000_3130, 0x933E_0000); // IOS IPC Buffer Start
+        this.mem.write_be_u32(0x8000_3134, 0x9340_0000); // IOS IPC Buffer End
+        this.mem.write_be_u32(0x8000_3138, 0x0000_0011); // Hollywood Version
+        this.mem.write_be_u32(0x8000_3140, 0x0090_0204); // IOS Version (IOS9, v2.4)
+        this.mem.write_be_u32(0x8000_3144, 0x0006_2507); // IOS Build Date (06/25/2007)
+        this.mem.write_be_u32(0x8000_3148, 0x9360_0000); // IOS Reserved Heap Start
+        this.mem.write_be_u32(0x8000_314C, 0x9362_0000); // IOS Reserved Heap End
+        this.mem.write_be_u32(0x8000_3158, 0x0000_FF16); // GDPR Vendor Code
+        this.mem.write_be_u8 (0x8000_315C, 0x80); // Some boot flag
+        this.mem.write_be_u8 (0x8000_315D, 0x00); // Enable legacy DI mode (must be set if loading GC apploader)
+        this.mem.write_be_u16(0x8000_315E, 0x0113); // Devkit boot program version (v1.13)
+        this.mem.write_be_u32(0x8000_3160, 0x0000_0000); // Init sempahore
+        this.mem.write_be_u32(0x8000_3164, 0x0000_0000); // GC MIOS mode flag
+        this.mem.write_be_u32(0x8000_3180, cast(u32) wii_disk_data.read_be!u32(0)); // Game ID
+        this.mem.write_be_u8 (0x8000_3184, 0x80); // Application Type - 0x80 for disk games, 0x81 for channels.
+        this.mem.write_be_u8 (0x8000_3186, 0); // Application Type 2. Apparently set when a game loads a channel.
+        this.mem.write_be_u32(0x8000_3188, 0x00351011); // Minimum IOS version
+        this.mem.write_be_u32(0x8000_318C, 0); // Title Booted from NAND (Launch Code)
+        this.mem.write_be_u32(0x8000_3190, 0); // Title Booted from NAND (Return Code)
+        this.mem.write_be_u32(0x8000_3194, 0); // Data Partition Type
+
+        // TODO: You silly address, you are going to need a refactor to implement cleanly. I'll just put an assert
+        // in slowmem to make sure nobody reads from you.
+        this.mem.write_be_u32(0x8000_3198, 0xDEADBEEF);
+
+        this.mem.write_be_u8 (0x8000_319C, 0x80); // Single-layer 
     }
 }

@@ -6,7 +6,8 @@ import emu.encryption.ticket;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.layout;
-import emu.hw.disk.readers.diskreader;
+import emu.hw.disk.readers.filereader;
+import emu.hw.wii;
 import util.array;
 import util.bitop;
 import util.log;
@@ -16,8 +17,7 @@ import util.number;
 // for hints: https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/DiscIO/WbfsBlob.cpp
 // and this too: https://github.com/kwiirk/wbfs/blob/master/libwbfs/libwbfs.h
 // maybe i should write some proper documentation as to how this works...
-
-final class WbfsReader : DiskReader {
+final class WbfsReader : FileReader {
     private enum WBFS_MAGIC_NUMBER        = 0x57424653; // "WBFS"
     private enum NUM_WII_SECTORS_PER_DISK = 143_432 * 2;
     private enum WII_SECTOR_SIZE          = 0x8000;
@@ -42,14 +42,18 @@ final class WbfsReader : DiskReader {
 
     private u16[] wlba_table;
 
-    override public bool is_valid_disk(u8* disk_data, size_t disk_size) {
-        u32 magic_number = disk_data.read_be!u32(0);
+    override public bool is_valid_file(u8[] file_data) {
+        if (file_data.length < u32.sizeof) return false;
+
+        u32 magic_number = file_data.read_be!u32(0);
         return magic_number == WBFS_MAGIC_NUMBER;
     }
 
-    override public void load_disk(u8* disk_data, size_t disk_size, WiiApploader** out_apploader, WiiDol** out_dol) {
-        this.disk_data = disk_data;
-        this.disk_size = disk_size;
+    override public void load_file(Wii wii, u8[] file_data) {
+        assert(is_valid_file(file_data));
+
+        this.disk_data = file_data.ptr;
+        this.disk_size = file_data.length;
 
         u32 magic_number = disk_data.read_be!u32(0);
         if (magic_number != WBFS_MAGIC_NUMBER) {
@@ -148,20 +152,7 @@ final class WbfsReader : DiskReader {
                     decrypted_offset += 0x7C00;
                 }
 
-                // this.run_apploader(decrypted_data);
-
-                size_t dol_address = decrypted_data.read_be!u32(WII_DOL_OFFSET) << 2;
-                log_wbfs("Dol address: 0x%x", dol_address);
-                log_wbfs("Dol debug: 0x%x", decrypted_data.read_be!u32(dol_address + 0x2224));
-
-                for (int i = 0; i <= 0x2224; i += 4) {
-                    log_wbfs("[%x] = 0x%x", i, decrypted_data.read_be!u32(dol_address + i));
-                }
-
-                WiiDol* dol = cast(WiiDol*) &decrypted_data[dol_address];
-
-                *out_apploader = cast(WiiApploader*) &decrypted_data[WII_APPLOADER_OFFSET];
-                *out_dol = dol;
+                wii.load_disk(decrypted_data);                
                 return;
             }
         }

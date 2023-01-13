@@ -90,5 +90,8 @@ struct WiiPartitionData {
 
 static assert(WiiPartitionData.sizeof == 0x8000);
 
-enum WII_DOL_OFFSET       = 0x420; // blaze it
-enum WII_APPLOADER_OFFSET = 0x02440;
+enum WII_DOL_OFFSET                  = 0x420; // blaze it
+enum WII_FILE_SYSTEM_START_OFFSET    = 0x424; 
+enum WII_FILE_SYSTEM_SIZE_OFFSET     = 0x428;
+enum WII_FILE_SYSTEM_MAX_SIZE_OFFSET = 0x42C;
+enum WII_APPLOADER_OFFSET            = 0x2440;

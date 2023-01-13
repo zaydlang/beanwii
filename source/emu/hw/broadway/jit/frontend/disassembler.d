@@ -403,13 +403,14 @@ private void emit_slw(IR* ir, u32 opcode, u32 pc) {
     assert(rc == 0);
 
     IRVariable shift = ir.get_reg(rb) & 0x3F;
-    ir._if(shift.greater(ir.constant(31)),
+    IRVariable result = ir.constant(0);
+
+    ir._if(shift.lesser(ir.constant(32)),
         () {
-            shift = ir.constant(31);
-        }
+            result = ir.get_reg(rs) << shift;
+        },
     );
 
-    IRVariable result = ir.get_reg(rs) << shift;
     ir.set_reg(ra, result);
 }
 
