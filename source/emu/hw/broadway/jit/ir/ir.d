@@ -223,7 +223,7 @@ struct IR {
             },
 
             (IRInstructionSetVarImm i) {
-                log_ir("ld   v%d, %x", i.dest.get_id(), i.imm);
+                log_ir("ld  v%d, %x", i.dest.get_id(), i.imm);
             },
 
             (IRInstructionRead i) {
@@ -249,7 +249,7 @@ struct IR {
             },
 
             (IRInstructionConditionalBranch i) {
-                log_ir("bne  v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
+                log_ir("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
             },
 
             (IRInstructionGetHostCarry i) {
@@ -261,7 +261,7 @@ struct IR {
             },
 
             (IRInstructionHleFunc i) {
-                log_ir("hle  %d", i.function_id);
+                log_ir("hle %d", i.function_id);
             }
         );
     }
@@ -310,26 +310,50 @@ struct IRVariable {
         return dest;
     }
 
-    public IRVariable greater(IRVariable other) {
+    public IRVariable greater_unsigned(IRVariable other) {
         IRVariable dest = ir.generate_new_variable();
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GT, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTU, dest, this, other));
 
         return dest;
     }
 
-    public IRVariable lesser(IRVariable other) {
+    public IRVariable lesser_unsigned(IRVariable other) {
         IRVariable dest = ir.generate_new_variable();
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LT, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTU, dest, this, other));
+
+        return dest;
+    }
+
+    public IRVariable greater_signed(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTS, dest, this, other));
+
+        return dest;
+    }
+
+    public IRVariable lesser_signed(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTS, dest, this, other));
 
         return dest;
     }
@@ -410,6 +434,17 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest, this, amount));
+
+        return dest;
+    }
+
+    IRVariable clz() {
+        IRVariable dest = ir.generate_new_variable();
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest, this));
 
         return dest;
     }

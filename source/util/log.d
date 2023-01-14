@@ -14,6 +14,7 @@ enum LogSource {
     APPLOADER,
     CP,
     VI,
+    SI,
     HOLLYWOOD,
     OS_REPORT
 }

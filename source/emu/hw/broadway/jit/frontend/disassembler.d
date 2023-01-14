@@ -97,8 +97,6 @@ private void emit_bc(IR* ir, u32 opcode, u32 pc) {
     int  bi = opcode.bits(16, 20);
     int  bd = opcode.bits(2, 15);
 
-    log_broadway("bc %x %x %x %x", bd, aa, lk, (sext_32(bd, 14) << 2));
-
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
 
     if (lk) ir.set_reg(GuestReg.LR, pc + 4);
@@ -148,6 +146,36 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
     });
 }
 
+private void emit_cntlzw(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+
+    assert(opcode.bits(11, 15) == 0);
+
+    ir.set_reg(ra, ir.get_reg(rs).clz());
+}
+
+private void emit_cmp(IR* ir, u32 opcode, u32 pc) {
+    int crf_d = opcode.bits(23, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+
+    assert(opcode.bit(0)  == 0);
+    assert(opcode.bit(21) == 0);
+    assert(opcode.bit(22) == 0);
+
+    IRVariable a = ir.get_reg(ra);
+    IRVariable b = ir.get_reg(rb);
+
+    emit_cmp_generic(
+        ir,
+        a,
+        b,
+        crf_d,
+        true
+    );
+}
+
 private void emit_cmpl(IR* ir, u32 opcode, u32 pc) {
     int crf_d = opcode.bits(23, 25);
     GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
@@ -160,13 +188,12 @@ private void emit_cmpl(IR* ir, u32 opcode, u32 pc) {
     IRVariable a = ir.get_reg(ra);
     IRVariable b = ir.get_reg(rb);
 
-    log_broadway("%x %x", ra, rb);
-
     emit_cmp_generic(
         ir,
         a,
         b,
-        crf_d
+        crf_d,
+        false
     );
 }
 
@@ -184,7 +211,8 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
         ir,
         a,
         ir.constant(uimm),
-        crf_d
+        crf_d,
+        false
     );
 }
 
@@ -202,7 +230,8 @@ private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
         ir,
         a,
         ir.constant(simm),
-        crf_d
+        crf_d,
+        true
     );
 }
 
@@ -217,6 +246,10 @@ private void emit_crxor(IR* ir, u32 opcode, u32 pc) {
     cr = cr & ~(1 << crbD);
     cr = cr | ((((cr >> crbA) & 1) ^ ((cr >> crbB) & 1)) << crbD);
     ir.set_reg(GuestReg.CR, cr);
+}
+
+private void emit_dcbf(IR* ir, u32 opcode, u32 pc) {
+    // i'm just not going to emulate cache stuff
 }
 
 private void emit_dcbi(IR* ir, u32 opcode, u32 pc) {
@@ -375,16 +408,14 @@ private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     assert(mb >= me);
     int mask = cast(int) (((cast(u64) 1) << (cast(u64) (mb - me + 1))) - 1) << me;
 
-    log_jit("rlwinm: sh 0x%x mb 0x%x me 0x%x rc %x. mask: 0x%08x", sh, mb, me, rc, mask);
-
     IRVariable result = ir.get_reg(rs);
     result = result.rol(sh) & mask;
     ir.set_reg(ra, result);
 
     if (rc) {
-        emit_set_cr_lt(ir, 0, result.lesser (ir.constant(0)));
-        emit_set_cr_gt(ir, 0, result.greater(ir.constant(0)));
-        emit_set_cr_eq(ir, 0, result.equals (ir.constant(0)));
+        emit_set_cr_lt(ir, 0, result.lesser_signed(ir.constant(0)));
+        emit_set_cr_gt(ir, 0, result.greater_signed(ir.constant(0)));
+        emit_set_cr_eq(ir, 0, result.equals(ir.constant(0)));
         emit_set_cr_so(ir, 0, ir.constant(0)); // TODO: what does overflow even mean in the context of rlwinm????
     }
 }
@@ -405,7 +436,7 @@ private void emit_slw(IR* ir, u32 opcode, u32 pc) {
     IRVariable shift = ir.get_reg(rb) & 0x3F;
     IRVariable result = ir.constant(0);
 
-    ir._if(shift.lesser(ir.constant(32)),
+    ir._if(shift.lesser_unsigned(ir.constant(32)),
         () {
             result = ir.get_reg(rs) << shift;
         },
@@ -420,16 +451,38 @@ private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
     bool     rc = opcode.bit(0);
 
+    // 7c831e30 
+    // 011111 00100 00011 00011 110 0011 0000
+
     assert(rc == 0);
 
     IRVariable shift = ir.get_reg(rb) & 0x3F;
-    ir._if(shift.greater(ir.constant(31)),
+    ir._if(shift.greater_unsigned(ir.constant(31)),
         () {
             shift = ir.constant(31);
         }
     );
 
     IRVariable result = ir.get_reg(rs) >> shift;
+    ir.set_reg(ra, result);
+}
+
+private void emit_srw(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(rc == 0);
+
+    IRVariable shift = ir.get_reg(rb) & 0x3F;
+    ir._if(shift.greater_unsigned(ir.constant(31)),
+        () {
+            shift = ir.constant(31);
+        }
+    );
+
+    IRVariable result = ir.get_reg(rs) >>> shift;
     ir.set_reg(ra, result);
 }
 
@@ -514,6 +567,17 @@ private void emit_sync(IR* ir, u32 opcode, u32 pc) {
     // not needed for emulation
 }
 
+private void emit_xor(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    bool     rc = opcode.bit(0);
+
+    assert(!rc);
+
+    ir.set_reg(ra, ir.get_reg(rs) ^ ir.get_reg(rb));
+}
+
 private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
@@ -527,25 +591,30 @@ private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
     }
 }
 
-private void emit_op_31(IR* ir, u32 opcode, u32 pc) {
+private void emit_op_1F(IR* ir, u32 opcode, u32 pc) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp1FSecondaryOpcode.ADD:   emit_add  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.CMPL:  emit_cmpl (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.DCBI:  emit_dcbi(ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.DCBST: emit_dcbst(ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.HLE:   emit_hle  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.ICBI:  emit_icbi (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.LWZX:  emit_lwzx (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.MFSPR: emit_mfspr(ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.MTSPR: emit_mtspr(ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.NOR:   emit_nor  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.OR:    emit_or   (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.SLW:   emit_slw  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.SRAW:  emit_sraw (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.SUBF:  emit_subf (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.SYNC:  emit_sync (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ADD:    emit_add   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.CNTLZW: emit_cntlzw(ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.CMP:    emit_cmp   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.CMPL:   emit_cmpl  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.DCBF:   emit_dcbf  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.DCBI:   emit_dcbi  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.DCBST:  emit_dcbst (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.HLE:    emit_hle   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ICBI:   emit_icbi  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.LWZX:   emit_lwzx  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MFSPR:  emit_mfspr (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MTSPR:  emit_mtspr (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.NOR:    emit_nor   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.OR:     emit_or    (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SLW:    emit_slw   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SRAW:   emit_sraw  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SRW:    emit_srw   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SUBF:   emit_subf  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.SYNC:   emit_sync  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.XOR:    emit_xor   (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }
@@ -577,7 +646,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, pc); break;
 
         case PrimaryOpcode.OP_13:  emit_op_13 (ir, opcode, pc); break;
-        case PrimaryOpcode.OP_1F:  emit_op_31 (ir, opcode, pc); break;
+        case PrimaryOpcode.OP_1F:  emit_op_1F (ir, opcode, pc); break;
 
         default: error_jit("Unimplemented opcode: %x", opcode);
     }

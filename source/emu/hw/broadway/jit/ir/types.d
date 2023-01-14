@@ -13,8 +13,10 @@ enum IRBinaryDataOp {
     SUB,
     XOR,
     ROL,
-    GT,
-    LT,
+    GTS,
+    LTS,
+    GTU,
+    LTU,
     EQ,
     NE
 }
@@ -22,7 +24,8 @@ enum IRBinaryDataOp {
 enum IRUnaryDataOp {
     NOT,
     NEG,
-    MOV
+    MOV,
+    CLZ
 }
 
 string to_string(IRBinaryDataOp op) {

@@ -72,12 +72,12 @@ final class Code : CodeGenerator {
         // ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
-            emit(ir.instructions[i], i);
             for (int j = 0; j < ir.num_labels(); j++) {
                 if (ir.labels[j].instruction_index == i) {
                     L(ir.labels[j].to_xbyak_label());
                 }
             }
+            emit(ir.instructions[i], i);
         }
 
         for (int j = 0; j < ir.num_labels(); j++) {
@@ -258,6 +258,11 @@ final class Code : CodeGenerator {
                 shl(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
                 break;
             
+            case IRBinaryDataOp.LSR:
+                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
+                shr(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                break;
+            
             case IRBinaryDataOp.ASR:
                 mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
                 sar(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
@@ -283,15 +288,27 @@ final class Code : CodeGenerator {
                 rol(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
                 break;
             
-            case IRBinaryDataOp.GT:
+            case IRBinaryDataOp.GTU:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 seta(dest_reg.to_xbyak_reg8());
                 movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
-            case IRBinaryDataOp.LT:
+            case IRBinaryDataOp.LTU:
                 cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
                 setb(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.GTS:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                setg(dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                break;
+            
+            case IRBinaryDataOp.LTS:
+                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                setl(dest_reg.to_xbyak_reg8());
                 movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
                 break;
             
@@ -334,6 +351,11 @@ final class Code : CodeGenerator {
             
             case IRUnaryDataOp.MOV:
                 mov(dest_reg, src_reg);
+                break;
+            
+            case IRUnaryDataOp.CLZ:
+                mov(dest_reg, src_reg);
+                bsf(dest_reg, dest_reg);
                 break;
 
             default: break;
@@ -439,8 +461,6 @@ final class Code : CodeGenerator {
 
     void emit_HLE_FUNC(IRInstructionHleFunc ir_instruction, int current_instruction_index) {
         emit_push_caller_save_regs();
-
-        log_broadway("%x", cast(u64) config.hle_handler_context);
 
         // it is safe to clobber these registers, because if an HLE opcode gets emitted, it will
         // be the only IR opcode.

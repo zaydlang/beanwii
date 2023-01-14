@@ -72,6 +72,8 @@ final class HleContext {
 }
 
 public void hle_os_report(void* context, BroadwayState* state) {
+    import std.conv;
+
     // shoot me, i have to implement printf
 
     Mem* mem = cast(Mem*) context;
@@ -97,6 +99,10 @@ public void hle_os_report(void* context, BroadwayState* state) {
                         inserted_char = mem.read_be_u8(current_address++);
                         output ~= inserted_char;
                     } while (inserted_char != 0);
+                    break;
+                
+                case 'd':
+                    output ~= to!string(state.gprs[current_gpr_arg++]);
                     break;
             }
         } else {

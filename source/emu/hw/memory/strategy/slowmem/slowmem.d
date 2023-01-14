@@ -6,6 +6,7 @@ import emu.hw.disk.dol;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.memory.strategy.slowmem.mmio_spec;
+import emu.hw.si.si;
 import emu.hw.vi.vi;
 import util.array;
 import util.log;
@@ -67,12 +68,12 @@ final class SlowMem : MemStrategy {
                 assert(0);
         }
 
-        log_slowmem("Read 0x%08x from address 0x%08x", result, address);
+        // log_slowmem("Read 0x%08x from address 0x%08x", result, address);
         return result;
     }
 
     private void write_be(T)(u32 address, T value) {
-        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
+        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
@@ -165,5 +166,9 @@ final class SlowMem : MemStrategy {
 
     public void connect_video_interface(VideoInterface vi) {
         this.mmio.connect_video_interface(vi);
+    }
+
+    public void connect_serial_interface(SerialInterface si) {
+        this.mmio.connect_serial_interface(si);
     }
 }

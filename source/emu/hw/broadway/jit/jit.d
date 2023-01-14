@@ -52,15 +52,12 @@ final class Jit {
 
     private u32 fetch(BroadwayState* state) {
         u32 instruction = cast(u32) mem.read_be_u32(state.pc);
-        log_broadway("Fetching %x from %x", instruction, state.pc);
         return instruction;
     }
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
         JitFunction cached_function = jit_hash_map.require(state.pc, null);
-
-        log_broadway("magic: %x", mem.read_be_u32(0x8132ffe0 + 0x20));
 
         if (cached_function != null && false) {
             cached_function(state);
@@ -69,7 +66,7 @@ final class Jit {
             ir.reset();
 
             u32 instruction = fetch(state);
-            log_instruction(instruction, state.pc);
+            // log_instruction(instruction, state.pc);
 
             emit(ir, instruction, state.pc);
 
@@ -77,7 +74,17 @@ final class Jit {
             code.emit(ir);
 
             JitFunction generated_function = cast(JitFunction) code.getCode();
-            
+
+            // if (instruction == 0x7c831e30) {
+            //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+            //     auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
+            //     foreach (instr; res) {
+            //         log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+            //     }
+
+            //     // error_jit("jit");
+            // }
+
             jit_hash_map.opIndexAssign(generated_function, state.pc);
 
             state.pc += 4;

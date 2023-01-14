@@ -18,9 +18,9 @@ public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2
     ir.set_reg(rd, result);
 
     if (rc) {
-        emit_set_cr_lt(ir, 0, result.lesser (ir.constant(0)));
-        emit_set_cr_gt(ir, 0, result.greater(ir.constant(0)));
-        emit_set_cr_eq(ir, 0, result.equals (ir.constant(0)));
+        emit_set_cr_lt(ir, 0, result.lesser_signed(ir.constant(0)));
+        emit_set_cr_gt(ir, 0, result.greater_signed(ir.constant(0)));
+        emit_set_cr_eq(ir, 0, result.equals(ir.constant(0)));
         emit_set_cr_so(ir, 0, overflow);
     }
 
@@ -33,10 +33,16 @@ public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2
     }
 }
 
-public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d) {
-    emit_set_cr_gt(ir, crf_d, op1.greater(op2));
-    emit_set_cr_lt(ir, crf_d, op1.lesser (op2));
-    emit_set_cr_eq(ir, crf_d, op1.equals (op2));
+public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d, bool signed) {
+    if (signed) {
+        emit_set_cr_gt(ir, crf_d, op1.greater_signed(op2));
+        emit_set_cr_lt(ir, crf_d, op1.lesser_signed(op2));
+    } else {
+        emit_set_cr_gt(ir, crf_d, op1.greater_unsigned(op2));
+        emit_set_cr_lt(ir, crf_d, op1.lesser_unsigned(op2));
+    }
+
+    emit_set_cr_eq(ir, crf_d, op1.equals(op2));
     emit_set_cr_so(ir, crf_d, emit_get_xer_so(ir));
 }
 

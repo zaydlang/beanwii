@@ -2,6 +2,7 @@ module emu.hw.memory.strategy.slowmem.mmio_spec;
 
 import emu.hw.cp.cp;
 import emu.hw.memory.strategy.slowmem.mmio_gen;
+import emu.hw.si.si;
 import emu.hw.vi.vi;
 import util.number;
 
@@ -10,6 +11,7 @@ final class Mmio {
 
     public CommandProcessor command_processor;
     public VideoInterface   video_interface;
+    public SerialInterface  serial_interface;
 
     static const mmio_spec = [
         MmioRegister("command_processor", "CP_FIFO_STATUS", 0xCC00_0000, 2, READ_WRITE),
@@ -33,6 +35,8 @@ final class Mmio {
         MmioRegister("video_interface",   "FCTx",           0xCC00_204C, 4, READ_WRITE).repeat(7, 4),
         MmioRegister("video_interface",   "UNKNOWN",        0xCC00_2070, 2, READ_WRITE),
         MmioRegister("video_interface",   "VICLK",          0xCC00_206C, 2, READ_WRITE),
+        MmioRegister("serial_interface",  "SICxOUTBUF",     0xCD00_6400, 4, READ_WRITE).repeat(4, 0xC),
+        MmioRegister("serial_interface",  "SIPOLL",         0xCD00_6430, 4, READ_WRITE),
     ];
 
     this() {
@@ -53,5 +57,9 @@ final class Mmio {
 
     public void connect_video_interface(VideoInterface video_interface) {
         this.video_interface = video_interface;
+    }
+
+    public void connect_serial_interface(SerialInterface serial_interface) {
+        this.serial_interface = serial_interface;
     }
 }

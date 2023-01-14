@@ -35,7 +35,10 @@ enum PrimaryOp13SecondaryOpcode {
 
 enum PrimaryOp1FSecondaryOpcode {
     ADD    = 0x10A,
+    CMP    = 0x000,
     CMPL   = 0x020,
+    CNTLZW = 0x01A,
+    DCBF   = 0x056,
     DCBI   = 0x1D6,
     DCBST  = 0x036,
     HLE    = 0x357,
@@ -47,6 +50,8 @@ enum PrimaryOp1FSecondaryOpcode {
     OR     = 0x1BC,
     SLW    = 0x018,
     SRAW   = 0x318,
+    SRW    = 0x218,
     SUBF   = 0x028,
-    SYNC   = 0x256
+    SYNC   = 0x256,
+    XOR    = 0x13C
 }

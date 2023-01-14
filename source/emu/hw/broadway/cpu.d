@@ -50,7 +50,7 @@ final class Broadway {
 
     // returns the number of instructions executed
     public u32 run() {
-        log_state();
+        // log_state();
         return jit.run(&state);
     }
 

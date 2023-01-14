@@ -13,6 +13,7 @@ import emu.hw.disk.readers.wbfs;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
+import emu.hw.si.si;
 import emu.hw.vi.vi;
 import ui.device;
 import util.array;
@@ -26,10 +27,12 @@ final class Wii {
 
     private CommandProcessor command_processor;
     private VideoInterface   video_interface;
+    private SerialInterface  serial_interface;
 
     this() {
         this.command_processor = new CommandProcessor();
         this.video_interface   = new VideoInterface();
+        this.serial_interface  = new SerialInterface();
 
         this.mem               = new Mem();
         this.broadway          = new Broadway();
@@ -39,6 +42,7 @@ final class Wii {
         this.video_interface.connect_mem(this.mem);
         this.mem.connect_command_processor(this.command_processor);
         this.mem.connect_video_interface(this.video_interface);
+        this.mem.connect_serial_interface(this.serial_interface);
     }
 
     public void cycle(int num_cycles) {
@@ -55,7 +59,7 @@ final class Wii {
         this.setup_global_memory_value(wii_disk_data);
 
         WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
-        this.run_apploader(apploader);
+        this.run_apploader(apploader, wii_disk_data);
 
         size_t dol_address = wii_disk_data.read_be!u32(WII_DOL_OFFSET) << 2;
         WiiDol* dol = cast(WiiDol*) &wii_disk_data[dol_address];
@@ -75,7 +79,7 @@ final class Wii {
         this.video_interface.set_present_videobuffer_callback(&device.present_videobuffer);
     }
 
-    private void run_apploader(WiiApploader* apploader) {
+    private void run_apploader(WiiApploader* apploader, u8[] wii_disk_data) {
         log_apploader("Apploader info:");
         log_apploader("  Size:         %x", cast(s32) apploader.header.size);
         log_apploader("  Trailer size: %x", cast(s32) apploader.header.trailer_size);
@@ -88,17 +92,17 @@ final class Wii {
         this.broadway.set_gpr(1, 0x8001_0000);
 
         // arguments
-        this.broadway.set_gpr(3, 0x8000_0000);
-        this.broadway.set_gpr(4, 0x8000_0004);
-        this.broadway.set_gpr(5, 0x8000_0008);
+        this.broadway.set_gpr(3, 0x8060_0000);
+        this.broadway.set_gpr(4, 0x8060_0004);
+        this.broadway.set_gpr(5, 0x8060_0008);
 
         log_apploader("Running apploader...");
         this.broadway.set_pc(cast(u32) apploader.header.entry_point);
         this.broadway.run_until_return();
 
-        u32 init_ptr  = cast(u32) this.mem.read_be_u32(0x8000_0000);
-        u32 main_ptr  = cast(u32) this.mem.read_be_u32(0x8000_0004);
-        u32 close_ptr = cast(u32) this.mem.read_be_u32(0x8000_0008);
+        u32 init_ptr  = cast(u32) this.mem.read_be_u32(0x8060_0000);
+        u32 main_ptr  = cast(u32) this.mem.read_be_u32(0x8060_0004);
+        u32 close_ptr = cast(u32) this.mem.read_be_u32(0x8060_0008);
 
         log_apploader("Apploader entry() returned.");
         log_apploader("Apploader init  ptr = %08x", init_ptr);
@@ -112,18 +116,33 @@ final class Wii {
         log_apploader("Apploader init() returned.");
 
         do {
-            this.broadway.set_gpr(3, 0x8000_0000);
-            this.broadway.set_gpr(4, 0x8000_0004);
-            this.broadway.set_gpr(5, 0x8000_0008);
+            this.broadway.set_gpr(3, 0x8060_0000);
+            this.broadway.set_gpr(4, 0x8060_0004);
+            this.broadway.set_gpr(5, 0x8060_0008);
             this.broadway.set_pc(main_ptr);
             this.broadway.run_until_return();
+
+            // the following behavior is literally documented nowhere
+            // i only found out about this by looking at the source code for the dolphin emulator
+            // in fact, there's wrong documentation about this on the wiibrew wiki, and yagc, and
+            // i only found out that the documentation was wrong because i decompiled the apploader
+            // and found something that contradicted the documentation
+            // i'm not even kidding
+
+            u32 disk_read_dest   = cast(u32) this.mem.read_be_u32(0x8060_0000);
+            u32 disk_read_size   = cast(u32) this.mem.read_be_u32(0x8060_0004);
+            u32 disk_read_offset = cast(u32) this.mem.read_be_u32(0x8060_0008) << 2;
+            log_apploader("Apploader main() read request: dest = %08x, size = %08x, offset = %08x", disk_read_dest, disk_read_size, disk_read_offset);
+            for (int i = 0; i < disk_read_size; i++) {
+                this.mem.write_be_u8(disk_read_dest + i, wii_disk_data[disk_read_offset + i]);
+            }
             
             log_apploader("Apploader main() returned.");
         } while (this.broadway.get_gpr(3) != 0);
 
         this.broadway.set_pc(close_ptr);
         this.broadway.run_until_return();
-        log_apploader("Apploader close() returned.");
+        log_apploader("Apploader close() returned. Obtained entrypoint: %x", this.broadway.get_gpr(3));
 
         while (true) {}
     }

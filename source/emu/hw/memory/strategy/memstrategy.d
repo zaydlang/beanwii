@@ -3,6 +3,7 @@ module emu.hw.memory.strategy.memstrategy;
 import emu.hw.cp.cp;
 import emu.hw.disk.dol;
 import emu.hw.memory.strategy.slowmem.slowmem;
+import emu.hw.si.si;
 import emu.hw.vi.vi;
 import util.number;
 
@@ -25,4 +26,5 @@ interface MemStrategy {
 
     public void connect_command_processor(CommandProcessor cp);
     public void connect_video_interface(VideoInterface vi);
+    public void connect_serial_interface(SerialInterface si);
 }

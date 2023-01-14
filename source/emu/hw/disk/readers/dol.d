@@ -24,7 +24,7 @@ final class DolReader : FileReader {
         }
 
         WiiDolHeader* dol_header = cast(WiiDolHeader*) file_data.ptr;
-        
+
         for (int i = 0; i < WII_DOL_NUM_TEXT_SECTIONS; i++) {
             u32 section_offset  = cast(u32) dol_header.text_offset[i];
             u32 section_address = cast(u32) dol_header.text_address[i];
