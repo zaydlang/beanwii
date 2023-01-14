@@ -17,7 +17,8 @@ import util.number;
 final class SlowMem : MemStrategy {
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
-    private u8[] mem1;
+    // TODO: temporary public
+    public u8[] mem1;
     private u8[] mem2;
     private u8[] hle_trampoline;
 

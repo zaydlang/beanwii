@@ -329,6 +329,15 @@ private void emit_lwzx(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, ir.read_u32(address));
 }
 
+private void emit_mfmsr(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+
+    assert(opcode.bit(0) == 0);
+    assert(opcode.bits(11, 20) == 0b00000_00000);
+
+    ir.set_reg(rd, ir.get_reg(GuestReg.MSR));
+}
+
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
     int spr     = opcode.bits(11, 20);
@@ -343,6 +352,15 @@ private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     // if (spr == 8) src = GuestReg.CTR;
 
     ir.set_reg(rd, ir.get_reg(src));
+}
+
+private void emit_mtmsr(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+
+    assert(opcode.bit(0) == 0);
+    assert(opcode.bits(11, 20) == 0b00000_00000);
+
+    ir.set_reg(GuestReg.MSR, ir.get_reg(rs));
 }
 
 private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
@@ -396,6 +414,16 @@ private void emit_ori(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ir.get_reg(rs) | uimm;
     ir.set_reg(ra, result);
 }
+
+private void emit_oris(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    int uimm = opcode.bits(0, 15) << 16;
+
+    IRVariable result = ir.get_reg(rs) | uimm;
+    ir.set_reg(ra, result);
+}
+
 
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
@@ -587,7 +615,7 @@ private void emit_op_13(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp13SecondaryOpcode.CRXOR: emit_crxor(ir, opcode, pc); break;
         case PrimaryOp13SecondaryOpcode.ISYNC: emit_isync(ir, opcode, pc); break;
 
-        default: error_jit("Unimplemented opcode: %x", opcode);
+        default: unimplemented_opcode(opcode, pc);
     }
 }
 
@@ -605,7 +633,9 @@ private void emit_op_1F(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp1FSecondaryOpcode.HLE:    emit_hle   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ICBI:   emit_icbi  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.LWZX:   emit_lwzx  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MFMSR:  emit_mfmsr (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR:  emit_mfspr (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.MTMSR:  emit_mtmsr (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR:  emit_mtspr (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.NOR:    emit_nor   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.OR:     emit_or    (ir, opcode, pc); break;
@@ -616,7 +646,7 @@ private void emit_op_1F(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp1FSecondaryOpcode.SYNC:   emit_sync  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.XOR:    emit_xor   (ir, opcode, pc); break;
 
-        default: error_jit("Unimplemented opcode: %x", opcode);
+        default: unimplemented_opcode(opcode, pc);
     }
 }
 
@@ -637,6 +667,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, pc); break;
         case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, pc); break;
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
+        case PrimaryOpcode.ORIS:   emit_oris  (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.SC:     emit_sc    (ir, opcode, pc); break;
         case PrimaryOpcode.STB:    emit_stb   (ir, opcode, pc); break;
@@ -648,6 +679,18 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.OP_13:  emit_op_13 (ir, opcode, pc); break;
         case PrimaryOpcode.OP_1F:  emit_op_1F (ir, opcode, pc); break;
 
-        default: error_jit("Unimplemented opcode: %x", opcode);
+        default: unimplemented_opcode(opcode, pc);
     }
+}
+
+private void unimplemented_opcode(u32 opcode, u32 pc) {
+    import capstone;
+
+    auto cs = create(Arch.ppc, ModeFlags(Mode.bit32));
+    auto res = cs.disasm((cast(ubyte*) &opcode)[0 .. 4], pc);
+    foreach (instr; res) {
+        log_jit("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
+    }
+
+    error_jit("Unimplemented opcode: %x", opcode);
 }

@@ -40,6 +40,7 @@ enum GuestReg {
     CR,
     XER,
     CTR,
+    MSR,
 
     LR,
     PC,

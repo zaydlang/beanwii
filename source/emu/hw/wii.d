@@ -60,10 +60,6 @@ final class Wii {
 
         WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
         this.run_apploader(apploader, wii_disk_data);
-
-        size_t dol_address = wii_disk_data.read_be!u32(WII_DOL_OFFSET) << 2;
-        WiiDol* dol = cast(WiiDol*) &wii_disk_data[dol_address];
-        this.load_dol(dol);
     }
 
     public void load_dol(WiiDol* dol) {
@@ -144,7 +140,12 @@ final class Wii {
         this.broadway.run_until_return();
         log_apploader("Apploader close() returned. Obtained entrypoint: %x", this.broadway.get_gpr(3));
 
-        while (true) {}
+        u32 entrypoint = this.broadway.get_gpr(3);
+        assert(entrypoint != 0);
+        this.broadway.set_pc(entrypoint);
+
+        import util.dump;
+        dump(this.mem.mem1, "mem1.bin");
     }
 
     private void setup_global_memory_value(u8[] wii_disk_data) {
