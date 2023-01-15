@@ -119,7 +119,7 @@ final class RegisterAllocator {
         for (int i = 0; i < NUM_HOST_REGS; i++) {
             // pls dont clobber the stack pointer
             static if (is(HostReg_x86_64 == HostReg_x86_64)) {
-                if (bindings[i].host_reg == HostReg_x86_64.ESP || bindings[i].host_reg == HostReg_x86_64.EDI) continue;
+                if (bindings[i].host_reg == HostReg_x86_64.RSP || bindings[i].host_reg == HostReg_x86_64.RDI) continue;
             }
 
             if (bindings[i].unbound()) {

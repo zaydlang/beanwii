@@ -10,9 +10,9 @@ import util.log;
 import util.number;
 
 private void emit_add(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     oe = opcode.bit(10);
     bool     rc = opcode.bit(0);
 
@@ -24,8 +24,8 @@ private void emit_add(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_addi(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm = sext_32(opcode.bits(0, 15), 16);
 
     if (ra == 0) {
@@ -37,9 +37,9 @@ private void emit_addi(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_addic(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
 
     emit_add_generic(
         ir,
@@ -51,8 +51,8 @@ private void emit_addic(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_addic_(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd   = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra   = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd   = to_gpr(opcode.bits(21, 25));
+    GuestReg ra   = to_gpr(opcode.bits(16, 20));
     int      simm = sext_32(opcode.bits(0, 15), 16);
 
     emit_add_generic(
@@ -65,8 +65,8 @@ private void emit_addic_(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_addis(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm = opcode.bits(0, 15); // no need to sext cuz it gets shifted by 16
 
     if (ra == 0) {
@@ -147,8 +147,8 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_cntlzw(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
 
     assert(opcode.bits(11, 15) == 0);
 
@@ -157,8 +157,8 @@ private void emit_cntlzw(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_cmp(IR* ir, u32 opcode, u32 pc) {
     int crf_d = opcode.bits(23, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
 
     assert(opcode.bit(0)  == 0);
     assert(opcode.bit(21) == 0);
@@ -178,8 +178,8 @@ private void emit_cmp(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_cmpl(IR* ir, u32 opcode, u32 pc) {
     int crf_d = opcode.bits(23, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
 
     assert(opcode.bit(0)  == 0);
     assert(opcode.bit(21) == 0);
@@ -204,7 +204,7 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
     assert(opcode.bit(21) == 0);
     assert(opcode.bit(22) == 0);
 
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     IRVariable a = ir.get_reg(ra);
 
     emit_cmp_generic(
@@ -218,7 +218,7 @@ private void emit_cmpli(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_cmpi(IR* ir, u32 opcode, u32 pc) {
     int crf_d    = opcode.bits(23, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm    = sext_32(opcode.bits(0, 15), 16);
 
     assert(opcode.bit(21) == 0);
@@ -276,8 +276,8 @@ private void emit_isync(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
     assert(ra != 0);
@@ -288,9 +288,17 @@ private void emit_lbzu(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(ra, address);
 }
 
+private void emit_lfd(IR* ir, u32 opcode, u32 pc) {
+    // GuestReg rd = to_fpr(opcode.bits(21, 25));
+    // GuestReg ra = to_gpr(opcode.bits(16, 20));
+    // int d       = sext_32(opcode.bits(0, 15));
+
+    // ir.read_u64(rd, ir.get_reg(ra));
+}
+
 private void emit_lhz(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
@@ -299,8 +307,8 @@ private void emit_lhz(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
@@ -309,8 +317,8 @@ private void emit_lwz(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
@@ -320,9 +328,9 @@ private void emit_lwzu(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_lwzx(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + ir.get_reg(rb);
@@ -330,7 +338,7 @@ private void emit_lwzx(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_mfmsr(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
 
     assert(opcode.bit(0) == 0);
     assert(opcode.bits(11, 20) == 0b00000_00000);
@@ -339,23 +347,24 @@ private void emit_mfmsr(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
     int spr     = opcode.bits(11, 20);
 
     assert(opcode.bit(0) == 0);
 
-    assert(spr == 0b1000_00000);
+    // assert(spr == 0b1000_00000);
 
     GuestReg src;
     // if (spr == 1) src = GuestReg.XER;
     if (spr == 0b100000000) src = GuestReg.LR;
+    else unimplemented_opcode(opcode, pc);
     // if (spr == 8) src = GuestReg.CTR;
 
     ir.set_reg(rd, ir.get_reg(src));
 }
 
 private void emit_mtmsr(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
 
     assert(opcode.bit(0) == 0);
     assert(opcode.bits(11, 20) == 0b00000_00000);
@@ -364,7 +373,7 @@ private void emit_mtmsr(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
     int spr     = opcode.bits(11, 20);
 
     assert(opcode.bit(0) == 0);
@@ -383,9 +392,9 @@ private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_nor(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(rc == 0);
@@ -395,9 +404,9 @@ private void emit_nor(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_or(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(rc == 0);
@@ -407,8 +416,8 @@ private void emit_or(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_ori(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15);
 
     IRVariable result = ir.get_reg(rs) | uimm;
@@ -416,18 +425,17 @@ private void emit_ori(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_oris(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15) << 16;
 
     IRVariable result = ir.get_reg(rs) | uimm;
     ir.set_reg(ra, result);
 }
 
-
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
     int      mb = 31 - opcode.bits(6, 10);
     int      me = 31 - opcode.bits(1, 5);
@@ -454,9 +462,9 @@ private void emit_sc(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_slw(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(rc == 0);
@@ -474,9 +482,9 @@ private void emit_slw(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     // 7c831e30 
@@ -496,9 +504,9 @@ private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_srw(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(rc == 0);
@@ -515,8 +523,8 @@ private void emit_srw(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_stb(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
 
     assert(ra != 0);
@@ -528,8 +536,8 @@ private void emit_stb(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_stbu(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
 
     assert(ra != 0);
@@ -542,8 +550,8 @@ private void emit_stbu(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_sth(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
 
     
@@ -555,8 +563,8 @@ private void emit_sth(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_stw(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
 
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
@@ -566,8 +574,8 @@ private void emit_stw(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
 
     assert(ra != 0);
@@ -580,9 +588,9 @@ private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_subf(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(!rc);
@@ -596,9 +604,9 @@ private void emit_sync(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_xor(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = cast(GuestReg) opcode.bits(21, 25);
-    GuestReg ra = cast(GuestReg) opcode.bits(16, 20);
-    GuestReg rb = cast(GuestReg) opcode.bits(11, 15);
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
     assert(!rc);

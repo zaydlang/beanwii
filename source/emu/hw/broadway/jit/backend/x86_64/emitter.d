@@ -156,18 +156,18 @@ final class Code : CodeGenerator {
 
     void emit_GET_REG(IRInstructionGetReg ir_instruction, int current_instruction_index) {
         GuestReg guest_reg = ir_instruction.src;
-        HostReg_x86_64 host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
 
         int offset = cast(int) BroadwayState.gprs.offsetof + 4 * guest_reg;
-        mov(host_reg.to_xbyak_reg32(), dword [rdi + offset]);
+        mov(host_reg.cvt32(), dword [rdi + offset]);
     }
 
     void emit_SET_REG_VAR(IRInstructionSetRegVar ir_instruction, int current_instruction_index) {
         GuestReg dest_reg = ir_instruction.dest;
-        Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg32();
+        Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg64();
         
         int offset = cast(int) BroadwayState.gprs.offsetof + 4 * dest_reg;
-        mov(dword [rdi + offset], src_reg);
+        mov(dword [rdi + offset], src_reg.cvt32());
 
         register_allocator.maybe_unbind_variable(ir_instruction.src, current_instruction_index);
     }
@@ -180,8 +180,8 @@ final class Code : CodeGenerator {
     }
 
     void emit_BINARY_DATA_OP_IMM(IRInstructionBinaryDataOpImm ir_instruction, int current_instruction_index) {
-        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
-        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1).to_xbyak_reg32();
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
+        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1).to_xbyak_reg64();
         int src2     = ir_instruction.src2;
         
         switch (ir_instruction.op) {
@@ -244,84 +244,84 @@ final class Code : CodeGenerator {
         
         switch (ir_instruction.op) {
             case IRBinaryDataOp.AND:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                and(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                and(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 break;
             
             case IRBinaryDataOp.ORR:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                or (dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                or (dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 break;
             
             case IRBinaryDataOp.LSL:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                shl(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                shl(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.LSR:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                shr(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                shr(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.ASR:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                sar(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                sar(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.ADD:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                add(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                add(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 break;
             
             case IRBinaryDataOp.SUB:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                sub(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                sub(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 break;
             
             case IRBinaryDataOp.XOR:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                xor(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                xor(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 break;
             
             case IRBinaryDataOp.ROL:
-                mov(dest_reg.to_xbyak_reg32(), src1.to_xbyak_reg32());
-                rol(dest_reg.to_xbyak_reg32(), src2.to_xbyak_reg8());
+                mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
+                rol(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.GTU:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 seta(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.LTU:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 setb(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.GTS:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 setg(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.LTS:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 setl(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.EQ:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 sete(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             case IRBinaryDataOp.NE:
-                cmp(src1.to_xbyak_reg32(), src2.to_xbyak_reg32());
+                cmp(src1.to_xbyak_reg64(), src2.to_xbyak_reg64());
                 setne(dest_reg.to_xbyak_reg8());
-                movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+                movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
                 break;
             
             default: assert(0);
@@ -333,8 +333,8 @@ final class Code : CodeGenerator {
     }
 
     void emit_UNARY_DATA_OP(IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
-        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
-        Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg32();
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
+        Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg64();
 
         bool unbound_src = false;
 
@@ -369,7 +369,7 @@ final class Code : CodeGenerator {
     }
 
     void emit_SET_VAR_IMM(IRInstructionSetVarImm ir_instruction, int current_instruction_index) {
-        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
         mov(dest_reg, ir_instruction.imm);
     }
 
@@ -377,8 +377,8 @@ final class Code : CodeGenerator {
         // TODO: optimize this instead of just spilling all registers    
         emit_push_caller_save_regs();
 
-        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg32();
-        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg64();
+        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
 
         push(rsi);
         push(rdi);
@@ -390,12 +390,12 @@ final class Code : CodeGenerator {
         mov(rdi, cast(u64) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
-            case 4: mov(rax, cast(u64) config.read_handler32); break;
-            case 2: mov(rax, cast(u64) config.read_handler16); break;
-            case 1: mov(rax, cast(u64) config.read_handler8);  break;
+            case 4: mov(r10, cast(u64) config.read_handler32); break;
+            case 2: mov(r10, cast(u64) config.read_handler16); break;
+            case 1: mov(r10, cast(u64) config.read_handler8);  break;
         }
 
-        call(rax);
+        call(r10);
         mov(value_reg, rax);
 
         foreach (Reg reg; [rdi, rsi, r11, r10, r9, r8, rdx, rcx, rax]) {
@@ -411,8 +411,8 @@ final class Code : CodeGenerator {
         // TODO: optimize this instead of just spilling all registers    
         emit_push_caller_save_regs();
 
-        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg32();
-        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg32();
+        Reg address_reg = register_allocator.get_bound_host_reg(ir_instruction.address).to_xbyak_reg64();
+        Reg value_reg   = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
 
         push(rsi);
         push(rdi);
@@ -426,12 +426,12 @@ final class Code : CodeGenerator {
         mov(rdi, cast(u64) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
-            case 4: mov(rax, cast(u64) config.write_handler32); break;
-            case 2: mov(rax, cast(u64) config.write_handler16); break;
-            case 1: mov(rax, cast(u64) config.write_handler8);  break;
+            case 4: mov(r10, cast(u64) config.write_handler32); break;
+            case 2: mov(r10, cast(u64) config.write_handler16); break;
+            case 1: mov(r10, cast(u64) config.write_handler8);  break;
         }
 
-        call(rax);
+        call(r10);
 
         pop(rdx);
         pop(rdi);
@@ -441,7 +441,7 @@ final class Code : CodeGenerator {
     }
 
     void emit_CONDITIONAL_BRANCH(IRInstructionConditionalBranch ir_instruction, int current_instruction_index) {
-        Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond).to_xbyak_reg32();
+        Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond).to_xbyak_reg64();
 
         cmp(cond_reg, 0);
         je((*ir_instruction.after_true_label).to_xbyak_label());
@@ -450,13 +450,13 @@ final class Code : CodeGenerator {
     void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
         HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         setc(dest_reg.to_xbyak_reg8());
-        movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+        movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
     }
 
     void emit_GET_HOST_OVERFLOW(IRInstructionGetHostOverflow ir_instruction, int current_instruction_index) {
         HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         seto(dest_reg.to_xbyak_reg8());
-        movzx(dest_reg.to_xbyak_reg32(), dest_reg.to_xbyak_reg8());
+        movzx(dest_reg.to_xbyak_reg64(), dest_reg.to_xbyak_reg8());
     }
 
     void emit_HLE_FUNC(IRInstructionHleFunc ir_instruction, int current_instruction_index) {
@@ -466,8 +466,8 @@ final class Code : CodeGenerator {
         // be the only IR opcode.
         mov(rdi, cast(u64) config.hle_handler_context);
         mov(rsi, ir_instruction.function_id);
-        mov(rax, cast(u64) config.hle_handler);
-        call(rax);
+        mov(r10, cast(u64) config.hle_handler);
+        call(r10);
 
         emit_pop_caller_save_regs();
     }

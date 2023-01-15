@@ -26,6 +26,8 @@ class RengMultimediaDevice : MultiMediaDevice {
     int fps;
 
     this(int screen_scale, bool full_ui) {
+        SetTraceLogLevel(TraceLogLevel.LOG_NONE);
+
         Core.target_fps = 60;
         reng_core = new RengCore(screen_scale, full_ui);
 
