@@ -13,13 +13,17 @@ alias IRInstruction = SumType!(
     IRInstructionBinaryDataOpImm,
     IRInstructionBinaryDataOpVar,
     IRInstructionUnaryDataOp,
-    IRInstructionSetVarImm,
+    IRInstructionSetVarImmInt,
+    IRInstructionSetVarImmFloat,
     IRInstructionRead,
     IRInstructionWrite,
+    IRInstructionReadSized,
     IRInstructionConditionalBranch,
     IRInstructionGetHostCarry,
     IRInstructionGetHostOverflow,
-    IRInstructionHleFunc
+    IRInstructionHleFunc,
+    IRInstructionPairedSingleMov,
+    IRInstructionDebugAssert
 );
 
 struct IR {
@@ -72,19 +76,37 @@ struct IR {
         return current_variable_id++;
     }
     
-    IRVariable generate_new_variable() {
-        return IRVariable(&this, this.generate_new_variable_id());
+    IRVariable generate_new_variable(IRVariableType type) {
+        return IRVariable(&this, this.generate_new_variable_id(), type);
     }
 
     IRVariable constant(int constant) {
-        IRVariable dest = generate_new_variable();
-        emit(IRInstructionSetVarImm(dest, constant));
+        IRVariable dest = generate_new_variable(IRVariableType.INTEGER);
+        emit(IRInstructionSetVarImmInt(dest, constant));
         
         return dest;
     }
 
+    IRVariable constant(float constant) {
+        IRVariable dest = generate_new_variable(IRVariableType.FLOAT);
+        emit(IRInstructionSetVarImmFloat(dest, constant));
+        
+        return dest;
+    }
+
+    IRVariable read_sized(IRVariable address, IRVariable size) {
+        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+
+        address.update_lifetime();
+        size.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionReadSized(value, address, size));
+
+        return value;
+    }
+
     IRVariable read_u8(IRVariable address) {
-        IRVariable value = generate_new_variable();
+        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
 
         address.update_lifetime();
         value.update_lifetime();
@@ -94,7 +116,7 @@ struct IR {
     }
 
     IRVariable read_u16(IRVariable address) {
-        IRVariable value = generate_new_variable();
+        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
 
         address.update_lifetime();
         value.update_lifetime();
@@ -104,7 +126,7 @@ struct IR {
     }
 
     IRVariable read_u32(IRVariable address) {
-        IRVariable value = generate_new_variable();
+        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
         
         address.update_lifetime();
         value.update_lifetime();
@@ -129,7 +151,8 @@ struct IR {
     }
 
     IRVariable get_reg(GuestReg reg) {
-        IRVariable variable = generate_new_variable();
+        IRVariableType type = get_variable_type_from_guest_reg(reg);
+        IRVariable variable = generate_new_variable(type);
         emit(IRInstructionGetReg(variable, reg));
 
         if (reg == GuestReg.PC) {
@@ -171,13 +194,13 @@ struct IR {
     }
 
     IRVariable get_carry() {
-        IRVariable carry = generate_new_variable();
+        IRVariable carry = generate_new_variable(IRVariableType.INTEGER);
         this.emit(IRInstructionGetHostCarry(carry));
         return carry;
     }
 
     IRVariable get_overflow() {
-        IRVariable overflow = generate_new_variable();
+        IRVariable overflow = generate_new_variable(IRVariableType.INTEGER);
         this.emit(IRInstructionGetHostOverflow(overflow));
         return overflow;
     }
@@ -194,6 +217,11 @@ struct IR {
 
     size_t get_lifetime_end(int variable_id) {
         return variable_lifetimes[variable_id];
+    }
+
+    void debug_assert(IRVariable condition) {
+        condition.update_lifetime();
+        emit(IRInstructionDebugAssert(condition));
     }
 
     void pretty_print_instruction(IRInstruction instruction) {
@@ -222,8 +250,12 @@ struct IR {
                 log_ir("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
             },
 
-            (IRInstructionSetVarImm i) {
+            (IRInstructionSetVarImmInt i) {
                 log_ir("ld  v%d, %x", i.dest.get_id(), i.imm);
+            },
+
+            (IRInstructionSetVarImmFloat i) {
+                log_ir("ld  v%d, %f", i.dest.get_id(), i.imm);
             },
 
             (IRInstructionRead i) {
@@ -262,8 +294,36 @@ struct IR {
 
             (IRInstructionHleFunc i) {
                 log_ir("hle %d", i.function_id);
+            },
+
+            (IRInstructionPairedSingleMov i) {
+                log_ir("mov ps%d:%d, ps%d", i.dest.get_id(), i.index, i.src.get_id());
+            },
+
+            (IRInstructionReadSized i) {
+                log_ir("ld  v%d, [v%d] (size: %d)", i.dest.get_id(), i.address.get_id(), i.size.get_id());
+            },
+
+            (IRInstructionDebugAssert i) {
+                log_ir("assert v%d", i.cond.get_id());
             }
         );
+    }
+}
+
+enum IRVariableType {
+    INTEGER,
+    FLOAT,
+    PAIRED_SINGLE
+}
+
+private IRVariableType get_variable_type_from_guest_reg(GuestReg guest_reg) {
+    switch (guest_reg) {
+        case GuestReg.PS0: .. case GuestReg.PS31: return IRVariableType.PAIRED_SINGLE;
+        case GuestReg.F0:  .. case GuestReg.F31:  return IRVariableType.FLOAT;
+
+        default: 
+            return IRVariableType.INTEGER;
     }
 }
 
@@ -276,15 +336,18 @@ struct IRVariable {
     private int variable_id;
     private IR* ir;
 
+    private IRVariableType type;
+
     @disable this();
 
-    this(IR* ir, int variable_id) {
+    this(IR* ir, int variable_id, IRVariableType type) {
         this.variable_id = variable_id;
         this.ir          = ir;
+        this.type        = type;
     }
 
     IRVariable opBinary(string s)(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         IRBinaryDataOp op = get_binary_data_op!s;
 
@@ -298,7 +361,7 @@ struct IRVariable {
     }
 
     IRVariable opBinary(string s)(int other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         IRBinaryDataOp op = get_binary_data_op!s;
 
@@ -310,8 +373,21 @@ struct IRVariable {
         return dest;
     }
 
+    void opIndexAssign(IRVariable other, size_t index) {
+        assert(this.type  == IRVariableType.PAIRED_SINGLE);
+        assert(other.type == IRVariableType.FLOAT);
+        assert(index < 2);
+
+        this.variable_id = ir.generate_new_variable_id();
+
+        this.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionPairedSingleMov(this, other, cast(int) index));
+    }
+
     public IRVariable greater_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -323,7 +399,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -335,7 +411,7 @@ struct IRVariable {
     }
 
     public IRVariable greater_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -347,7 +423,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -359,7 +435,7 @@ struct IRVariable {
     }
 
     public IRVariable equals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -371,7 +447,7 @@ struct IRVariable {
     }
 
     public IRVariable notequals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -381,27 +457,6 @@ struct IRVariable {
 
         return dest;
     }
-
-    // TODO: figure out how to make this work
-    // @disable IRVariable opBinaryRight(string s)(IRVariable other);
-    // @disable IRVariable opBinaryRight(string s)(int other);
-    
-    // IRVariable opBinaryRight(string s)(IRVariable other) {
-    //     return other.opBinary!s(this);
-    // }
-
-    // IRVariable opBinaryRight(string s)(int other) {
-    //     return this.opBinary!s(other);
-    // }
-
-    // void opOpAssign(string s)(IRVariable other) {
-
-    // }
-
-    // void opOpAssign(string s)(int other) {
-    //     this.variable_id = ir.generate_new_variable_id();
-    //     ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, this, rhs));
-    // }
     
     void opAssign(IRVariable rhs) {
         this.variable_id = ir.generate_new_variable_id();
@@ -413,7 +468,7 @@ struct IRVariable {
     }
 
     IRVariable opUnary(string s)() {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         IRUnaryDataOp op = get_unary_data_op!s;
 
@@ -428,7 +483,7 @@ struct IRVariable {
     IRVariable rol(int amount) {
         assert(0 <= amount && amount <= 31);
 
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
         
         this.update_lifetime();
         dest.update_lifetime();
@@ -439,12 +494,25 @@ struct IRVariable {
     }
 
     IRVariable clz() {
-        IRVariable dest = ir.generate_new_variable();
+        IRVariable dest = ir.generate_new_variable(this.type);
 
         this.update_lifetime();
         dest.update_lifetime();
 
         ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest, this));
+
+        return dest;
+    }
+
+    IRVariable interpret_as_float() {
+        assert(this.type == IRVariableType.INTEGER);
+
+        IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT, dest, this));
 
         return dest;
     }
@@ -532,9 +600,14 @@ struct IRInstructionSetRegImm {
     u32 imm;
 }
 
-struct IRInstructionSetVarImm {
+struct IRInstructionSetVarImmInt {
     IRVariable dest;
     u32 imm;
+}
+
+struct IRInstructionSetVarImmFloat {
+    IRVariable dest;
+    float imm;
 }
 
 struct IRInstructionRead {
@@ -547,6 +620,12 @@ struct IRInstructionWrite {
     IRVariable dest;
     IRVariable address;
     int size;
+}
+
+struct IRInstructionReadSized {
+    IRVariable dest;
+    IRVariable address;
+    IRVariable size;
 }
 
 struct IRInstructionConditionalBranch {
@@ -564,4 +643,14 @@ struct IRInstructionGetHostOverflow {
 
 struct IRInstructionHleFunc {
     int function_id;
+}
+
+struct IRInstructionPairedSingleMov {
+    IRVariable dest;
+    IRVariable src;
+    int index;
+}
+
+struct IRInstructionDebugAssert {
+    IRVariable cond;
 }

@@ -69,7 +69,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        // ir.pretty_print();
+        ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -145,13 +145,13 @@ final class Code : CodeGenerator {
     }
 
     void emit_pop_caller_save_regs() {
-        pop(rax);
-        pop(rcx);
-        pop(rdx);
-        pop(r8);
-        pop(r9);
-        pop(r10);
         pop(r11);
+        pop(r10);
+        pop(r9);
+        pop(r8);
+        pop(rdx);
+        pop(rcx);
+        pop(rax);
     }
 
     void emit_GET_REG(IRInstructionGetReg ir_instruction, int current_instruction_index) {
@@ -357,8 +357,8 @@ final class Code : CodeGenerator {
                 mov(dest_reg, src_reg);
                 bsf(dest_reg, dest_reg);
                 break;
-
-            default: break;
+            
+            default: assert(0);
         }
 
         register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
@@ -368,9 +368,13 @@ final class Code : CodeGenerator {
         }
     }
 
-    void emit_SET_VAR_IMM(IRInstructionSetVarImm ir_instruction, int current_instruction_index) {
+    void emit_SET_VAR_IMM_INT(IRInstructionSetVarImmInt ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
         mov(dest_reg, ir_instruction.imm);
+    }
+
+    void emit_SET_VAR_IMM_FLOAT(IRInstructionSetVarImmFloat ir_instruction, int current_instruction_index) {
+        assert(0);
     }
 
     void emit_READ(IRInstructionRead ir_instruction, int current_instruction_index) {
@@ -440,6 +444,10 @@ final class Code : CodeGenerator {
         emit_pop_caller_save_regs();
     }
 
+    void emit_READ_SIZED(IRInstructionReadSized ir_instruction, int current_instruction_index) {
+        assert(0);
+    }
+
     void emit_CONDITIONAL_BRANCH(IRInstructionConditionalBranch ir_instruction, int current_instruction_index) {
         Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond).to_xbyak_reg64();
 
@@ -472,6 +480,14 @@ final class Code : CodeGenerator {
         emit_pop_caller_save_regs();
     }
 
+    void emit_PAIRED_SINGLE_MOV(IRInstructionPairedSingleMov ir_instruction, int current_instruction_index) {
+        assert(0);
+    }
+
+    void emit_DEBUG_ASSERT(IRInstructionDebugAssert ir_instruction, int current_instruction_index) {
+        assert(0);
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
             (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
@@ -480,13 +496,17 @@ final class Code : CodeGenerator {
             (IRInstructionBinaryDataOpImm i)   => emit_BINARY_DATA_OP_IMM(i, current_instruction_index),
             (IRInstructionBinaryDataOpVar i)   => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
             (IRInstructionUnaryDataOp i)       => emit_UNARY_DATA_OP(i, current_instruction_index),
-            (IRInstructionSetVarImm i)         => emit_SET_VAR_IMM(i, current_instruction_index),
+            (IRInstructionSetVarImmInt i)      => emit_SET_VAR_IMM_INT(i, current_instruction_index),
+            (IRInstructionSetVarImmFloat i)    => emit_SET_VAR_IMM_FLOAT(i, current_instruction_index),
             (IRInstructionRead i)              => emit_READ(i, current_instruction_index),
             (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),
+            (IRInstructionReadSized i)         => emit_READ_SIZED(i, current_instruction_index),
             (IRInstructionConditionalBranch i) => emit_CONDITIONAL_BRANCH(i, current_instruction_index),
             (IRInstructionGetHostCarry i)      => emit_GET_HOST_CARRY(i, current_instruction_index),
             (IRInstructionGetHostOverflow i)   => emit_GET_HOST_OVERFLOW(i, current_instruction_index),
-            (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index)
+            (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index),
+            (IRInstructionPairedSingleMov i)   => emit_PAIRED_SINGLE_MOV(i, current_instruction_index),
+            (IRInstructionDebugAssert i)       => emit_DEBUG_ASSERT(i, current_instruction_index),
         );
     }
 

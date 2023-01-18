@@ -25,7 +25,8 @@ enum IRUnaryDataOp {
     NOT,
     NEG,
     MOV,
-    CLZ
+    CLZ,
+    FLT
 }
 
 string to_string(IRBinaryDataOp op) {

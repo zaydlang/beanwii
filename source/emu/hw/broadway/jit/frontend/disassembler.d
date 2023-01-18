@@ -4,7 +4,6 @@ import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.frontend.opcode;
 import emu.hw.broadway.jit.ir.ir;
-import std.sumtype;
 import util.bitop;
 import util.log;
 import util.number;
@@ -348,18 +347,13 @@ private void emit_mfmsr(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_mfspr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
-    int spr     = opcode.bits(11, 20);
+    int spr     = opcode.bits(11, 15) << 5 | opcode.bits(16, 20);
 
     assert(opcode.bit(0) == 0);
 
     // assert(spr == 0b1000_00000);
 
-    GuestReg src;
-    // if (spr == 1) src = GuestReg.XER;
-    if (spr == 0b100000000) src = GuestReg.LR;
-    else unimplemented_opcode(opcode, pc);
-    // if (spr == 8) src = GuestReg.CTR;
-
+    GuestReg src = get_spr_from_encoding(spr);
     ir.set_reg(rd, ir.get_reg(src));
 }
 
@@ -374,20 +368,11 @@ private void emit_mtmsr(IR* ir, u32 opcode, u32 pc) {
 
 private void emit_mtspr(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
-    int spr     = opcode.bits(11, 20);
+    int spr     = opcode.bits(11, 15) << 5 | opcode.bits(16, 20);
 
     assert(opcode.bit(0) == 0);
-
-    assert(
-        spr == 0b1000_00000 ||
-        spr == 0b1001_00000
-    );
-
-    GuestReg src;
-    // if (spr == 1) src = GuestReg.XER;
-    if (spr == 0b100000000) src = GuestReg.LR;
-    if (spr == 0b100100000) src = GuestReg.CTR;
-
+    
+    GuestReg src = get_spr_from_encoding(spr);
     ir.set_reg(src, ir.get_reg(rd));
 }
 
@@ -583,8 +568,8 @@ private void emit_stwu(IR* ir, u32 opcode, u32 pc) {
     IRVariable address = ir.get_reg(ra);
     address = address + sext_32(offset, 16);
 
-    ir.set_reg(ra, address);
     ir.write_u32(address, ir.get_reg(rs));
+    ir.set_reg(ra, address);
 }
 
 private void emit_subf(IR* ir, u32 opcode, u32 pc) {
@@ -700,5 +685,5 @@ private void unimplemented_opcode(u32 opcode, u32 pc) {
         log_jit("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
     }
 
-    error_jit("Unimplemented opcode: %x", opcode);
+    error_jit("Unimplemented opcode: 0x%08x (at PC 0x%08x)", opcode, pc);
 }

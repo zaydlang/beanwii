@@ -56,6 +56,10 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         writefln(written_string);
 
         if (fatal) {
+            if (g_on_error_callback !is null) {
+                g_on_error_callback();
+            }
+            
             auto trace = defaultTraceHandler(null);
             foreach (line; trace) {
                 printf("%.*s\n", cast(int) line.length, line.ptr);
@@ -64,6 +68,13 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
             exit(-1);
         }
     }
+}
+
+alias OnErrorCallback = void function();
+__gshared OnErrorCallback g_on_error_callback;
+
+public void set_logger_on_error_callback(OnErrorCallback on_error_callback) {
+    g_on_error_callback = on_error_callback;
 }
 
 static string pad_string_right(string s, ulong pad)() {

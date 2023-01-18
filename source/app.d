@@ -12,11 +12,21 @@ import ui.runner;
 import util.file;
 import util.log;
 
+
+// TODO: i really hate this construct. how to make this cleaner?
+__gshared Wii wii;
+void logger_on_error_callback(){
+	wii.on_error();
+}
+
 void main(string[] args) {
 	CliArgs cli_args = parse_cli_args(args);
 	auto disk_data = load_file_as_bytes(cli_args.rom_path);
 
-	Wii wii = new Wii();
+	wii = new Wii(cli_args.ringbuffer_size);
+	
+    set_logger_on_error_callback(&logger_on_error_callback);
+
 	parse_and_load_file(wii, disk_data);
 	
 	auto reng = new RengMultimediaDevice(1, false);

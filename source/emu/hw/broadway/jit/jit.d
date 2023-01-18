@@ -9,6 +9,7 @@ import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import util.log;
 import util.number;
+import util.ringbuffer;
 
 alias ReadHandler  = u32 function(u32 address);
 alias WriteHandler = void function(u32 address, u32 value);
@@ -28,8 +29,14 @@ struct JitConfig {
 }
 
 final class Jit {
+    private struct DebugState {
+        BroadwayState state;
+        u32 instruction;
+    }
+
     private alias JitFunction = void function(BroadwayState* state);
     private alias JitHashMap = khash!(u32, JitFunction);
+    private alias DebugRing  = RingBuffer!(DebugState);
 
     private Mem         mem;
     private Code        code;
@@ -37,8 +44,9 @@ final class Jit {
     private JitHashMap* jit_hash_map;
 
     private Capstone    capstone;
+    private DebugRing   debug_ring;
 
-    this(JitConfig config, Mem mem) {
+    this(JitConfig config, Mem mem, size_t ringbuffer_size) {
         this.mem          = mem;
         
         this.code         = new Code(config);
@@ -46,6 +54,7 @@ final class Jit {
         this.jit_hash_map = new JitHashMap();
 
         this.capstone     = create(Arch.ppc, ModeFlags(Mode.bit32));
+        this.debug_ring   = new DebugRing(ringbuffer_size);
         
         this.ir.setup();
     }
@@ -66,7 +75,7 @@ final class Jit {
             ir.reset();
 
             u32 instruction = fetch(state);
-            // log_instruction(instruction, state.pc);
+            log_instruction(instruction, state.pc);
 
             emit(ir, instruction, state.pc);
 
@@ -76,11 +85,11 @@ final class Jit {
             JitFunction generated_function = cast(JitFunction) code.getCode();
 
             // if (instruction == 0x7c831e30) {
-                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-                // foreach (instr; res) {
-                //     log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                // }
+                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
+                foreach (instr; res) {
+                    log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                }
 
                 // error_jit("jit");
             // }
@@ -90,6 +99,8 @@ final class Jit {
             state.pc += 4;
             generated_function(state);
 
+            this.debug_ring.add(DebugState(*state, instruction));
+
             return 1;
         }
     }
@@ -98,6 +109,17 @@ final class Jit {
         auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
         foreach (instr; res) {
             log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
+        }
+    }
+
+    public void on_error() {
+        this.dump_debug_ring();
+    }
+
+    private void dump_debug_ring() {
+        foreach (debug_state; this.debug_ring.get()) {
+            log_instruction(debug_state.instruction, debug_state.state.pc - 4);
+            log_state(&debug_state.state);
         }
     }
 }

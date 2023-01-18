@@ -131,3 +131,25 @@ public void emit_set_xer_ca(IR* ir, IRVariable value) {
     xer = xer |   (value << 2);
     ir.set_reg(GuestReg.XER, xer);
 }
+
+public GuestReg get_spr_from_encoding(int encoding) {
+    switch (encoding) {
+        case 9:    return GuestReg.CTR;
+        case 8:    return GuestReg.LR;
+        case 1:    return GuestReg.XER;
+        case 912:  return GuestReg.GQR0;
+        case 913:  return GuestReg.GQR1;
+        case 914:  return GuestReg.GQR2;
+        case 915:  return GuestReg.GQR3;
+        case 916:  return GuestReg.GQR4;
+        case 917:  return GuestReg.GQR5;
+        case 918:  return GuestReg.GQR6;
+        case 919:  return GuestReg.GQR7;
+        case 1008: return GuestReg.HID0;
+        case 920:  return GuestReg.HID2;
+
+        default: 
+            error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);
+            assert(0);
+    }
+}

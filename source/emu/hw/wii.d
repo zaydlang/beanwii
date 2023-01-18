@@ -29,13 +29,13 @@ final class Wii {
     private VideoInterface   video_interface;
     private SerialInterface  serial_interface;
 
-    this() {
+    this(size_t ringbuffer_size) {
         this.command_processor = new CommandProcessor();
         this.video_interface   = new VideoInterface();
         this.serial_interface  = new SerialInterface();
 
         this.mem               = new Mem();
-        this.broadway          = new Broadway();
+        this.broadway          = new Broadway(ringbuffer_size);
         this.hollywood         = new Hollywood();
 
         this.broadway.connect_mem(this.mem);
@@ -209,5 +209,9 @@ final class Wii {
         this.mem.write_be_u32(0x8000_3198, 0xDEADBEEF);
 
         this.mem.write_be_u8 (0x8000_319C, 0x80); // Single-layer 
+    }
+
+    public void on_error() {
+        broadway.on_error();
     }
 }

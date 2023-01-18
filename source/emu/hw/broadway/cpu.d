@@ -14,6 +14,12 @@ final class Broadway {
     private Jit           jit;
     private HleContext    hle_context;
 
+    private size_t        ringbuffer_size;
+
+    public this(size_t ringbuffer_size) {
+        this.ringbuffer_size = ringbuffer_size;
+    }
+
     public void connect_mem(Mem mem) {
         this.mem = mem;
         this.hle_context = new HleContext(&this.mem);
@@ -28,7 +34,7 @@ final class Broadway {
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(void*) this.mem,
             cast(void*) this
-        ), mem);
+        ), mem, ringbuffer_size);
     }
 
     public void reset() {
@@ -36,10 +42,12 @@ final class Broadway {
             state.gprs[i] = 0;
         }
 
-        state.cr  = 0;
-        state.xer = 0;
-        state.ctr = 0;
-        state.msr = 0;
+        state.cr   = 0;
+        state.xer  = 0;
+        state.ctr  = 0;
+        state.msr  = 0;
+        state.hid0 = 0;
+        state.hid2 = 0;
 
         state.pc  = 0;
         state.lr  = 0;
@@ -51,7 +59,7 @@ final class Broadway {
 
     // returns the number of instructions executed
     public u32 run() {
-        // log_state();
+        log_state(&state);
         return jit.run(&state);
     }
 
@@ -63,22 +71,6 @@ final class Broadway {
         while (this.state.pc != 0xDEADBEEF) {
             run();
         }
-    }
-
-    private void log_state() {
-        for (int i = 0; i < 32; i += 8) {
-            log_broadway("0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x",
-                this.state.gprs[i + 0], this.state.gprs[i + 1], this.state.gprs[i + 2], this.state.gprs[i + 3],
-                this.state.gprs[i + 4], this.state.gprs[i + 5], this.state.gprs[i + 6], this.state.gprs[i + 7]
-            );
-        }
-
-        log_broadway("cr:  0x%08x", state.cr);
-        log_broadway("xer: 0x%08x", state.xer);
-        log_broadway("ctr: 0x%08x", state.ctr);
-
-        log_broadway("lr:  0x%08x", state.lr);
-        log_broadway("pc:  0x%08x", state.pc);
     }
 
     public void set_gpr(int gpr, u32 value) {
@@ -96,5 +88,9 @@ final class Broadway {
     private void hle_handler(int function_id) {
         this.hle_context.hle_handler(&this.state, function_id);
         this.state.pc = this.state.lr;
+    }
+
+    public void on_error() {
+        jit.on_error();
     }
 }

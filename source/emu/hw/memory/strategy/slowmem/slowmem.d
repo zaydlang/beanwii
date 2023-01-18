@@ -65,7 +65,7 @@ final class SlowMem : MemStrategy {
                 break;
             
             default:
-                error_slowmem("Read from invalid address 0x%08X", address);
+                error_slowmem("Read from invalid address 0x%08x", address);
                 assert(0);
         }
 
@@ -74,7 +74,7 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T)(u32 address, T value) {
-        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
+        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
@@ -100,7 +100,7 @@ final class SlowMem : MemStrategy {
                 return this.hle_trampoline.write_be!T(offset, value);
             
             default:
-                error_slowmem("Write 0x%08x to invalid address 0x%08X", value, address);
+                error_slowmem("Write 0x%08x to invalid address 0x%08x", value, address);
                 assert(0);
         }
     }
