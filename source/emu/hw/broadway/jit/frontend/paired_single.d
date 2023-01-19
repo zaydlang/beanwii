@@ -58,6 +58,8 @@ private IRVariable dequantize(IR* ir, IRVariable value, IRVariable gqr_type, IRV
         value = value.interpret_as_float();
     });
 
+    assert(value.type == IRVariableType.Float);
+
     return value;
 }
 

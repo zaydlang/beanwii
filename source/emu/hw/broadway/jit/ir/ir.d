@@ -400,6 +400,10 @@ struct IRVariable {
 
         IRBinaryDataOp op = get_binary_data_op!s;
 
+        if (op == IRBinaryDataOp.DIV) {
+            dest.type = IRVariableType.FLOAT;
+        }
+
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
@@ -414,6 +418,10 @@ struct IRVariable {
         ir.log_transmuation(this, dest);
 
         IRBinaryDataOp op = get_binary_data_op!s;
+
+        if (op == IRBinaryDataOp.DIV) {
+            dest.type = IRVariableType.FLOAT;
+        }
 
         this.update_lifetime();
         dest.update_lifetime();
