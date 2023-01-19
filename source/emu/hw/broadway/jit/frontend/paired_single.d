@@ -90,6 +90,22 @@ private IRVariable is_gqr_type_signed(IR* ir, IRVariable type) {
 }
 
 private IRVariable get_gqr_type_size(IR* ir, IRVariable type) {
+    // 4 <- ~a
+    // 2 <- a ^  c
+    // 1 <- a ^ ~c
+    // ~a * 4 + c * 2;
+
+    // abc
+    // 000 4 111 1 1 101 2 010
+    // 001 4 110 1 0 100 2 011
+    // 010 4 101 1 1 101 2 010
+    // 011 4 100 1 0 100 2 011
+
+    // 100 1 011 0 1 001 1 110 0
+    // 101 2 010 0 0 000 0 111 1
+    // 110 1 001 0 1 001 1 110 0
+    // 111 2 000 0 0 000 0 111 1
+
     IRVariable c = ir.constant(4);
 
     ir._if(is_gqr_type_u8(ir, type), () {

@@ -8,13 +8,13 @@ struct BroadwayState {
     align(1):
    
     u32[32] gprs;
-    u32[32] fprs;
+    u64[32] fprs;
 
     u32     cr; 
     u32     xer;
     u32     ctr;
     u32     msr;
-    u32[8]  gqr;
+    u32[8]  gqrs;
     u32     hid0;
     u32     hid2;
 

@@ -67,7 +67,7 @@ final class RegisterAllocator {
         int binding_variable_index = get_binding_variable_from_variable(ir_variable);
 
         if (binding_variable_index == -1) {
-            binding_variable = get_free_binding_variable();
+            binding_variable = get_free_binding_variable(ir_variable.get_type());
             binding_variable.bind_variable(ir_variable);
         } else {
             binding_variable = &bindings[binding_variable_index];
@@ -115,8 +115,25 @@ final class RegisterAllocator {
         return ir_variable.get_lifetime_end() == last_emitted_ir_instruction;
     }
 
-    private BindingVariable* get_free_binding_variable() {
-        for (int i = 0; i < NUM_HOST_REGS; i++) {
+    private BindingVariable* get_free_binding_variable(IRVariableType type) {
+        int start;
+        int end;
+        final switch (type) {
+            case IRVariableType.INTEGER:
+                start = HostReg_x86_64.RAX;
+                end   = HostReg_x86_64.R15;
+                break;
+            
+            case IRVariableType.FLOAT:
+                start = HostReg_x86_64.XMM0;
+                end   = HostReg_x86_64.XMM7;
+                break;
+
+            case IRVariableType.PAIRED_SINGLE:
+                goto case IRVariableType.FLOAT;
+        }
+
+        for (int i = start; i < end; i++) {
             // pls dont clobber the stack pointer
             static if (is(HostReg_x86_64 == HostReg_x86_64)) {
                 if (bindings[i].host_reg == HostReg_x86_64.RSP || bindings[i].host_reg == HostReg_x86_64.RDI) continue;

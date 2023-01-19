@@ -69,7 +69,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        ir.pretty_print();
+        // ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -158,7 +158,7 @@ final class Code : CodeGenerator {
         GuestReg guest_reg = ir_instruction.src;
         Reg host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
 
-        int offset = cast(int) BroadwayState.gprs.offsetof + 4 * guest_reg;
+        int offset = cast(int) guest_reg.get_state_offset();
         mov(host_reg.cvt32(), dword [rdi + offset]);
     }
 
@@ -166,7 +166,7 @@ final class Code : CodeGenerator {
         GuestReg dest_reg = ir_instruction.dest;
         Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg64();
         
-        int offset = cast(int) BroadwayState.gprs.offsetof + 4 * dest_reg;
+        int offset = cast(int) dest_reg.get_state_offset();
         mov(dword [rdi + offset], src_reg.cvt32());
 
         register_allocator.maybe_unbind_variable(ir_instruction.src, current_instruction_index);
@@ -175,7 +175,7 @@ final class Code : CodeGenerator {
     void emit_SET_REG_IMM(IRInstructionSetRegImm ir_instruction, int current_instruction_index) {
         GuestReg dest_reg = ir_instruction.dest;
         
-        int offset = cast(int) BroadwayState.gprs.offsetof + 4 * dest_reg;
+        int offset = cast(int) dest_reg.get_state_offset();
         mov(dword [rdi + offset], ir_instruction.imm);
     }
 
@@ -255,17 +255,26 @@ final class Code : CodeGenerator {
             
             case IRBinaryDataOp.LSL:
                 mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
-                shl(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
+                push(ecx);
+                mov(ecx, src2.to_xbyak_reg8());
+                sar(dest_reg.to_xbyak_reg64(), cl);
+                pop(ecx);
                 break;
             
             case IRBinaryDataOp.LSR:
                 mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
-                shr(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
+                push(ecx);
+                mov(ecx, src2.to_xbyak_reg8());
+                sar(dest_reg.to_xbyak_reg64(), cl);
+                pop(ecx);
                 break;
             
             case IRBinaryDataOp.ASR:
                 mov(dest_reg.to_xbyak_reg64(), src1.to_xbyak_reg64());
-                sar(dest_reg.to_xbyak_reg64(), src2.to_xbyak_reg8());
+                push(ecx);
+                mov(ecx, src2.to_xbyak_reg8());
+                sar(dest_reg.to_xbyak_reg64(), cl);
+                pop(ecx);
                 break;
             
             case IRBinaryDataOp.ADD:
@@ -455,6 +464,10 @@ final class Code : CodeGenerator {
         je((*ir_instruction.after_true_label).to_xbyak_label());
     }
 
+    void emit_BRANCH(IRInstructionBranch ir_instruction, int current_instruction_index) {
+        jmp((*ir_instruction.label).to_xbyak_label());
+    }
+
     void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
         HostReg_x86_64 dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         setc(dest_reg.to_xbyak_reg8());
@@ -502,6 +515,7 @@ final class Code : CodeGenerator {
             (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),
             (IRInstructionReadSized i)         => emit_READ_SIZED(i, current_instruction_index),
             (IRInstructionConditionalBranch i) => emit_CONDITIONAL_BRANCH(i, current_instruction_index),
+            (IRInstructionBranch i)            => emit_BRANCH(i, current_instruction_index),
             (IRInstructionGetHostCarry i)      => emit_GET_HOST_CARRY(i, current_instruction_index),
             (IRInstructionGetHostOverflow i)   => emit_GET_HOST_OVERFLOW(i, current_instruction_index),
             (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index),

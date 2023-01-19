@@ -40,9 +40,31 @@ public GuestReg to_gqr(int reg) {
 }
 
 public GuestReg to_ps(int reg) {
-    return cast(GuestReg) reg + GuestReg.GQR0;
+    return cast(GuestReg) reg + GuestReg.PS0;
 }
 
 public string to_string(GuestReg reg) {
     return std.conv.to!string(reg).toLower();
+}
+
+public size_t get_state_offset(GuestReg reg) {
+    import emu.hw.broadway.state;
+
+    switch (reg) {
+        case GuestReg.R0:   .. case GuestReg.R31:  return BroadwayState.gprs.offsetof + (reg - GuestReg.R0) * 4;
+        case GuestReg.F0:   .. case GuestReg.F31:  return BroadwayState.fprs.offsetof + (reg - GuestReg.F0) * 8;
+        case GuestReg.PS0:  .. case GuestReg.PS31: return BroadwayState.fprs.offsetof + (reg - GuestReg.PS0) * 8;
+        case GuestReg.GQR0: .. case GuestReg.GQR7: return BroadwayState.gqrs.offsetof + (reg - GuestReg.GQR0) * 4;
+    
+        case GuestReg.CR:   return BroadwayState.cr.offsetof;
+        case GuestReg.XER:  return BroadwayState.xer.offsetof;
+        case GuestReg.CTR:  return BroadwayState.ctr.offsetof;
+        case GuestReg.MSR:  return BroadwayState.msr.offsetof;
+        case GuestReg.HID0: return BroadwayState.hid0.offsetof;
+        case GuestReg.HID2: return BroadwayState.hid2.offsetof;
+        case GuestReg.LR:   return BroadwayState.lr.offsetof;
+        case GuestReg.PC:   return BroadwayState.pc.offsetof;
+
+        default: assert(0);
+    }
 }

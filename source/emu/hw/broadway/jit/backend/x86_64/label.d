@@ -4,5 +4,5 @@ import emu.hw.broadway.jit.ir.ir;
 import std.conv;
 
 string to_xbyak_label(IRLabel ir_label) {
-    return "L" ~ to!string(ir_label.instruction_index);
+    return "L" ~ to!string(ir_label.id);
 }

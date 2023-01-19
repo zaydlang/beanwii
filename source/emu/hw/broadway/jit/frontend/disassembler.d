@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.frontend.disassembler;
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.frontend.opcode;
+import emu.hw.broadway.jit.frontend.paired_single;
 import emu.hw.broadway.jit.ir.ir;
 import util.bitop;
 import util.log;
@@ -661,6 +662,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, pc); break;
         case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, pc); break;
         case PrimaryOpcode.ORIS:   emit_oris  (ir, opcode, pc); break;
+        case PrimaryOpcode.PSQ_L:  emit_psq_l (ir, opcode, pc); break;
         case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, pc); break;
         case PrimaryOpcode.SC:     emit_sc    (ir, opcode, pc); break;
         case PrimaryOpcode.STB:    emit_stb   (ir, opcode, pc); break;

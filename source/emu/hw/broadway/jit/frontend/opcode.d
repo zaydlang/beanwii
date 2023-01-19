@@ -22,6 +22,7 @@ enum PrimaryOpcode {
     STH    = 0x2C,
     STW    = 0x24,
     STWU   = 0x25,
+    PSQ_L  = 0x38,
 
     OP_13  = 0x13,
     OP_1F  = 0x1F,

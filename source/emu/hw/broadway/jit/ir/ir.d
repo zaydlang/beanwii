@@ -19,6 +19,7 @@ alias IRInstruction = SumType!(
     IRInstructionWrite,
     IRInstructionReadSized,
     IRInstructionConditionalBranch,
+    IRInstructionBranch,
     IRInstructionGetHostCarry,
     IRInstructionGetHostOverflow,
     IRInstructionHleFunc,
@@ -27,15 +28,24 @@ alias IRInstruction = SumType!(
 );
 
 struct IR {
-    enum MAX_IR_INSTRUCTIONS = 0x10000;
-    enum MAX_IR_VARIABLES    = 0x1000;
-    enum MAX_IR_LABELS       = 0x1000;
+    struct PhiFunctionTransmuation {
+        IRVariable from;
+        IRVariable to;
+    }
+
+    enum MAX_IR_INSTRUCTIONS   = 0x10000;
+    enum MAX_IR_VARIABLES      = 0x1000;
+    enum MAX_IR_LABELS         = 0x1000;
+    enum MAX_IR_TRANSMUTATIONS = 0x100;
 
     IRInstruction* instructions;
     size_t current_instruction_index;
 
     IRLabel* labels;
     size_t current_label_index;
+
+    size_t current_transmutation_index;
+    PhiFunctionTransmuation[MAX_IR_TRANSMUTATIONS] transmutations;
 
     // keeps track of a variables lifetime. this corresponds to an IR instruction. when this IR instruction
     // is executed, the variable is deleted (in other words, it gets unbound from the host register)
@@ -57,6 +67,7 @@ struct IR {
         current_variable_id = 0;
         current_instruction_index = 0;
         current_label_index = 0;
+        current_transmutation_index = 0;
     }
 
     size_t num_instructions() {
@@ -172,16 +183,40 @@ struct IR {
     }
 
     IRLabel* generate_new_label() {
-        return &labels[current_label_index++];
+        IRLabel* label = &labels[current_label_index];
+        label.id = cast(int) current_label_index;
+        current_label_index++;
+
+        return label;
     }
 
     void _if(IRVariable cond, void delegate() true_case) {
-        IRLabel* after_true_label = generate_new_label();
-        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
+        IRLabel* after_true_label   = generate_new_label();
+        IRLabel* phi_function_label = generate_new_label();
+
+        this.emit(IRInstructionConditionalBranch(cond, phi_function_label));
 
         this.update_lifetime(cond.variable_id);
 
+        current_transmutation_index = 0;
         true_case();
+        this.emit(IRInstructionBranch(after_true_label));
+
+        this.bind_label(phi_function_label);
+
+        // phi function
+        for (int i = 0; i < current_transmutation_index; i++) {
+            auto transmutation = transmutations[i];
+            this.emit(IRInstructionUnaryDataOp(
+                IRUnaryDataOp.MOV, 
+                IRVariable(&this, transmutation.to.variable_id, transmutation.to.type),
+                IRVariable(&this, transmutation.from.variable_id, transmutation.from.type)
+            ));
+            
+            this.update_lifetime(transmutation.to.variable_id);
+            this.update_lifetime(transmutation.from.variable_id);
+        }
+
         this.bind_label(after_true_label);
     }
 
@@ -222,6 +257,17 @@ struct IR {
     void debug_assert(IRVariable condition) {
         condition.update_lifetime();
         emit(IRInstructionDebugAssert(condition));
+    }
+
+    // used to notify the IR that an IRVariable's ID has changed. necessary for implementing
+    // phi functions for SSA (used for ir._if)
+    void log_transmuation(IRVariable from, IRVariable to) {
+        transmutations[current_transmutation_index].from.variable_id = from.variable_id;
+        transmutations[current_transmutation_index].from.type        = from.type;
+        transmutations[current_transmutation_index].to.variable_id   = to.variable_id;
+        transmutations[current_transmutation_index].to.type          = to.type;
+
+        current_transmutation_index++;
     }
 
     void pretty_print_instruction(IRInstruction instruction) {
@@ -284,6 +330,10 @@ struct IR {
                 log_ir("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
             },
 
+            (IRInstructionBranch i) {
+                log_ir("b   #%d", i.label.instruction_index);
+            },
+
             (IRInstructionGetHostCarry i) {
                 log_ir("getc v%d", i.dest.get_id());
             },
@@ -338,8 +388,6 @@ struct IRVariable {
 
     private IRVariableType type;
 
-    @disable this();
-
     this(IR* ir, int variable_id, IRVariableType type) {
         this.variable_id = variable_id;
         this.ir          = ir;
@@ -348,6 +396,7 @@ struct IRVariable {
 
     IRVariable opBinary(string s)(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         IRBinaryDataOp op = get_binary_data_op!s;
 
@@ -362,6 +411,7 @@ struct IRVariable {
 
     IRVariable opBinary(string s)(int other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         IRBinaryDataOp op = get_binary_data_op!s;
 
@@ -378,7 +428,9 @@ struct IRVariable {
         assert(other.type == IRVariableType.FLOAT);
         assert(index < 2);
 
+        IRVariable old = this;
         this.variable_id = ir.generate_new_variable_id();
+        ir.log_transmuation(old, this);
 
         this.update_lifetime();
         other.update_lifetime();
@@ -388,6 +440,7 @@ struct IRVariable {
 
     public IRVariable greater_unsigned(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -400,6 +453,7 @@ struct IRVariable {
 
     public IRVariable lesser_unsigned(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -412,6 +466,7 @@ struct IRVariable {
 
     public IRVariable greater_signed(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -424,6 +479,7 @@ struct IRVariable {
 
     public IRVariable lesser_signed(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -436,6 +492,7 @@ struct IRVariable {
 
     public IRVariable equals(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -448,6 +505,7 @@ struct IRVariable {
 
     public IRVariable notequals(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -459,7 +517,9 @@ struct IRVariable {
     }
     
     void opAssign(IRVariable rhs) {
+        IRVariable old = this;
         this.variable_id = ir.generate_new_variable_id();
+        ir.log_transmuation(old, this);
 
         this.update_lifetime();
         rhs.update_lifetime();
@@ -469,6 +529,7 @@ struct IRVariable {
 
     IRVariable opUnary(string s)() {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         IRUnaryDataOp op = get_unary_data_op!s;
 
@@ -484,6 +545,7 @@ struct IRVariable {
         assert(0 <= amount && amount <= 31);
 
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
         
         this.update_lifetime();
         dest.update_lifetime();
@@ -495,6 +557,7 @@ struct IRVariable {
 
     IRVariable clz() {
         IRVariable dest = ir.generate_new_variable(this.type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -508,6 +571,7 @@ struct IRVariable {
         assert(this.type == IRVariableType.INTEGER);
 
         IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -529,6 +593,7 @@ struct IRVariable {
         final switch (s) {
             case "+":   return IRBinaryDataOp.ADD;
             case "-":   return IRBinaryDataOp.SUB;
+            case "/":   return IRBinaryDataOp.DIV;
             case "<<":  return IRBinaryDataOp.LSL;
             case ">>>": return IRBinaryDataOp.LSR;
             case ">>":  return IRBinaryDataOp.ASR;
@@ -548,10 +613,15 @@ struct IRVariable {
     int get_id() {
         return variable_id;
     }
+
+    IRVariableType get_type() {
+        return type;
+    }
 }
 
 struct IRLabel {
     int instruction_index;
+    int id;
 }
 
 struct IRConstant {
@@ -631,6 +701,10 @@ struct IRInstructionReadSized {
 struct IRInstructionConditionalBranch {
     IRVariable cond;
     IRLabel* after_true_label;
+}
+
+struct IRInstructionBranch {
+    IRLabel* label;
 }
 
 struct IRInstructionGetHostCarry {

@@ -11,6 +11,7 @@ enum IRBinaryDataOp {
     ORR,
     ADD,
     SUB,
+    DIV,
     XOR,
     ROL,
     GTS,
