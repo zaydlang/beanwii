@@ -19,18 +19,20 @@ void logger_on_error_callback(){
 	wii.on_error();
 }
 
-void main(string[] args) {
-	CliArgs cli_args = parse_cli_args(args);
-	auto disk_data = load_file_as_bytes(cli_args.rom_path);
+version (unittest) {} else {
+	void main(string[] args) {
+		CliArgs cli_args = parse_cli_args(args);
+		auto disk_data = load_file_as_bytes(cli_args.rom_path);
 
-	wii = new Wii(cli_args.ringbuffer_size);
-	
-    set_logger_on_error_callback(&logger_on_error_callback);
+		wii = new Wii(cli_args.ringbuffer_size);
+		
+		set_logger_on_error_callback(&logger_on_error_callback);
 
-	parse_and_load_file(wii, disk_data);
-	
-	auto reng = new RengMultimediaDevice(1, false);
-	wii.connect_multimedia_device(reng);
-	
-	new Runner(wii, reng).run();
+		parse_and_load_file(wii, disk_data);
+		
+		auto reng = new RengMultimediaDevice(1, false);
+		wii.connect_multimedia_device(reng);
+		
+		new Runner(wii, reng).run();
+	}
 }

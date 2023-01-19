@@ -47,7 +47,7 @@ public string to_string(GuestReg reg) {
     return std.conv.to!string(reg).toLower();
 }
 
-public size_t get_state_offset(GuestReg reg) {
+public size_t get_reg_offset(GuestReg reg) {
     import emu.hw.broadway.state;
 
     switch (reg) {

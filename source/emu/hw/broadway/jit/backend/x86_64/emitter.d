@@ -158,7 +158,7 @@ final class Code : CodeGenerator {
         GuestReg guest_reg = ir_instruction.src;
         Reg host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest).to_xbyak_reg64();
 
-        int offset = cast(int) guest_reg.get_state_offset();
+        int offset = cast(int) guest_reg.get_reg_offset();
         mov(host_reg.cvt32(), dword [rdi + offset]);
     }
 
@@ -166,7 +166,7 @@ final class Code : CodeGenerator {
         GuestReg dest_reg = ir_instruction.dest;
         Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src).to_xbyak_reg64();
         
-        int offset = cast(int) dest_reg.get_state_offset();
+        int offset = cast(int) dest_reg.get_reg_offset();
         mov(dword [rdi + offset], src_reg.cvt32());
 
         register_allocator.maybe_unbind_variable(ir_instruction.src, current_instruction_index);
@@ -175,7 +175,7 @@ final class Code : CodeGenerator {
     void emit_SET_REG_IMM(IRInstructionSetRegImm ir_instruction, int current_instruction_index) {
         GuestReg dest_reg = ir_instruction.dest;
         
-        int offset = cast(int) dest_reg.get_state_offset();
+        int offset = cast(int) dest_reg.get_reg_offset();
         mov(dword [rdi + offset], ir_instruction.imm);
     }
 

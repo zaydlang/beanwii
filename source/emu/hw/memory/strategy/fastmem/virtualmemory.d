@@ -1,4 +1,4 @@
-// module emu.hw.memory.strategy.fastmem.virtualmemory;
+module emu.hw.memory.strategy.fastmem.virtualmemory;
 
 // version (linux) {
 //     import core.sys.posix.signal;
