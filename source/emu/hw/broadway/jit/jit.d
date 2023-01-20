@@ -75,7 +75,7 @@ final class Jit {
             ir.reset();
 
             u32 instruction = fetch(state);
-            // log_instruction(instruction, state.pc);
+            log_instruction(instruction, state.pc);
 
             emit(ir, instruction, state.pc);
 
@@ -85,11 +85,11 @@ final class Jit {
             JitFunction generated_function = cast(JitFunction) code.getCode();
 
             // if (instruction == 0x7c831e30) {
-                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-                // foreach (instr; res) {
-                //     log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                // }
+                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
+                foreach (instr; res) {
+                    log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                }
 
                 // error_jit("jit");
             // }

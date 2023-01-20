@@ -159,7 +159,7 @@ final class Code : CodeGenerator {
         Reg host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
 
         int offset = cast(int) guest_reg.get_reg_offset();
-        mov(host_reg.cvt32(), dword [rdi + offset]);
+        mov(host_reg.cvt64(), dword [rdi + offset]);
     }
 
     void emit_SET_REG_VAR(IRInstructionSetRegVar ir_instruction, int current_instruction_index) {
@@ -300,37 +300,37 @@ final class Code : CodeGenerator {
             case IRBinaryDataOp.GTU:
                 cmp(src1, src2);
                 seta(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.LTU:
                 cmp(src1, src2);
                 setb(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.GTS:
                 cmp(src1, src2);
                 setg(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.LTS:
                 cmp(src1, src2);
                 setl(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.EQ:
                 cmp(src1, src2);
                 sete(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.NE:
                 cmp(src1, src2);
                 setne(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                movzx(dest_reg.cvt64(), dest_reg.cvt8());
                 break;
             
             default: assert(0);

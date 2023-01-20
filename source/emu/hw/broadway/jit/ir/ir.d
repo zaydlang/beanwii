@@ -410,9 +410,13 @@ struct IRVariable {
     IRVariable opBinary(string s)(IRVariable other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
+        IRVariableType type = IRVariableType.INTEGER;
         if (op == IRBinaryDataOp.DIV) {
-            dest.type = IRVariableType.FLOAT;
+            type = IRVariableType.FLOAT;
         }
+
+        IRVariable dest = ir.generate_new_variable(type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -426,9 +430,13 @@ struct IRVariable {
     IRVariable opBinary(string s)(int other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
+        IRVariableType type = IRVariableType.INTEGER;
         if (op == IRBinaryDataOp.DIV) {
-            dest.type = IRVariableType.FLOAT;
+            type = IRVariableType.FLOAT;
         }
+
+        IRVariable dest = ir.generate_new_variable(type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
