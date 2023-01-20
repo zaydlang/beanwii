@@ -56,16 +56,20 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         writefln(written_string);
 
         if (fatal) {
-            if (g_on_error_callback !is null) {
-                g_on_error_callback();
-            }
-            
-            auto trace = defaultTraceHandler(null);
-            foreach (line; trace) {
-                printf("%.*s\n", cast(int) line.length, line.ptr);
-            }
+            version (unittest) {
+                assert(0);
+            } else {
+                if (g_on_error_callback !is null) {
+                    g_on_error_callback();
+                }
+                
+                auto trace = defaultTraceHandler(null);
+                foreach (line; trace) {
+                    printf("%.*s\n", cast(int) line.length, line.ptr);
+                }
 
-            exit(-1);
+                exit(-1);
+            }
         }
     }
 }

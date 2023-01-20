@@ -12,14 +12,45 @@ enum HostReg_x86_64 {
     SPL, BPL, SIL, DIL,
 }
 
-Reg to_xbyak_reg64(HostReg_x86_64 host_reg) {
+Reg64 to_xbyak_reg64(HostReg_x86_64 host_reg) {
     import std.format;
 
-    final switch (host_reg) {
-        static foreach (enum H; EnumMembers!HostReg_x86_64) {
-            case H:
-                mixin("return %s;".format(to!string(H).toLower()));
-        }
+    switch (host_reg) {
+        case HostReg_x86_64.RAX: return rax.cvt64();
+        case HostReg_x86_64.RCX: return rcx.cvt64();
+        case HostReg_x86_64.RDX: return rdx.cvt64();
+        case HostReg_x86_64.RBX: return rbx.cvt64();
+        case HostReg_x86_64.RSP: return rsp.cvt64();
+        case HostReg_x86_64.RBP: return rbp.cvt64();
+        case HostReg_x86_64.RSI: return rsi.cvt64();
+        case HostReg_x86_64.RDI: return rdi.cvt64();
+        case HostReg_x86_64.R8:  return r8.cvt64();
+        case HostReg_x86_64.R9:  return r9.cvt64();
+        case HostReg_x86_64.R10: return r10.cvt64();
+        case HostReg_x86_64.R11: return r11.cvt64();
+        case HostReg_x86_64.R12: return r12.cvt64();
+        case HostReg_x86_64.R13: return r13.cvt64();
+        case HostReg_x86_64.R14: return r14.cvt64();
+        case HostReg_x86_64.R15: return r15.cvt64();
+
+        default: error_jit("Could not turn host register %s into a 64-bit xbyak register", host_reg); return rax;
+    }
+}
+
+Mmx to_xbyak_xmm(HostReg_x86_64 host_reg) {
+    import std.format;
+
+    switch (host_reg) {
+        case HostReg_x86_64.XMM0: return xmm0;
+        case HostReg_x86_64.XMM1: return xmm1;
+        case HostReg_x86_64.XMM2: return xmm2;
+        case HostReg_x86_64.XMM3: return xmm3;
+        case HostReg_x86_64.XMM4: return xmm4;
+        case HostReg_x86_64.XMM5: return xmm5;
+        case HostReg_x86_64.XMM6: return xmm6;
+        case HostReg_x86_64.XMM7: return xmm7;
+        
+        default: error_jit("Could not turn host register %s into an XMM register", host_reg); return xmm0;
     }
 }
 

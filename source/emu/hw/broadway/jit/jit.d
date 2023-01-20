@@ -16,12 +16,12 @@ alias WriteHandler = void function(u32 address, u32 value);
 alias HleHandler   = void function(int param);
 
 struct JitConfig {
-    ReadHandler  read_handler32;
-    ReadHandler  read_handler16;
     ReadHandler  read_handler8;
-    WriteHandler write_handler32;
-    WriteHandler write_handler16;
+    ReadHandler  read_handler16;
+    ReadHandler  read_handler32;
     WriteHandler write_handler8;
+    WriteHandler write_handler16;
+    WriteHandler write_handler32;
     HleHandler   hle_handler;
 
     void*        mem_handler_context;

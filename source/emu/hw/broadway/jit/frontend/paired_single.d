@@ -4,6 +4,7 @@ import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.ir.ir;
 import util.bitop;
+import util.log;
 import util.number;
 
 public void emit_psq_l(IR* ir, u32 opcode, u32 pc) {
@@ -34,12 +35,15 @@ public void emit_psq_l(IR* ir, u32 opcode, u32 pc) {
 }
 
 private IRVariable dequantize(IR* ir, IRVariable value, IRVariable gqr_type, IRVariable gqr_scale) {
+    value = value.interpret_as_float();
+
     ir._if(is_gqr_type_u16(ir, gqr_type), () {
         value = value & 0xFFFF;
 
-        ir._if(is_gqr_type_signed(ir, gqr_type), () {
-            value = (value << 16) >> 16;
-        });
+        // nested ifs are not supported...
+        // ir._if(is_gqr_type_signed(ir, gqr_type), () {
+        //     value = (value << 16) >> 16;
+        // });
 
         value = value / (ir.constant(1) << gqr_scale);
     });
@@ -47,18 +51,13 @@ private IRVariable dequantize(IR* ir, IRVariable value, IRVariable gqr_type, IRV
     ir._if(is_gqr_type_u8(ir, gqr_type), () {
         value = value & 0xFF;
 
-        ir._if(is_gqr_type_signed(ir, gqr_type), () {
-            value = (value << 24) >> 24;
-        });
+        // nested ifs are not supported...
+        // ir._if(is_gqr_type_signed(ir, gqr_type), () {
+        //     value = (value << 24) >> 24;
+        // });
 
         value = value / (ir.constant(1) << gqr_scale);
     });
-
-    ir._if(is_gqr_type_float(ir, gqr_type), () {
-        value = value.interpret_as_float();
-    });
-
-    assert(value.type == IRVariableType.Float);
 
     return value;
 }

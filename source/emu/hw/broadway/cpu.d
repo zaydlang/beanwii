@@ -25,12 +25,12 @@ final class Broadway {
         this.hle_context = new HleContext(&this.mem);
 
         jit = new Jit(JitConfig(
-            cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
-            cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
             cast(ReadHandler)  (&this.mem.read_be_u8)   .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u32) .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u16) .funcptr,
+            cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
+            cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
             cast(WriteHandler) (&this.mem.write_be_u8)  .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u16) .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u32) .funcptr,
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(void*) this.mem,
             cast(void*) this
@@ -53,10 +53,6 @@ final class Broadway {
         state.lr  = 0;
     }
 
-    public void set_pc(u32 pc) {
-        state.pc = pc;
-    }
-
     // returns the number of instructions executed
     public u32 run() {
         // log_state(&state);
@@ -73,14 +69,6 @@ final class Broadway {
         }
     }
 
-    public void set_gpr(int gpr, u32 value) {
-        this.state.gprs[gpr] = value;
-    }
-
-    public u32 get_gpr(int gpr) {
-        return this.state.gprs[gpr];
-    }
-
     public HleContext* get_hle_context() {
         return &this.hle_context;
     }
@@ -92,5 +80,95 @@ final class Broadway {
 
     public void on_error() {
         jit.on_error();
+    }
+
+    // here are the really annoying-to-write functions:
+
+    public void set_gpr(int gpr, u32 value) {
+        this.state.gprs[gpr] = value;
+    }
+
+    public u32 get_gpr(int gpr) {
+        return this.state.gprs[gpr];
+    }
+
+    public void set_fpr(int fpr, double value) {
+        *(cast(float*) &this.state.fprs[fpr]) = value;
+    }
+
+    public double get_fpr(int fpr) {
+        return *(cast(double*) &this.state.fprs[fpr]);
+    }
+
+    public void set_gqr(int gqr, u32 value) {
+        this.state.gqrs[gqr] = value;
+    }
+
+    public u32 get_gqr(int gqr) {
+        return this.state.gqrs[gqr];
+    }
+
+    public void set_cr(int cr, u32 value) {
+        this.state.cr = (this.state.cr & ~(0xF << (cr * 4))) | (value << (cr * 4));
+    }
+
+    public u32 get_cr(int cr) {
+        return (this.state.cr >> (cr * 4)) & 0xF;
+    }
+
+    public void set_xer(u32 value) {
+        this.state.xer = value;
+    }
+
+    public u32 get_xer() {
+        return this.state.xer;
+    }
+
+    public void set_ctr(u32 value) {
+        this.state.ctr = value;
+    }
+
+    public u32 get_ctr() {
+        return this.state.ctr;
+    }
+
+    public void set_msr(u32 value) {
+        this.state.msr = value;
+    }
+
+    public u32 get_msr() {
+        return this.state.msr;
+    }
+
+    public void set_hid0(u32 value) {
+        this.state.hid0 = value;
+    }
+
+    public u32 get_hid0() {
+        return this.state.hid0;
+    }
+
+    public void set_hid2(u32 value) {
+        this.state.hid2 = value;
+    }
+
+    public u32 get_hid2() {
+        return this.state.hid2;
+    }
+
+    public void set_lr(u32 lr) {
+        state.lr = lr;
+    }
+
+    public u32 get_lr() {
+        return state.lr;
+    }
+
+    public void set_pc(u32 pc) {
+        state.pc = pc;
+    }
+
+    public u32 get_pc() {
+        return state.pc;
     }
 }

@@ -47,6 +47,12 @@ struct IR {
     size_t current_transmutation_index;
     PhiFunctionTransmuation[MAX_IR_TRANSMUTATIONS] transmutations;
 
+    // this has to be kept track of locally - not within an IRVariable. two reasons.
+    // 1) i want IRVariables to be small and lightweight
+    // 2) i want IRVariables to be able to be copied around without having to worry about
+    //   updating the type of the variable
+    IRVariableType[MAX_IR_VARIABLES] variable_types;
+
     // keeps track of a variables lifetime. this corresponds to an IR instruction. when this IR instruction
     // is executed, the variable is deleted (in other words, it gets unbound from the host register)
     size_t[MAX_IR_VARIABLES] variable_lifetimes;
@@ -88,9 +94,19 @@ struct IR {
     }
     
     IRVariable generate_new_variable(IRVariableType type) {
-        return IRVariable(&this, this.generate_new_variable_id(), type);
+        int id = generate_new_variable_id();
+        variable_types[id] = type;
+        return IRVariable(&this, id);
     }
 
+    void set_type(IRVariable variable, IRVariableType type) {
+        variable_types[variable.variable_id] = type;
+    }
+
+
+    IRVariableType get_type(IRVariable variable) {
+        return variable_types[variable.variable_id];
+    }
     IRVariable constant(int constant) {
         IRVariable dest = generate_new_variable(IRVariableType.INTEGER);
         emit(IRInstructionSetVarImmInt(dest, constant));
@@ -209,8 +225,8 @@ struct IR {
             auto transmutation = transmutations[i];
             this.emit(IRInstructionUnaryDataOp(
                 IRUnaryDataOp.MOV, 
-                IRVariable(&this, transmutation.to.variable_id, transmutation.to.type),
-                IRVariable(&this, transmutation.from.variable_id, transmutation.from.type)
+                IRVariable(&this, transmutation.to.variable_id, ),
+                IRVariable(&this, transmutation.from.variable_id)
             ));
             
             this.update_lifetime(transmutation.to.variable_id);
@@ -263,9 +279,9 @@ struct IR {
     // phi functions for SSA (used for ir._if)
     void log_transmuation(IRVariable from, IRVariable to) {
         transmutations[current_transmutation_index].from.variable_id = from.variable_id;
-        transmutations[current_transmutation_index].from.type        = from.type;
         transmutations[current_transmutation_index].to.variable_id   = to.variable_id;
-        transmutations[current_transmutation_index].to.type          = to.type;
+        variable_types[from.variable_id] = get_type(from);
+        variable_types[to.variable_id]   = get_type(to);
 
         current_transmutation_index++;
     }
@@ -285,7 +301,7 @@ struct IR {
             },
 
             (IRInstructionBinaryDataOpImm i) {
-                log_ir("%s v%d, v%d, %d", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
+                log_ir("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
             },
 
             (IRInstructionBinaryDataOpVar i) {
@@ -297,7 +313,7 @@ struct IR {
             },
 
             (IRInstructionSetVarImmInt i) {
-                log_ir("ld  v%d, %x", i.dest.get_id(), i.imm);
+                log_ir("ld  v%d, 0x%x", i.dest.get_id(), i.imm);
             },
 
             (IRInstructionSetVarImmFloat i) {
@@ -386,23 +402,21 @@ struct IRVariable {
     private int variable_id;
     private IR* ir;
 
-    private IRVariableType type;
-
-    this(IR* ir, int variable_id, IRVariableType type) {
+    this(IR* ir, int variable_id) {
         this.variable_id = variable_id;
         this.ir          = ir;
-        this.type        = type;
     }
 
     IRVariable opBinary(string s)(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
-        ir.log_transmuation(this, dest);
-
         IRBinaryDataOp op = get_binary_data_op!s;
 
+        IRVariableType type = IRVariableType.INTEGER;
         if (op == IRBinaryDataOp.DIV) {
-            dest.type = IRVariableType.FLOAT;
+            type = IRVariableType.FLOAT;
         }
+
+        IRVariable dest = ir.generate_new_variable(type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -414,14 +428,15 @@ struct IRVariable {
     }
 
     IRVariable opBinary(string s)(int other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
-        ir.log_transmuation(this, dest);
-
         IRBinaryDataOp op = get_binary_data_op!s;
 
+        IRVariableType type = IRVariableType.INTEGER;
         if (op == IRBinaryDataOp.DIV) {
-            dest.type = IRVariableType.FLOAT;
+            type = IRVariableType.FLOAT;
         }
+
+        IRVariable dest = ir.generate_new_variable(type);
+        ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
@@ -432,12 +447,13 @@ struct IRVariable {
     }
 
     void opIndexAssign(IRVariable other, size_t index) {
-        assert(this.type  == IRVariableType.PAIRED_SINGLE);
-        assert(other.type == IRVariableType.FLOAT);
+        assert(ir.get_type(this)  == IRVariableType.PAIRED_SINGLE);
+        assert(ir.get_type(other) == IRVariableType.FLOAT);
         assert(index < 2);
 
         IRVariable old = this;
         this.variable_id = ir.generate_new_variable_id();
+        ir.set_type(this, IRVariableType.PAIRED_SINGLE);
         ir.log_transmuation(old, this);
 
         this.update_lifetime();
@@ -447,7 +463,7 @@ struct IRVariable {
     }
 
     public IRVariable greater_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -460,7 +476,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -473,7 +489,7 @@ struct IRVariable {
     }
 
     public IRVariable greater_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -486,7 +502,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -499,7 +515,7 @@ struct IRVariable {
     }
 
     public IRVariable equals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -512,7 +528,7 @@ struct IRVariable {
     }
 
     public IRVariable notequals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -527,6 +543,7 @@ struct IRVariable {
     void opAssign(IRVariable rhs) {
         IRVariable old = this;
         this.variable_id = ir.generate_new_variable_id();
+        ir.set_type(this, ir.get_type(rhs));
         ir.log_transmuation(old, this);
 
         this.update_lifetime();
@@ -536,7 +553,7 @@ struct IRVariable {
     }
 
     IRVariable opUnary(string s)() {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         IRUnaryDataOp op = get_unary_data_op!s;
@@ -552,7 +569,7 @@ struct IRVariable {
     IRVariable rol(int amount) {
         assert(0 <= amount && amount <= 31);
 
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
         
         this.update_lifetime();
@@ -564,7 +581,7 @@ struct IRVariable {
     }
 
     IRVariable clz() {
-        IRVariable dest = ir.generate_new_variable(this.type);
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -576,7 +593,7 @@ struct IRVariable {
     }
 
     IRVariable interpret_as_float() {
-        assert(this.type == IRVariableType.INTEGER);
+        assert(ir.get_type(this) == IRVariableType.INTEGER);
 
         IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
         ir.log_transmuation(this, dest);
@@ -623,7 +640,7 @@ struct IRVariable {
     }
 
     IRVariableType get_type() {
-        return type;
+        return ir.get_type(this);
     }
 }
 

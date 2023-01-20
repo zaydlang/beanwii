@@ -5,6 +5,7 @@ import emu.hw.broadway.jit.ir.ir;
 import std.traits;
 import std.typecons;
 import util.log;
+import xbyak;
 
 final class RegisterAllocator {
     struct BindingVariable {
@@ -62,7 +63,7 @@ final class RegisterAllocator {
         }
     }
 
-    HostReg_x86_64 get_bound_host_reg(IRVariable ir_variable) {
+    Reg get_bound_host_reg(IRVariable ir_variable) {
         BindingVariable* binding_variable;
         int binding_variable_index = get_binding_variable_from_variable(ir_variable);
 
@@ -73,7 +74,18 @@ final class RegisterAllocator {
             binding_variable = &bindings[binding_variable_index];
         }
 
-        return binding_variable.host_reg;
+        return decipher_type(binding_variable.host_reg, ir_variable.get_type());
+    }
+
+    Reg decipher_type(HostReg_x86_64 host_reg, IRVariableType type) {
+        final switch (type) {
+            case IRVariableType.INTEGER:
+                return host_reg.to_xbyak_reg64();
+            
+            case IRVariableType.FLOAT:
+            case IRVariableType.PAIRED_SINGLE:
+                return host_reg.to_xbyak_xmm();
+        }
     }
 
     void bind_variable_to_host_reg(IRVariable ir_variable, HostReg_x86_64 host_reg) {
