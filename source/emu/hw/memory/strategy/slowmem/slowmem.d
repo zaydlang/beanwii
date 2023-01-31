@@ -40,6 +40,8 @@ final class SlowMem : MemStrategy {
 
         T result;
 
+        // log_slowmem("Read from address 0x%08x", address);
+
         switch (region) {
             case 0xC:
                 if (offset > 0xC00_0000) {
@@ -69,13 +71,15 @@ final class SlowMem : MemStrategy {
                 assert(0);
         }
 
-        log_slowmem("Read 0x%08x from address 0x%08x", result, address);
+        // log_slowmem("Read 0x%08x from address 0x%08x", result, address);
         return result;
     }
 
     private void write_be(T)(u32 address, T value) {
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
+        
+        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         switch (region) {
             case 0xC:

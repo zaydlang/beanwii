@@ -11,6 +11,7 @@ enum IRBinaryDataOp {
     ORR,
     ADD,
     SUB,
+    MUL,
     DIV,
     XOR,
     ROL,
@@ -27,7 +28,9 @@ enum IRUnaryDataOp {
     NEG,
     MOV,
     CLZ,
-    FLT
+    FLT_CAST,
+    FLT_INTERP,
+    INT_CAST
 }
 
 string to_string(IRBinaryDataOp op) {

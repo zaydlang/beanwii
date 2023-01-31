@@ -28,9 +28,11 @@ final class Broadway {
             cast(ReadHandler)  (&this.mem.read_be_u8)   .funcptr,
             cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
             cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
+            cast(ReadHandler)  (&this.mem.read_be_u64)  .funcptr,
             cast(WriteHandler) (&this.mem.write_be_u8)  .funcptr,
             cast(WriteHandler) (&this.mem.write_be_u16) .funcptr,
             cast(WriteHandler) (&this.mem.write_be_u32) .funcptr,
+            cast(WriteHandler) (&this.mem.write_be_u64) .funcptr,
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(void*) this.mem,
             cast(void*) this
@@ -48,6 +50,9 @@ final class Broadway {
         state.msr  = 0;
         state.hid0 = 0;
         state.hid2 = 0;
+        state.srr0 = 0;
+        state.fpsr = 0;
+        state.l2cr = 0;
 
         state.pc  = 0;
         state.lr  = 0;

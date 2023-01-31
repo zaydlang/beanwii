@@ -12,28 +12,28 @@ enum HostReg_x86_64 {
     SPL, BPL, SIL, DIL,
 }
 
-Reg64 to_xbyak_reg64(HostReg_x86_64 host_reg) {
+Reg32 to_xbyak_reg32(HostReg_x86_64 host_reg) {
     import std.format;
 
     switch (host_reg) {
-        case HostReg_x86_64.RAX: return rax.cvt64();
-        case HostReg_x86_64.RCX: return rcx.cvt64();
-        case HostReg_x86_64.RDX: return rdx.cvt64();
-        case HostReg_x86_64.RBX: return rbx.cvt64();
-        case HostReg_x86_64.RSP: return rsp.cvt64();
-        case HostReg_x86_64.RBP: return rbp.cvt64();
-        case HostReg_x86_64.RSI: return rsi.cvt64();
-        case HostReg_x86_64.RDI: return rdi.cvt64();
-        case HostReg_x86_64.R8:  return r8.cvt64();
-        case HostReg_x86_64.R9:  return r9.cvt64();
-        case HostReg_x86_64.R10: return r10.cvt64();
-        case HostReg_x86_64.R11: return r11.cvt64();
-        case HostReg_x86_64.R12: return r12.cvt64();
-        case HostReg_x86_64.R13: return r13.cvt64();
-        case HostReg_x86_64.R14: return r14.cvt64();
-        case HostReg_x86_64.R15: return r15.cvt64();
+        case HostReg_x86_64.RAX: return rax.cvt32();
+        case HostReg_x86_64.RCX: return rcx.cvt32();
+        case HostReg_x86_64.RDX: return rdx.cvt32();
+        case HostReg_x86_64.RBX: return rbx.cvt32();
+        case HostReg_x86_64.RSP: return rsp.cvt32();
+        case HostReg_x86_64.RBP: return rbp.cvt32();
+        case HostReg_x86_64.RSI: return rsi.cvt32();
+        case HostReg_x86_64.RDI: return rdi.cvt32();
+        case HostReg_x86_64.R8:  return r8.cvt32();
+        case HostReg_x86_64.R9:  return r9.cvt32();
+        case HostReg_x86_64.R10: return r10.cvt32();
+        case HostReg_x86_64.R11: return r11.cvt32();
+        case HostReg_x86_64.R12: return r12.cvt32();
+        case HostReg_x86_64.R13: return r13.cvt32();
+        case HostReg_x86_64.R14: return r14.cvt32();
+        case HostReg_x86_64.R15: return r15.cvt32();
 
-        default: error_jit("Could not turn host register %s into a 64-bit xbyak register", host_reg); return rax;
+        default: error_jit("Could not turn host register %s into a 32-bit xbyak register", host_reg); assert(0);
     }
 }
 
@@ -50,7 +50,7 @@ Mmx to_xbyak_xmm(HostReg_x86_64 host_reg) {
         case HostReg_x86_64.XMM6: return xmm6;
         case HostReg_x86_64.XMM7: return xmm7;
         
-        default: error_jit("Could not turn host register %s into an XMM register", host_reg); return xmm0;
+        default: error_jit("Could not turn host register %s into an XMM register", host_reg); assert(0);
     }
 }
 
@@ -75,6 +75,6 @@ Reg8 to_xbyak_reg8(HostReg_x86_64 host_reg) {
         case HostReg_x86_64.R14: return r14b;
         case HostReg_x86_64.R15: return r15b;
         
-        default: error_jit("Could not turn host register %s into an 8-bit xbyak register", host_reg); return al;
+        default: error_jit("Could not turn host register %s into an 8-bit xbyak register", host_reg); assert(0);
     }
 }

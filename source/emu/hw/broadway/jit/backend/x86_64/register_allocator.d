@@ -1,5 +1,6 @@
 module emu.hw.broadway.jit.backend.x86_64.register_allocator;
 
+import emu.hw.broadway.jit.backend.x86_64.emitter;
 import emu.hw.broadway.jit.backend.x86_64.host_reg;
 import emu.hw.broadway.jit.ir.ir;
 import std.traits;
@@ -26,6 +27,13 @@ final class RegisterAllocator {
 
             variable_bound = true;
             this.variable = new_variable.get_id();
+        }
+
+        public void bind_variable(int new_variable_id) {
+            if (variable_bound) error_jit("Tried to bind %s to id %d when it was already bound to %s.", host_reg, new_variable_id, variable);
+
+            variable_bound = true;
+            this.variable = new_variable_id;
         }
 
         public void unbind_variable() {
@@ -63,6 +71,16 @@ final class RegisterAllocator {
         }
     }
 
+    // Reg get_scratch_reg(IRVariableType type) {
+    //     BindingVariable* binding_variable = get_free_binding_variable(ir_variable.get_type());
+    //     binding_variable.bind_as_scratch_reg();
+    //     return binding_variable.host_reg;
+    // }
+
+    // void unbind_scratch_reg(Reg reg) {
+    //     bindings[reg].unbind_variable();
+    // }
+
     Reg get_bound_host_reg(IRVariable ir_variable) {
         BindingVariable* binding_variable;
         int binding_variable_index = get_binding_variable_from_variable(ir_variable);
@@ -80,7 +98,7 @@ final class RegisterAllocator {
     Reg decipher_type(HostReg_x86_64 host_reg, IRVariableType type) {
         final switch (type) {
             case IRVariableType.INTEGER:
-                return host_reg.to_xbyak_reg64();
+                return host_reg.to_xbyak_reg32();
             
             case IRVariableType.FLOAT:
             case IRVariableType.PAIRED_SINGLE:
@@ -113,10 +131,64 @@ final class RegisterAllocator {
         }
     }
 
+    void print_bindings() {
+        for (int i = 0; i < NUM_HOST_REGS; i++) {
+            log_jit("bindings[%s] = %s", 
+                cast(HostReg_x86_64) i, 
+                bindings[i].variable_bound ? bindings[i].variable : -1
+            );
+        }
+    }
+
+    void relocate_variable(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
+        if (is_host_reg_bound(host_reg)) {
+            BindingVariable* binding_variable = get_free_binding_variable(ir_variable.get_type());
+            binding_variable.bind_variable(get_variable_id_from_host_reg(host_reg));
+            
+            code.mov(decipher_type(binding_variable.host_reg, ir_variable.get_type()), decipher_type(host_reg, ir_variable.get_type()));
+            unbind_host_reg(host_reg);
+        }
+    }
+
+    void assign_variable_without_moving_it(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
+        relocate_variable(code, ir_variable, host_reg);
+
+        HostReg_x86_64 old_host_reg = get_host_reg_from_variable(ir_variable);
+        unbind_host_reg(old_host_reg);
+
+        bind_variable_to_host_reg(ir_variable, host_reg);
+    }
+
+    void assign_variable(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
+        relocate_variable(code, ir_variable, host_reg);
+
+        HostReg_x86_64 old_host_reg = get_host_reg_from_variable(ir_variable);
+        unbind_host_reg(old_host_reg);
+        bind_variable_to_host_reg(ir_variable, host_reg);
+
+        code.mov(decipher_type(host_reg, ir_variable.get_type()), decipher_type(old_host_reg, ir_variable.get_type()));
+    }
+
+
+    int get_variable_id_from_host_reg(HostReg_x86_64 host_reg) {
+        return bindings[host_reg].variable;
+    }
+
+    HostReg_x86_64 get_host_reg_from_variable(IRVariable ir_variable) {
+        int binding_variable_index = get_binding_variable_from_variable(ir_variable);
+        if (binding_variable_index == -1) error_jit("Tried to get host reg from %s when it was not bound.", ir_variable);
+        return bindings[binding_variable_index].host_reg;
+    }
+
     void unbind_variable(IRVariable ir_variable) {
+        // log_jit("Unbinding %s", ir_variable);
         auto binding_variable_index = get_binding_variable_from_variable(ir_variable);
         if (binding_variable_index == -1) error_jit("Tried to unbind %s when it was not bound.", ir_variable);
         bindings[binding_variable_index].unbind_variable();
+    }
+
+    bool is_host_reg_bound(HostReg_x86_64 host_reg) {
+        return !bindings[host_reg].unbound();
     }
 
     void unbind_host_reg(HostReg_x86_64 host_reg) {
@@ -145,10 +217,10 @@ final class RegisterAllocator {
                 goto case IRVariableType.FLOAT;
         }
 
-        for (int i = start; i < end; i++) {
+        for (int i = start; i <= end; i++) {
             // pls dont clobber the stack pointer
             static if (is(HostReg_x86_64 == HostReg_x86_64)) {
-                if (bindings[i].host_reg == HostReg_x86_64.RSP || bindings[i].host_reg == HostReg_x86_64.RDI) continue;
+                if (bindings[i].host_reg == HostReg_x86_64.RSP || bindings[i].host_reg == HostReg_x86_64.RDI || bindings[i].host_reg == HostReg_x86_64.RCX) continue;
             }
 
             if (bindings[i].unbound()) {
@@ -156,6 +228,7 @@ final class RegisterAllocator {
             }
         }
 
+        print_bindings();
         error_jit("No free binding variable found.");
         return &bindings[0]; // doesn't matter, error anyway
     }

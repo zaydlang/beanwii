@@ -19,9 +19,11 @@ struct JitConfig {
     ReadHandler  read_handler8;
     ReadHandler  read_handler16;
     ReadHandler  read_handler32;
+    ReadHandler  read_handler64;
     WriteHandler write_handler8;
     WriteHandler write_handler16;
     WriteHandler write_handler32;
+    WriteHandler write_handler64;
     HleHandler   hle_handler;
 
     void*        mem_handler_context;
@@ -84,12 +86,12 @@ final class Jit {
 
             JitFunction generated_function = cast(JitFunction) code.getCode();
 
-            // if (instruction == 0x7c831e30) {
-                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. 256], 0);
-                foreach (instr; res) {
-                    log_broadway("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                }
+            // if (instruction == 0x281d0080) {
+                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
+                // foreach (instr; res) {
+                //     log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                // }
 
                 // error_jit("jit");
             // }
@@ -97,9 +99,8 @@ final class Jit {
             jit_hash_map.opIndexAssign(generated_function, state.pc);
 
             state.pc += 4;
-            generated_function(state);
-
             this.debug_ring.add(DebugState(*state, instruction));
+            generated_function(state);
 
             return 1;
         }

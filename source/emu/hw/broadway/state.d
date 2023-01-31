@@ -17,7 +17,10 @@ struct BroadwayState {
     u32[8]  gqrs;
     u32     hid0;
     u32     hid2;
-
+    u32     srr0;
+    u32     fpsr;
+    u32     l2cr;
+    
     u32     lr;
     u32     pc;
 }

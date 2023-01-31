@@ -20,8 +20,16 @@ enum GuestReg {
 
     GQR0, GQR1, GQR2, GQR3, GQR4, GQR5, GQR6, GQR7,
 
+    SRR0,
+    FPSR,
+
+    L2CR,
+
     HID0,
     HID2,
+
+    TBL,
+    TBU,
 
     LR,
     PC,
@@ -62,6 +70,9 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.MSR:  return BroadwayState.msr.offsetof;
         case GuestReg.HID0: return BroadwayState.hid0.offsetof;
         case GuestReg.HID2: return BroadwayState.hid2.offsetof;
+        case GuestReg.SRR0: return BroadwayState.srr0.offsetof;
+        case GuestReg.FPSR: return BroadwayState.fpsr.offsetof;
+        case GuestReg.L2CR: return BroadwayState.l2cr.offsetof;
         case GuestReg.LR:   return BroadwayState.lr.offsetof;
         case GuestReg.PC:   return BroadwayState.pc.offsetof;
 

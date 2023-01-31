@@ -46,6 +46,13 @@ public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d, 
     emit_set_cr_so(ir, crf_d, emit_get_xer_so(ir));
 }
 
+public void emit_set_cr_flags_generic(IR* ir, int field, IRVariable var, IRVariable so) {
+    emit_set_cr_lt(ir, field, var.lesser_signed(ir.constant(0)));
+    emit_set_cr_gt(ir, field, var.greater_signed(ir.constant(0)));
+    emit_set_cr_eq(ir, field, var.equals(ir.constant(0)));
+    emit_set_cr_so(ir, field, so);
+}
+
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
     IRVariable cond_ok() {
         IRVariable cr = ir.get_reg(GuestReg.CR);
@@ -120,15 +127,27 @@ public void emit_set_cr_so(IR* ir, int field, IRVariable value) {
     emit_set_cr_flag(ir, field, 0, value);
 }
 
+public IRVariable emit_get_xer_ca(IR* ir) {
+    IRVariable xer = ir.get_reg(GuestReg.XER);
+    return (xer >> 29) & 1;
+}
+
 public IRVariable emit_get_xer_so(IR* ir) {
     IRVariable xer = ir.get_reg(GuestReg.XER);
-    return (xer >> 3) & 1;
+    return (xer >> 31) & 1;
 }
 
 public void emit_set_xer_ca(IR* ir, IRVariable value) {
     IRVariable xer = ir.get_reg(GuestReg.XER);
-    xer = xer &  ~(1     << 2);
-    xer = xer |   (value << 2);
+    xer = xer &  ~(1     << 29);
+    xer = xer |   (value << 29);
+    ir.set_reg(GuestReg.XER, xer);
+}
+
+public void emit_set_xer_so_ov(IR* ir, IRVariable value) {
+    IRVariable xer = ir.get_reg(GuestReg.XER);
+    xer = xer &  ~(1           << 30);
+    xer = xer |   ((value * 3) << 30);
     ir.set_reg(GuestReg.XER, xer);
 }
 
@@ -137,6 +156,7 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 9:    return GuestReg.CTR;
         case 8:    return GuestReg.LR;
         case 1:    return GuestReg.XER;
+        case 26:   return GuestReg.SRR0;
         case 912:  return GuestReg.GQR0;
         case 913:  return GuestReg.GQR1;
         case 914:  return GuestReg.GQR2;
@@ -147,6 +167,7 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 919:  return GuestReg.GQR7;
         case 1008: return GuestReg.HID0;
         case 920:  return GuestReg.HID2;
+        case 1017: return GuestReg.L2CR;
 
         default: 
             error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);

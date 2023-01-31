@@ -32,42 +32,58 @@ public void emit_psq_l(IR* ir, u32 opcode, u32 pc) {
         paired_single[0] = dequantize(ir, ir.read_sized(address, access_size), gqr_type, gqr_scale);
         paired_single[1] = dequantize(ir, ir.read_sized(address + access_size, access_size), gqr_type, gqr_scale);
     }
+
+    ir.set_reg(rd, paired_single);
+}
+
+public void emit_ps_mr(IR* ir, u32 opcode, u32 pc) {
+    GuestReg frd = to_ps(opcode.bits(21, 25));
+    GuestReg frb = to_ps(opcode.bits(11, 15));
+
+    assert(opcode.bits(16, 20) == 0b00000);
+    assert(opcode.bit(0) == 0);
+
+    ir.set_reg(frd, ir.get_reg(frb));
 }
 
 private IRVariable dequantize(IR* ir, IRVariable value, IRVariable gqr_type, IRVariable gqr_scale) {
-    value = value.interpret_as_float();
+    IRVariable result = ir.constant(0.0f);
 
     ir._if(is_gqr_type_u16(ir, gqr_type), () {
-        value = value & 0xFFFF;
+        IRVariable masked_value = value & 0xFFFF;
 
         // nested ifs are not supported...
         // ir._if(is_gqr_type_signed(ir, gqr_type), () {
         //     value = (value << 16) >> 16;
         // });
 
-        value = value / (ir.constant(1) << gqr_scale);
+        result = masked_value.to_float() / (ir.constant(1) << gqr_scale);
     });
 
     ir._if(is_gqr_type_u8(ir, gqr_type), () {
-        value = value & 0xFF;
+        IRVariable masked_value = value & 0xFF;
 
         // nested ifs are not supported...
         // ir._if(is_gqr_type_signed(ir, gqr_type), () {
         //     value = (value << 24) >> 24;
         // });
 
-        value = value / (ir.constant(1) << gqr_scale);
+        result = masked_value.to_float() / (ir.constant(1) << gqr_scale);
     });
 
-    return value;
+    ir._if(is_gqr_type_float(ir, gqr_type), () {
+        result = value.interpret_as_float();
+    });
+
+    return result;
 }
 
 private IRVariable get_gqr_dequantization_type(IR* ir, IRVariable gqr) {
-    return (gqr >> 13) & 7;
+    return (gqr >> 16) & 7;
 }
 
 private IRVariable get_gqr_dequantization_scale(IR* ir, IRVariable gqr) {
-    IRVariable scale = (gqr >> 21) & 63;
+    IRVariable scale = (gqr >> 24) & 63;
 
     // ensure the type is not 1, 2, or 3 (invalid types)
     ir.debug_assert(is_valid_gqr_scale(ir, scale));
@@ -83,7 +99,7 @@ private IRVariable is_gqr_type_u16(IR* ir, IRVariable type) {
 }
 
 private IRVariable is_gqr_type_u8(IR* ir, IRVariable type) {
-    return (type & 0b101).equals(ir.constant(0b101));
+    return (type & 0b101).equals(ir.constant(0b100));
 }
 
 private IRVariable is_gqr_type_signed(IR* ir, IRVariable type) {

@@ -52,6 +52,10 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         string written_string = format(fmt, args);
         written_string = written_string.replace("\n", "\n" ~ prefix);
 
+        if (fatal && g_on_error_callback !is null) {
+            g_on_error_callback();
+        }
+
         writef(prefix);
         writefln(written_string);
 
@@ -59,10 +63,6 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
             version (unittest) {
                 assert(0);
             } else {
-                if (g_on_error_callback !is null) {
-                    g_on_error_callback();
-                }
-                
                 auto trace = defaultTraceHandler(null);
                 foreach (line; trace) {
                     printf("%.*s\n", cast(int) line.length, line.ptr);

@@ -13,11 +13,13 @@ import util.log;
 import util.number;
 import xbyak;
 
+__gshared bool g_START_LOGGING = false;
+
 final class Code : CodeGenerator {
     JitConfig         config;
     RegisterAllocator register_allocator;
 
-    bool rsp_aligned;
+    int rsp_misalignment;
 
     this(JitConfig config) {
         this.config             = config;
@@ -42,34 +44,78 @@ final class Code : CodeGenerator {
         // );
     }
 
+    private size_t get_operand_size(Operand op) {
+        if (op.isBit(8))   return 1;
+        if (op.isBit(16))  return 2;
+        if (op.isBit(32))  return 4;
+        if (op.isBit(64))  return 8;
+        if (op.isBit(128)) return 16;
+        if (op.isBit(256)) return 32;
+        assert(0);
+    }
+
+    private size_t get_stack_operand_size(Operand op) {
+        size_t size = get_operand_size(op);
+        if (size == 4) size = 8; // xbyak automatically turns 4-byte reg pushes into 8-byte reg pushes
+
+        return size;
+    }
+
     override void reset() {
         super.reset();
         
         if (register_allocator) register_allocator.reset();
 
-        rsp_aligned = true;
+        rsp_misalignment = 0;
     }
 
     override void push(Operand op) {
-        rsp_aligned = !rsp_aligned;
+        rsp_misalignment -= get_stack_operand_size(op);
+        rsp_misalignment &= 0xF;
+
         super.push(op);
     }
 
     override void pop(Operand op) {
-        rsp_aligned = !rsp_aligned;
+        rsp_misalignment -= get_stack_operand_size(op);
+        rsp_misalignment &= 0xF;
+
         super.pop(op);
     }
 
     override void call(Operand op) {
-        if (!rsp_aligned) sub(rsp, 8);
+        if (rsp_misalignment != 0) sub(rsp, rsp_misalignment);
         super.call(op);
-        if (!rsp_aligned) add(rsp, 8);
+        if (rsp_misalignment != 0) add(rsp, rsp_misalignment);
     }
     
+    void general_mov(IRVariableType type1, IRVariableType type2, Reg reg1, Reg reg2) {
+        final switch (type1) {
+            case IRVariableType.INTEGER:
+                mov(reg1, reg2);
+                break;
+            
+            case IRVariableType.FLOAT:
+            case IRVariableType.PAIRED_SINGLE:
+                final switch (type2) {
+                    case IRVariableType.INTEGER:
+                        movd(cast(Xmm) reg1, reg2.cvt32());
+                        break;
+                    
+                    case IRVariableType.FLOAT:
+                    case IRVariableType.PAIRED_SINGLE:
+                        movq(cast(Xmm) reg1, cast(Xmm) reg2);
+                        break;
+                }
+                break;
+
+        }
+    }
+
     void emit(IR* ir) {
         emit_prologue();
 
-        // ir.pretty_print();
+        ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -77,11 +123,14 @@ final class Code : CodeGenerator {
                     L(ir.labels[j].to_xbyak_label());
                 }
             }
+            log_ir("size: %x", getSize());
+            // log_ir("%s", ir.instructions[i]);
             emit(ir.instructions[i], i);
         }
 
         for (int j = 0; j < ir.num_labels(); j++) {
             if (ir.labels[j].instruction_index == ir.num_instructions()) {
+                log_ir("sizeo: %x %s", getSize(), ir.labels[j].to_xbyak_label());
                 L(ir.labels[j].to_xbyak_label());
             }
         }
@@ -89,6 +138,8 @@ final class Code : CodeGenerator {
         assert(!this.hasUndefinedLabel()); // xbyak function
 
         emit_epilogue();
+
+        if (g_START_LOGGING || true) pretty_print();
     }
 
     void emit_prologue() {
@@ -96,7 +147,7 @@ final class Code : CodeGenerator {
 
         mov(rbp, rsp);
         and(rsp, ~15);
-        this.rsp_aligned = true;
+        this.rsp_misalignment = 0;
         
         // align stack
 
@@ -159,7 +210,34 @@ final class Code : CodeGenerator {
         Reg host_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
 
         int offset = cast(int) guest_reg.get_reg_offset();
-        mov(host_reg.cvt64(), dword [rdi + offset]);
+
+        // if (guest_reg.is_time_base()) {
+        //     mov(host_reg.cvt64(), cast(size_t) config.timestamp);
+        //     mov(host_reg.cvt64(), qword [host_reg.cvt64()]);
+
+        //     Reg scratch = register_allocator.get_scratch_reg(IRVariableType.INTEGER).cvt64();
+        //     mov(scratch, cast(size_t) &this.last_tb_update_timestamp);
+        //     mov(scratch, qword [scratch]);
+
+        //     // host_reg == the amount of cycles since the last TB update
+        //     sub(host_reg.cvt64(), scratch);
+        //     mov(scratch, qword [rdi + GuestReg.TBL.get_reg_offset()]);
+        //     add(host_reg.cvt64(), scratch);
+        //     if (guest_reg == GuestReg.TBU) {
+        //         shr(host_reg.cvt64(), 32);
+        //     }
+        // } else {
+            final switch (ir_instruction.dest.get_type()) {
+                case IRVariableType.INTEGER:
+                    mov(host_reg, dword [rdi + offset]);
+                    break;
+                
+                case IRVariableType.FLOAT:
+                case IRVariableType.PAIRED_SINGLE:
+                    movq(cast(Xmm) host_reg, qword [rdi + offset]);
+                    break;
+            }
+        // }
     }
 
     void emit_SET_REG_VAR(IRInstructionSetRegVar ir_instruction, int current_instruction_index) {
@@ -167,7 +245,17 @@ final class Code : CodeGenerator {
         Reg src_reg = register_allocator.get_bound_host_reg(ir_instruction.src);
         
         int offset = cast(int) dest_reg.get_reg_offset();
-        mov(dword [rdi + offset], src_reg.cvt32());
+
+        final switch (ir_instruction.src.get_type()) {
+            case IRVariableType.INTEGER:
+                mov(dword [rdi + offset], src_reg);
+                break;
+            
+            case IRVariableType.FLOAT:
+            case IRVariableType.PAIRED_SINGLE:
+                movq(qword [rdi + offset], cast(Xmm) src_reg);
+                break;
+        }
 
         register_allocator.maybe_unbind_variable(ir_instruction.src, current_instruction_index);
     }
@@ -230,6 +318,10 @@ final class Code : CodeGenerator {
                 rol(dest_reg, src2);
                 break;
             
+            case IRBinaryDataOp.MUL:
+                imul(dest_reg, src1, src2);
+                break;
+            
             default: assert(0);
         }
         
@@ -255,26 +347,20 @@ final class Code : CodeGenerator {
             
             case IRBinaryDataOp.LSL:
                 mov(dest_reg, src1);
-                push(ecx);
                 mov(ecx, src2.cvt8());
                 shl(dest_reg, cl);
-                pop(ecx);
                 break;
             
             case IRBinaryDataOp.LSR:
                 mov(dest_reg, src1);
-                push(ecx);
                 mov(ecx, src2.cvt8());
                 shr(dest_reg, cl);
-                pop(ecx);
                 break;
             
             case IRBinaryDataOp.ASR:
                 mov(dest_reg, src1);
-                push(ecx);
                 mov(ecx, src2.cvt8());
                 sar(dest_reg, cl);
-                pop(ecx);
                 break;
             
             case IRBinaryDataOp.ADD:
@@ -294,45 +380,81 @@ final class Code : CodeGenerator {
             
             case IRBinaryDataOp.ROL:
                 mov(dest_reg, src1);
-                rol(dest_reg, src2.cvt8());
+                mov(ecx, src2.cvt8());
+                rol(dest_reg, cl);
                 break;
             
             case IRBinaryDataOp.GTU:
                 cmp(src1, src2);
                 seta(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.LTU:
                 cmp(src1, src2);
                 setb(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.GTS:
                 cmp(src1, src2);
                 setg(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.LTS:
                 cmp(src1, src2);
                 setl(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.EQ:
                 cmp(src1, src2);
                 sete(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
             case IRBinaryDataOp.NE:
                 cmp(src1, src2);
                 setne(dest_reg.cvt8());
-                movzx(dest_reg.cvt64(), dest_reg.cvt8());
+                movzx(dest_reg.cvt32(), dest_reg.cvt8());
                 break;
             
+            case IRBinaryDataOp.DIV:
+                final switch (ir_instruction.src1.get_type()) {
+                    case IRVariableType.PAIRED_SINGLE:
+                        movq(cast(Xmm) dest_reg, cast(Xmm) src1);
+
+                        if (ir_instruction.src2.get_type() == IRVariableType.INTEGER) {
+                            pxor(cast(Xmm) src1, cast(Xmm) src1);
+                            cvtsi2ss(cast(Xmm) src1, src2.cvt32());
+                        }
+
+                        divss(cast(Xmm) dest_reg, cast(Xmm) src1);
+                        break;
+                    
+                    case IRVariableType.FLOAT:
+                        assert(0);
+                    
+                    case IRVariableType.INTEGER:
+                        register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RDX);
+                        register_allocator.assign_variable_without_moving_it(this, ir_instruction.dest, HostReg_x86_64.RAX);
+                        cdq();
+                        push(rdx);
+                        
+                        // refetch the registers in case they were moved
+                        src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
+
+                        idiv(src2.cvt32());
+                        pop(rdx);
+                }
+                break;
+            
+            case IRBinaryDataOp.MUL:
+                mov(dest_reg, src1);
+                imul(dest_reg, src2);
+                break;
+                
             default: assert(0);
         }
 
@@ -344,8 +466,6 @@ final class Code : CodeGenerator {
     void emit_UNARY_DATA_OP(IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src);
-
-        bool unbound_src = false;
 
         switch (ir_instruction.op) {
             case IRUnaryDataOp.NOT:
@@ -359,7 +479,7 @@ final class Code : CodeGenerator {
                 break;
             
             case IRUnaryDataOp.MOV:
-                mov(dest_reg, src_reg);
+                general_mov(ir_instruction.dest.get_type(), ir_instruction.src.get_type(), dest_reg, src_reg);
                 break;
             
             case IRUnaryDataOp.CLZ:
@@ -367,29 +487,43 @@ final class Code : CodeGenerator {
                 bsf(dest_reg, dest_reg);
                 break;
             
+            case IRUnaryDataOp.FLT_INTERP:
+                movd(cast(Xmm) dest_reg, src_reg.cvt32());
+                break;
+            
+            case IRUnaryDataOp.FLT_CAST:
+                Xmm dest_xmm = cast(Xmm) dest_reg;
+                pxor(dest_xmm, dest_xmm);
+                cvtsi2ss(dest_xmm, src_reg);
+                break;
+            
+            case IRUnaryDataOp.INT_CAST:
+                cvttss2si(dest_reg, cast(Xmm) src_reg);
+                break;
+            
             default: assert(0);
         }
 
         register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
-        
-        if (!unbound_src) {
-            register_allocator.maybe_unbind_variable(ir_instruction.src,  current_instruction_index);
-        }
+        register_allocator.maybe_unbind_variable(ir_instruction.src,  current_instruction_index);
     }
 
     void emit_SET_VAR_IMM_INT(IRInstructionSetVarImmInt ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         mov(dest_reg, ir_instruction.imm);
+        register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
     }
 
     void emit_SET_VAR_IMM_FLOAT(IRInstructionSetVarImmFloat ir_instruction, int current_instruction_index) {
-        Mmx dest_reg = cast(Mmx) register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Xmm dest_reg = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.dest);
 
         // cry about it
         push(r10);
-        mov(r10d, *cast(u64*)&ir_instruction.imm);
+        mov(r10, *cast(size_t*)&ir_instruction.imm);
         movd(dest_reg, r10d);
         pop(r10);
+
+        register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
     }
 
     void emit_READ(IRInstructionRead ir_instruction, int current_instruction_index) {
@@ -406,12 +540,13 @@ final class Code : CodeGenerator {
         // know exactly how to fix that but it's obviously a massive problem.
 
         mov(rsi, address_reg);
-        mov(rdi, cast(u64) config.mem_handler_context);
+        mov(rdi, cast(size_t) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
-            case 4: mov(r10, cast(u64) config.read_handler32); break;
-            case 2: mov(r10, cast(u64) config.read_handler16); break;
-            case 1: mov(r10, cast(u64) config.read_handler8);  break;
+            case 8: mov(r10.cvt64(), cast(size_t) config.read_handler64); break;
+            case 4: mov(r10.cvt64(), cast(size_t) config.read_handler32); break;
+            case 2: mov(r10.cvt64(), cast(size_t) config.read_handler16); break;
+            case 1: mov(r10.cvt64(), cast(size_t) config.read_handler8);  break;
         }
 
         call(r10);
@@ -424,6 +559,9 @@ final class Code : CodeGenerator {
                 pop(reg);
             }
         }
+
+        register_allocator.maybe_unbind_variable(ir_instruction.address, current_instruction_index);
+        register_allocator.maybe_unbind_variable(ir_instruction.dest,    current_instruction_index);
     }
 
     void emit_WRITE(IRInstructionWrite ir_instruction, int current_instruction_index) {
@@ -437,17 +575,19 @@ final class Code : CodeGenerator {
         push(rdi);
         push(rdx);
 
-        // TODO: if any of value_reg / address_reg are bound to rdi / rsi, then we need to... tbh i don't
-        // know exactly how to fix that but it's obviously a massive problem.
+        // i hate this.
+        push(value_reg);
+        push(address_reg);
+        pop(rsi);
+        pop(rdx);
 
-        mov(rdx, value_reg);
-        mov(rsi, address_reg);
-        mov(rdi, cast(u64) config.mem_handler_context);
+        mov(rdi, cast(size_t) config.mem_handler_context);
 
         final switch (ir_instruction.size) {
-            case 4: mov(r10, cast(u64) config.write_handler32); break;
-            case 2: mov(r10, cast(u64) config.write_handler16); break;
-            case 1: mov(r10, cast(u64) config.write_handler8);  break;
+            case 8: mov(r10.cvt64(), cast(size_t) config.write_handler64); break;
+            case 4: mov(r10.cvt64(), cast(size_t) config.write_handler32); break;
+            case 2: mov(r10.cvt64(), cast(size_t) config.write_handler16); break;
+            case 1: mov(r10.cvt64(), cast(size_t) config.write_handler8);  break;
         }
 
         call(r10);
@@ -457,6 +597,9 @@ final class Code : CodeGenerator {
         pop(rsi);
 
         emit_pop_caller_save_regs();
+
+        register_allocator.maybe_unbind_variable(ir_instruction.address, current_instruction_index);
+        register_allocator.maybe_unbind_variable(ir_instruction.dest,    current_instruction_index);
     }
 
     void emit_READ_SIZED(IRInstructionReadSized ir_instruction, int current_instruction_index) {
@@ -470,21 +613,43 @@ final class Code : CodeGenerator {
         push(rsi);
         push(rdi);
 
-        // TODO: if any of value_reg / address_reg are bound to rdi / rsi, then we need to... tbh i don't
-        // know exactly how to fix that but it's obviously a massive problem.
+        // we need three scratch registers that are not address_reg, value_reg, or size_reg
+        Reg[3] scratch;
+        int scratch_idx = 0;
+        foreach (Reg reg; [rcx, rdx, r8, r9, r10, r11]) {
+            if (reg.getIdx() == address_reg.getIdx() || reg.getIdx() == value_reg.getIdx() || reg.getIdx() == size_reg.getIdx()) {
+                continue;
+            }
+            scratch[scratch_idx++] = reg;
+            if (scratch_idx == 3) {
+                break;
+            }
+        }
 
-        mov(rsi, address_reg);
-        mov(rdi, cast(u64) config.mem_handler_context);
+        assert(scratch_idx == 3);
 
-        mov(r10, cast(u64) &config);
-        add(size_reg, 1);
-        shr(size_reg, 1);
-        shl(size_reg, 4);
-        add(r10, size_reg);
-        mov(r10, dword [r10]);
+        // i hate this function
+        mov(scratch[0], address_reg);
+        mov(scratch[1].cvt64(), cast(size_t) &config);
+        push(scratch[2]);
 
-        call(r10);
-        mov(value_reg, rax);
+        shr(scratch[2], 1);
+        shl(scratch[2], 3);
+
+        mov(rsi, scratch[0]);
+        mov(rdi, qword [scratch[1].cvt64() + cast(int) JitConfig.mem_handler_context.offsetof]);
+        mov(scratch[2], qword [scratch[1].cvt64() + scratch[2].cvt64()]);
+
+        call(scratch[2]);
+        pop(scratch[2]);
+
+        // based on the size, we need to zero out the upper bits of the value register
+        mov(value_reg, 0xFFFF_FFFF);
+        mov(rcx, 4);
+        sub(rcx, scratch[2]);
+        shl(rcx, 3);
+        shr(value_reg, cl);
+        and(value_reg, rax);
 
         foreach (Reg reg; [rdi, rsi, r11, r10, r9, r8, rdx, rcx, rax]) {
             if (reg.getIdx() == value_reg.getIdx()) {
@@ -493,13 +658,20 @@ final class Code : CodeGenerator {
                 pop(reg);
             }
         }
+
+        register_allocator.maybe_unbind_variable(ir_instruction.address, current_instruction_index);
+        register_allocator.maybe_unbind_variable(ir_instruction.dest,    current_instruction_index);
+        register_allocator.maybe_unbind_variable(ir_instruction.size,    current_instruction_index);
     }
 
     void emit_CONDITIONAL_BRANCH(IRInstructionConditionalBranch ir_instruction, int current_instruction_index) {
         Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond);
 
         cmp(cond_reg, 0);
-        je((*ir_instruction.after_true_label).to_xbyak_label());
+        log_jit("je %s", (*ir_instruction.after_true_label).to_xbyak_label());
+        je((*ir_instruction.after_true_label).to_xbyak_label(), T_NEAR);
+
+        register_allocator.maybe_unbind_variable(ir_instruction.cond, current_instruction_index);
     }
 
     void emit_BRANCH(IRInstructionBranch ir_instruction, int current_instruction_index) {
@@ -509,13 +681,13 @@ final class Code : CodeGenerator {
     void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         setc(dest_reg.cvt8());
-        movzx(dest_reg.cvt64(), dest_reg.cvt8());
+        movzx(dest_reg.cvt32(), dest_reg.cvt8());
     }
 
     void emit_GET_HOST_OVERFLOW(IRInstructionGetHostOverflow ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         seto(dest_reg.cvt8());
-        movzx(dest_reg.cvt64(), dest_reg.cvt8());
+        movzx(dest_reg.cvt32(), dest_reg.cvt8());
     }
 
     void emit_HLE_FUNC(IRInstructionHleFunc ir_instruction, int current_instruction_index) {
@@ -523,16 +695,22 @@ final class Code : CodeGenerator {
 
         // it is safe to clobber these registers, because if an HLE opcode gets emitted, it will
         // be the only IR opcode.
-        mov(rdi, cast(u64) config.hle_handler_context);
+        mov(rdi, cast(size_t) config.hle_handler_context);
         mov(rsi, ir_instruction.function_id);
-        mov(r10, cast(u64) config.hle_handler);
+        mov(r10, cast(size_t) config.hle_handler);
         call(r10);
 
         emit_pop_caller_save_regs();
     }
 
     void emit_PAIRED_SINGLE_MOV(IRInstructionPairedSingleMov ir_instruction, int current_instruction_index) {
-        assert(0);
+        Xmm dest_reg = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Xmm src_reg  = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.src);
+
+        unpcklps(dest_reg, src_reg);
+        if (ir_instruction.index == 1) {
+            pshufd(dest_reg, dest_reg, 0b00_01);
+        }
     }
 
     void emit_DEBUG_ASSERT(IRInstructionDebugAssert ir_instruction, int current_instruction_index) {
@@ -540,10 +718,25 @@ final class Code : CodeGenerator {
         string after_assert_label = generate_unique_label();
 
         cmp(dest_reg, 0);
-        jne(after_assert_label);
-        mov(rax, cast(u64) (&this.jit_assert).funcptr);
+        je(after_assert_label);
+        mov(rax, cast(size_t) (&this.jit_assert).funcptr);
         call(rax);
         L(after_assert_label);
+
+        register_allocator.maybe_unbind_variable(ir_instruction.cond, current_instruction_index);
+    }
+
+    void emit_SEXT(IRInstructionSext ir_instruction, int current_instruction_index) {
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src);
+
+        if (ir_instruction.bits == 8) {
+            movsx(dest_reg.cvt32(), src_reg.cvt8());
+        } else if (ir_instruction.bits == 16) {
+            movsx(dest_reg.cvt32(), src_reg.cvt16());
+        } else {
+            assert(0);
+        }
     }
 
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
@@ -566,6 +759,7 @@ final class Code : CodeGenerator {
             (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index),
             (IRInstructionPairedSingleMov i)   => emit_PAIRED_SINGLE_MOV(i, current_instruction_index),
             (IRInstructionDebugAssert i)       => emit_DEBUG_ASSERT(i, current_instruction_index),
+            (IRInstructionSext i)               => emit_SEXT(i, current_instruction_index),
         );
     }
 
@@ -580,6 +774,6 @@ final class Code : CodeGenerator {
     }
 
     void jit_assert() {
-        assert(0);
+        error_jit("Jit asserted 0");
     }
 }

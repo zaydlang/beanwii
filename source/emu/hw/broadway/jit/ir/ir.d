@@ -24,7 +24,8 @@ alias IRInstruction = SumType!(
     IRInstructionGetHostOverflow,
     IRInstructionHleFunc,
     IRInstructionPairedSingleMov,
-    IRInstructionDebugAssert
+    IRInstructionDebugAssert,
+    IRInstructionSext
 );
 
 struct IR {
@@ -162,19 +163,38 @@ struct IR {
         return value;
     }
 
-    void write_u8(IRVariable address, IRVariable value) {
-        emit(IRInstructionWrite(value, address, u8.sizeof));
+    IRVariable read_u64(IRVariable address) {
+        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+        
         address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionRead(value, address, u64.sizeof));
+
+        return value;
+    }
+
+    void write_u8(IRVariable address, IRVariable value) {
+        address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionWrite(value, address, u8.sizeof));
     }
 
     void write_u16(IRVariable address, IRVariable value) {
-        emit(IRInstructionWrite(value, address, u16.sizeof));
         address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionWrite(value, address, u16.sizeof));
     }
 
     void write_u32(IRVariable address, IRVariable value) {
-        emit(IRInstructionWrite(value, address, u32.sizeof));
         address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionWrite(value, address, u32.sizeof));
+    }
+
+    void write_u64(IRVariable address, IRVariable value) {
+        address.update_lifetime();
+        value.update_lifetime();
+        emit(IRInstructionWrite(value, address, u64.sizeof));
     }
 
     IRVariable get_reg(GuestReg reg) {
@@ -205,6 +225,18 @@ struct IR {
 
         return label;
     }
+    
+
+    void _if_no_phi(IRVariable cond, void delegate() true_case) {
+        IRLabel* after_true_label = generate_new_label();
+
+        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
+
+        this.update_lifetime(cond.variable_id);
+
+        true_case();
+        this.bind_label(after_true_label);
+    }
 
     void _if(IRVariable cond, void delegate() true_case) {
         IRLabel* after_true_label   = generate_new_label();
@@ -223,14 +255,15 @@ struct IR {
         // phi function
         for (int i = 0; i < current_transmutation_index; i++) {
             auto transmutation = transmutations[i];
+            
+            this.update_lifetime(transmutation.to.variable_id);
+            this.update_lifetime(transmutation.from.variable_id);
+            
             this.emit(IRInstructionUnaryDataOp(
                 IRUnaryDataOp.MOV, 
                 IRVariable(&this, transmutation.to.variable_id, ),
                 IRVariable(&this, transmutation.from.variable_id)
             ));
-            
-            this.update_lifetime(transmutation.to.variable_id);
-            this.update_lifetime(transmutation.from.variable_id);
         }
 
         this.bind_label(after_true_label);
@@ -372,6 +405,10 @@ struct IR {
 
             (IRInstructionDebugAssert i) {
                 log_ir("assert v%d", i.cond.get_id());
+            },
+
+            (IRInstructionSext i) {
+                log_ir("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
             }
         );
     }
@@ -411,9 +448,6 @@ struct IRVariable {
         IRBinaryDataOp op = get_binary_data_op!s;
 
         IRVariableType type = IRVariableType.INTEGER;
-        if (op == IRBinaryDataOp.DIV) {
-            type = IRVariableType.FLOAT;
-        }
 
         IRVariable dest = ir.generate_new_variable(type);
         ir.log_transmuation(this, dest);
@@ -580,6 +614,19 @@ struct IRVariable {
         return dest;
     }
 
+    IRVariable rol(IRVariable amount) {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        amount.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.ROL, dest, this, amount));
+
+        return dest;
+    }
+
     IRVariable clz() {
         IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
@@ -588,6 +635,34 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest, this));
+
+        return dest;
+    }
+
+    IRVariable to_float() {
+        assert(ir.get_type(this) == IRVariableType.INTEGER);
+
+        IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_CAST, dest, this));
+
+        return dest;
+    }
+
+    IRVariable to_int() {
+        assert(ir.get_type(this) == IRVariableType.FLOAT);
+
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.INT_CAST, dest, this));
 
         return dest;
     }
@@ -601,7 +676,21 @@ struct IRVariable {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_INTERP, dest, this));
+
+        return dest;
+    }
+
+    IRVariable sext(int bits) {
+        assert(bits == 8 || bits == 16);
+
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionSext(dest, this, bits));
 
         return dest;
     }
@@ -618,6 +707,7 @@ struct IRVariable {
         final switch (s) {
             case "+":   return IRBinaryDataOp.ADD;
             case "-":   return IRBinaryDataOp.SUB;
+            case "*":   return IRBinaryDataOp.MUL;
             case "/":   return IRBinaryDataOp.DIV;
             case "<<":  return IRBinaryDataOp.LSL;
             case ">>>": return IRBinaryDataOp.LSR;
@@ -752,4 +842,10 @@ struct IRInstructionPairedSingleMov {
 
 struct IRInstructionDebugAssert {
     IRVariable cond;
+}
+
+struct IRInstructionSext {
+    IRVariable dest;
+    IRVariable src;
+    int bits;
 }
