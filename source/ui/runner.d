@@ -53,5 +53,5 @@ final class Runner {
             wii.cycle(33_513_982 / 60);
             tick();
         }
-    }
+}
 }

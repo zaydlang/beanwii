@@ -22,8 +22,8 @@ private void emit_addcx(IR* ir, u32 opcode, u32 pc) {
 
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
@@ -34,14 +34,16 @@ private void emit_addex(IR* ir, u32 opcode, u32 pc) {
     bool     oe = opcode.bit(10);
     bool     rc = opcode.bit(0);
 
-    IRVariable result = ir.get_reg(ra) + ir.get_reg(rb) + emit_get_xer_ca(ir);
-    IRVariable carry    = ir.get_carry();
+    IRVariable operand = ir.get_reg(rb) + emit_get_xer_ca(ir);
+    IRVariable carry = ir.get_carry();
+    IRVariable result = ir.get_reg(ra) + operand;
     IRVariable overflow = ir.get_overflow();
+    carry = ir.get_carry() | carry;
 
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
@@ -61,11 +63,11 @@ private void emit_addi(IR* ir, u32 opcode, u32 pc) {
 private void emit_addic(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
+    int simm = sext_32(opcode.bits(0, 15), 16);
 
     emit_add_generic(
         ir,
-        rd, ir.get_reg(ra), ir.get_reg(rb),
+        rd, ir.get_reg(ra), ir.constant(simm),
         false, // record bit
         true,  // XER CA
         false, // XER SO & OV
@@ -109,12 +111,17 @@ private void emit_addmex(IR* ir, u32 opcode, u32 pc) {
     IRVariable carry    = ir.get_carry();
     IRVariable overflow = ir.get_overflow();
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    ir.set_reg(rd, result);
+
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
 private void emit_addx(IR* ir, u32 opcode, u32 pc) {
+    // 7dcdbe15
+    // 011111 01110 01101 10111 110 0001 0101
+    //        14    13    23
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -122,13 +129,12 @@ private void emit_addx(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
 
     IRVariable result = ir.get_reg(ra) + ir.get_reg(rb);
-    IRVariable carry    = ir.get_carry();
     IRVariable overflow = ir.get_overflow();
 
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_addzex(IR* ir, u32 opcode, u32 pc) {
@@ -141,21 +147,23 @@ private void emit_addzex(IR* ir, u32 opcode, u32 pc) {
     IRVariable carry    = ir.get_carry();
     IRVariable overflow = ir.get_overflow();
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    ir.set_reg(rd, result);
+
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
 private void emit_and(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
-    IRVariable result = ir.get_reg(ra) & ir.get_reg(rb);
-    ir.set_reg(rd, result);
+    IRVariable result = ir.get_reg(rs) & ir.get_reg(rb);
+    ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_andc(IR* ir, u32 opcode, u32 pc) {
@@ -164,10 +172,10 @@ private void emit_andc(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
-    IRVariable result = ir.get_reg(ra) & ~ir.get_reg(rb);
-    ir.set_reg(rs, result);
+    IRVariable result = ir.get_reg(rs) & ~ir.get_reg(rb);
+    ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_andi(IR* ir, u32 opcode, u32 pc) {
@@ -178,7 +186,7 @@ private void emit_andi(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ir.get_reg(rs) & uimm;
     ir.set_reg(ra, result);
 
-    emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_andis(IR* ir, u32 opcode, u32 pc) {
@@ -189,7 +197,7 @@ private void emit_andis(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ir.get_reg(rs) & (uimm << 16);
     ir.set_reg(ra, result);
 
-    emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_b(IR* ir, u32 opcode, u32 pc) {
@@ -201,6 +209,8 @@ private void emit_b(IR* ir, u32 opcode, u32 pc) {
     if (!aa) branch_address += pc;
 
     if (lk) ir.set_reg(GuestReg.LR, pc + 4);
+
+    if (branch_address == pc) error_broadway("branch to self");
 
     ir.set_reg(GuestReg.PC, branch_address);
 }
@@ -264,10 +274,14 @@ private void emit_bclr(IR* ir, u32 opcode, u32 pc) {
 private void emit_cntlzw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
+    bool     rc = opcode.bit(0);
 
     assert(opcode.bits(11, 15) == 0);
 
-    ir.set_reg(ra, ir.get_reg(rs).clz());
+    IRVariable result = ir.get_reg(rs).clz();
+    ir.set_reg(ra, result);
+
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_cmp(IR* ir, u32 opcode, u32 pc) {
@@ -374,38 +388,52 @@ private void emit_dcbst(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_divwx(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = to_gpr(opcode.bits(16, 20));
-    GuestReg ra = to_gpr(opcode.bits(21, 25));
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
-    log_jit("divwx %x, %x, %x", rd, ra, rb);
+    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
+        IRVariable result = ir.get_reg(ra) >> 31;
+        ir.set_reg(rd, result);
+
+        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
+        if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    });
 
     ir._if_no_phi(ir.get_reg(rb).notequals(ir.constant(0)), () {
         IRVariable result   = ir.get_reg(ra) / ir.get_reg(rb);
         IRVariable overflow = ir.get_overflow();
         ir.set_reg(rd, result);
 
-        if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
         if (oe) emit_set_xer_so_ov(ir, overflow);
+        if (rc) emit_set_cr_flags_generic(ir, 0, result);
     });
 }
 
 private void emit_divwux(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = to_gpr(opcode.bits(16, 20));
-    GuestReg ra = to_gpr(opcode.bits(21, 25));
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
+    GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
+    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
+        IRVariable result = ir.constant(0);
+        ir.set_reg(rd, result);
+
+        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
+        if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    });
+
     ir._if_no_phi(ir.get_reg(rb).notequals(ir.constant(0)), () {
-        IRVariable result   = ir.get_reg(ra) / ir.get_reg(rb);
+        IRVariable result   = ir.get_reg(ra).unsigned_div(ir.get_reg(rb));
         IRVariable overflow = ir.get_overflow();
         ir.set_reg(rd, result);
 
-        if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
         if (oe) emit_set_xer_so_ov(ir, overflow);
+        if (rc) emit_set_cr_flags_generic(ir, 0, result);
     });
 }
 
@@ -418,7 +446,7 @@ private void emit_eqv(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ~(ir.get_reg(rs) ^ ir.get_reg(rb));
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_extsb(IR* ir, u32 opcode, u32 pc) {
@@ -431,7 +459,7 @@ private void emit_extsb(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ir.get_reg(rs).sext(8);
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_extsh(IR* ir, u32 opcode, u32 pc) {
@@ -444,7 +472,7 @@ private void emit_extsh(IR* ir, u32 opcode, u32 pc) {
     IRVariable result = ir.get_reg(rs).sext(16);
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_fmr(IR* ir, u32 opcode, u32 pc) {
@@ -616,18 +644,18 @@ private void emit_mulli(IR* ir, u32 opcode, u32 pc) {
 }
 
 private void emit_mullwx(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
-    IRVariable result = ir.get_reg(rs) * ir.get_reg(rb);
+    IRVariable result = ir.get_reg(ra) * ir.get_reg(rb);
     IRVariable overflow = ir.get_overflow();
-    ir.set_reg(ra, result);
+    ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_mulhw(IR* ir, u32 opcode, u32 pc) {
@@ -642,12 +670,12 @@ private void emit_mulhw(IR* ir, u32 opcode, u32 pc) {
     // a 1. so i'll leave in the infrastructure for dealing with oe.
     assert(!oe);
 
-    IRVariable result = ir.get_reg(ra) * ir.get_reg(rb);
+    IRVariable result = ir.get_reg(ra).multiply_high_signed(ir.get_reg(rb));
     IRVariable overflow = ir.get_overflow();
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_mulhwu(IR* ir, u32 opcode, u32 pc) {
@@ -662,41 +690,42 @@ private void emit_mulhwu(IR* ir, u32 opcode, u32 pc) {
     // a 1. so i'll leave in the infrastructure for dealing with oe.
     assert(!oe);
 
-    IRVariable result = ir.get_reg(ra) * ir.get_reg(rb);
+    IRVariable result = ir.get_reg(ra).multiply_high(ir.get_reg(rb));
     IRVariable overflow = ir.get_overflow();
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_nand(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
+    GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
-    IRVariable result = ~(ir.get_reg(rs) & ir.get_reg(ra));
+    IRVariable result = ~(ir.get_reg(rs) & ir.get_reg(rb));
 
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_negx(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
+    GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
     assert(opcode.bits(11, 15) == 0b00000);
 
-    IRVariable result = ~ir.get_reg(rs) + 1;
+    IRVariable result = ~ir.get_reg(ra) + 1;
     IRVariable overflow = ir.get_overflow();
 
-    ir.set_reg(ra, result);
+    ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
-    if (oe) emit_set_xer_ca(ir, overflow);
+    if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_nor(IR* ir, u32 opcode, u32 pc) {
@@ -707,6 +736,8 @@ private void emit_nor(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable result = ~(ir.get_reg(rs) | ir.get_reg(rb));
     ir.set_reg(ra, result);
+
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_or(IR* ir, u32 opcode, u32 pc) {
@@ -719,7 +750,7 @@ private void emit_or(IR* ir, u32 opcode, u32 pc) {
     IRVariable overflow = ir.get_overflow();
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_orc(IR* ir, u32 opcode, u32 pc) {
@@ -732,7 +763,7 @@ private void emit_orc(IR* ir, u32 opcode, u32 pc) {
     IRVariable overflow = ir.get_overflow();
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_ori(IR* ir, u32 opcode, u32 pc) {
@@ -757,79 +788,51 @@ private void emit_rlwimi(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
-    int      mb = 31 - opcode.bits(6, 10);
-    int      me = 31 - opcode.bits(1, 5);
+    int      mb = opcode.bits(6, 10);
+    int      me = opcode.bits(1, 5);
     bool     rc = opcode.bit(0);
 
-    int mask;
-    if (mb < me) {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (me - mb - 1))) - 1) << mb;
-        mask = ~mask;
-    } else {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (mb - me + 1))) - 1) << me;
-    }
+    int mask = generate_rlw_mask(mb, me);
 
     IRVariable result = ir.get_reg(rs);
     result = (result.rol(sh) & mask) | (ir.get_reg(ra) & ~mask);
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.constant(0));
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_rlwinm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
-    int      mb = 31 - opcode.bits(6, 10);
-    int      me = 31 - opcode.bits(1, 5);
+    int      mb = opcode.bits(6, 10);
+    int      me = opcode.bits(1, 5);
     bool     rc = opcode.bit(0);
 
-    int mask;
-    if (mb < me) {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (me - mb - 1))) - 1) << mb;
-        mask = ~mask;
-    } else {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (mb - me + 1))) - 1) << me;
-    }
+    int mask = generate_rlw_mask(mb, me);
 
     IRVariable result = ir.get_reg(rs);
     result = result.rol(sh) & mask;
     ir.set_reg(ra, result);
 
-    if (rc) {
-        emit_set_cr_lt(ir, 0, result.lesser_signed(ir.constant(0)));
-        emit_set_cr_gt(ir, 0, result.greater_signed(ir.constant(0)));
-        emit_set_cr_eq(ir, 0, result.equals(ir.constant(0)));
-        emit_set_cr_so(ir, 0, ir.constant(0)); // TODO: what does overflow even mean in the context of rlwinm????
-    }
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_rlwnm(IR* ir, u32 opcode, u32 pc) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
-    int      mb = 31 - opcode.bits(6, 10);
-    int      me = 31 - opcode.bits(1, 5);
+    int      mb = opcode.bits(6, 10);
+    int      me = opcode.bits(1, 5);
     bool     rc = opcode.bit(0);
 
-    int mask;
-    if (mb < me) {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (me - mb - 1))) - 1) << mb;
-        mask = ~mask;
-    } else {
-        mask = cast(int) (((cast(u64) 1) << (cast(u64) (mb - me + 1))) - 1) << me;
-    }
+    int mask = generate_rlw_mask(mb, me);
 
     IRVariable result = ir.get_reg(rs);
     result = result.rol(ir.get_reg(rb) & 0x1F) & mask;
     ir.set_reg(ra, result);
 
-    if (rc) {
-        emit_set_cr_lt(ir, 0, result.lesser_signed(ir.constant(0)));
-        emit_set_cr_gt(ir, 0, result.greater_signed(ir.constant(0)));
-        emit_set_cr_eq(ir, 0, result.equals(ir.constant(0)));
-        emit_set_cr_so(ir, 0, ir.constant(0)); // TODO: what does overflow even mean in the context of rlwinm????
-    }
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_sc(IR* ir, u32 opcode, u32 pc) {
@@ -855,7 +858,7 @@ private void emit_slw(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(ra, result);
     IRVariable overflow = ir.get_overflow();
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
@@ -864,22 +867,22 @@ private void emit_sraw(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
 
-    IRVariable shift = ir.get_reg(rb) & 0x3F;
+    IRVariable operand = ir.get_reg(rs);
+    IRVariable raw_shift = ir.get_reg(rb) & 0x3F;
+    IRVariable shift = raw_shift;
     ir._if(shift.greater_unsigned(ir.constant(31)),
         () {
             shift = ir.constant(31);
         }
     );
 
-    IRVariable result = ir.get_reg(rs) >> shift;
-    IRVariable overflow = ir.get_overflow();
-    IRVariable carry    = ir.get_carry();
+    IRVariable result = operand >> shift;
+    IRVariable carry = (result >> 31) & (operand.ctz().lesser_unsigned(raw_shift));
 
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
-
 }
 
 private void emit_srawi(IR* ir, u32 opcode, u32 pc) {
@@ -888,13 +891,13 @@ private void emit_srawi(IR* ir, u32 opcode, u32 pc) {
     int      sh = opcode.bits(11, 15);
     bool     rc = opcode.bit(0);
 
-    IRVariable result = ir.get_reg(rs) >> sh;
-    IRVariable overflow = ir.get_overflow();
-    IRVariable carry    = ir.get_carry();
+    IRVariable operand = ir.get_reg(rs);
+    IRVariable result = operand >> sh;
+    IRVariable carry = (result >> 31) & (operand.ctz().lesser_unsigned(ir.constant(sh)));
 
     ir.set_reg(ra, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 
 }
@@ -906,14 +909,18 @@ private void emit_srw(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
 
     IRVariable shift = ir.get_reg(rb) & 0x3F;
+    IRVariable operand = ir.get_reg(rs);
     ir._if(shift.greater_unsigned(ir.constant(31)),
         () {
-            shift = ir.constant(31);
+            operand = ir.constant(0);
         }
     );
 
-    IRVariable result = ir.get_reg(rs) >>> shift;
+    IRVariable result = operand >>> shift;
+    IRVariable overflow = ir.get_overflow();
     ir.set_reg(ra, result);
+
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_stb(IR* ir, u32 opcode, u32 pc) {
@@ -998,14 +1005,13 @@ private void emit_subfx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
-
-    IRVariable result = ir.get_reg(rb) - ir.get_reg(ra);
+    IRVariable result = ir.get_reg(rb) + (~ir.get_reg(ra) + 1);
     IRVariable overflow = ir.get_overflow();
 
     ir.set_reg(rd, result);
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
 private void emit_subfcx(IR* ir, u32 opcode, u32 pc) {
@@ -1015,13 +1021,15 @@ private void emit_subfcx(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
-    IRVariable result = ir.get_reg(rb) - ir.get_reg(ra);
-    IRVariable carry    = ir.get_carry();
+    IRVariable operand = ~ir.get_reg(ra) + 1;
+    IRVariable carry = ir.get_carry();
+    IRVariable result = ir.get_reg(rb) + operand;
     IRVariable overflow = ir.get_overflow();
+    carry = carry | ir.get_carry();
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, ir.get_overflow());
-    if (oe) emit_set_xer_so_ov(ir, ir.get_overflow());
+    if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
@@ -1032,13 +1040,15 @@ private void emit_subfex(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
-    IRVariable result = ir.get_reg(rb) + ~ir.get_reg(ra) + emit_get_xer_ca(ir);
-    IRVariable carry    = ir.get_carry();
+    IRVariable operand = (~ir.get_reg(ra) + emit_get_xer_ca(ir));
+    IRVariable carry = ir.get_carry();
+    IRVariable result = ir.get_reg(rb) + operand;
     IRVariable overflow = ir.get_overflow();
+    carry = carry | ir.get_carry();
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
@@ -1068,8 +1078,8 @@ private void emit_subfmex(IR* ir, u32 opcode, u32 pc) {
     IRVariable overflow = ir.get_overflow();
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 }
 
@@ -1088,8 +1098,8 @@ private void emit_subfzex(IR* ir, u32 opcode, u32 pc) {
 
     ir.set_reg(rd, result);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result, overflow);
     if (oe) emit_set_xer_so_ov(ir, overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry_out);
 }
 
@@ -1106,7 +1116,7 @@ private void emit_xor(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(ra, ir.get_reg(rs) ^ ir.get_reg(rb));
     IRVariable overflow = ir.get_overflow();
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, ir.get_reg(ra), overflow);
+    if (rc) emit_set_cr_flags_generic(ir, 0, ir.get_reg(ra));
 }
 
 private void emit_xori(IR* ir, u32 opcode, u32 pc) {
@@ -1155,9 +1165,9 @@ private void emit_op_1F(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp1FSecondaryOpcode.ADD:     emit_addx   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDC:    emit_addcx  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDCO:   emit_addcx  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.ADDE:    emit_addx   (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ADDE:    emit_addex  (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDEO:   emit_addex  (ir, opcode, pc); break;
-        case PrimaryOp1FSecondaryOpcode.ADDO:    emit_addex  (ir, opcode, pc); break;
+        case PrimaryOp1FSecondaryOpcode.ADDO:    emit_addx   (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDME:   emit_addmex (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDMEO:  emit_addmex (ir, opcode, pc); break;
         case PrimaryOp1FSecondaryOpcode.ADDZE:   emit_addzex (ir, opcode, pc); break;

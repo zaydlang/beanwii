@@ -22,6 +22,7 @@ void logger_on_error_callback(){
 version (unittest) {} else {
 	void main(string[] args) {
 		CliArgs cli_args = parse_cli_args(args);
+
 		auto disk_data = load_file_as_bytes(cli_args.rom_path);
 
 		wii = new Wii(cli_args.ringbuffer_size);

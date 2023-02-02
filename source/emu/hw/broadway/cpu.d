@@ -47,7 +47,7 @@ final class Broadway {
         state.cr   = 0;
         state.xer  = 0;
         state.ctr  = 0;
-        state.msr  = 0;
+        state.msr  = 0x00002032;
         state.hid0 = 0;
         state.hid2 = 0;
         state.srr0 = 0;

@@ -38,7 +38,7 @@ public T bits(T)(T value, size_t start, size_t end) {
     assert(start < T.sizeof * 8);
 
     auto mask = create_mask(start, end);
-    return (value >> start) & mask;
+    return (value & mask) >> start;
 }
 
 public bool bit(T)(T value, size_t index) { 
@@ -65,8 +65,8 @@ public u8 get_byte(T)(T value, int index) {
     return (value >> (index * 8)) & 0xFF;
 }
 
-private auto create_mask(size_t start, size_t end) {
+public auto create_mask(size_t start, size_t end) {
     if (end - start >= 31) return 0xFFFFFFFF;
 
-    return (1 << (end - start + 1)) - 1;
+    return ((1 << (end - start + 1)) - 1) << start;
 }

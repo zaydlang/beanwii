@@ -115,7 +115,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        ir.pretty_print();
+        // ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -123,14 +123,11 @@ final class Code : CodeGenerator {
                     L(ir.labels[j].to_xbyak_label());
                 }
             }
-            log_ir("size: %x", getSize());
-            // log_ir("%s", ir.instructions[i]);
             emit(ir.instructions[i], i);
         }
 
         for (int j = 0; j < ir.num_labels(); j++) {
             if (ir.labels[j].instruction_index == ir.num_instructions()) {
-                log_ir("sizeo: %x %s", getSize(), ir.labels[j].to_xbyak_label());
                 L(ir.labels[j].to_xbyak_label());
             }
         }
@@ -139,7 +136,7 @@ final class Code : CodeGenerator {
 
         emit_epilogue();
 
-        if (g_START_LOGGING || true) pretty_print();
+        if (g_START_LOGGING) pretty_print();
     }
 
     void emit_prologue() {
@@ -450,9 +447,37 @@ final class Code : CodeGenerator {
                 }
                 break;
             
+            case IRBinaryDataOp.UDIV:
+                register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RDX);
+                register_allocator.assign_variable(this, ir_instruction.src2, HostReg_x86_64.R15);
+                register_allocator.assign_variable_without_moving_it(this, ir_instruction.dest, HostReg_x86_64.RAX);
+                push(rdx);
+                
+                // refetch the registers in case they were moved
+                src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
+                
+                xor(rdx, rdx);
+                div(src2.cvt32());
+                pop(rdx);
+                break;
+            
             case IRBinaryDataOp.MUL:
                 mov(dest_reg, src1);
                 imul(dest_reg, src2);
+                break;
+            
+            case IRBinaryDataOp.MULHI:
+                mov(dest_reg.cvt32(), src1.cvt32());
+                imul(dest_reg.cvt64(), src2.cvt64());
+                shr(dest_reg.cvt64(), 32);
+                break;
+            
+            case IRBinaryDataOp.MULHS:
+                movsxd(src2.cvt64(), src2.cvt32());
+                movsxd(src1.cvt64(), src1.cvt32());
+                movsxd(dest_reg.cvt64(), src1.cvt32());
+                imul(dest_reg.cvt64(), src2.cvt64());
+                sar(dest_reg.cvt64(), 32);
                 break;
                 
             default: assert(0);
@@ -482,9 +507,21 @@ final class Code : CodeGenerator {
                 general_mov(ir_instruction.dest.get_type(), ir_instruction.src.get_type(), dest_reg, src_reg);
                 break;
             
+            case IRUnaryDataOp.CTZ:
+                mov(dest_reg, src_reg);
+                rep();
+                bsf(dest_reg, dest_reg);
+                break;
+            
             case IRUnaryDataOp.CLZ:
                 mov(dest_reg, src_reg);
-                bsf(dest_reg, dest_reg);
+                rep();
+                bsr(dest_reg, dest_reg);
+                break;
+            
+            case IRUnaryDataOp.POPCNT:
+                mov(dest_reg, src_reg);
+                popcnt(dest_reg, dest_reg);
                 break;
             
             case IRUnaryDataOp.FLT_INTERP:
@@ -668,7 +705,6 @@ final class Code : CodeGenerator {
         Reg cond_reg = register_allocator.get_bound_host_reg(ir_instruction.cond);
 
         cmp(cond_reg, 0);
-        log_jit("je %s", (*ir_instruction.after_true_label).to_xbyak_label());
         je((*ir_instruction.after_true_label).to_xbyak_label(), T_NEAR);
 
         register_allocator.maybe_unbind_variable(ir_instruction.cond, current_instruction_index);

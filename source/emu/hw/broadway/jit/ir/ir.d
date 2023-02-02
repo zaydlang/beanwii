@@ -496,6 +496,9 @@ struct IRVariable {
         ir.emit(IRInstructionPairedSingleMov(this, other, cast(int) index));
     }
 
+    // TODO: refactor to clean up
+    // as it stands i don't care enough to do it
+
     public IRVariable greater_unsigned(IRVariable other) {
         IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
@@ -627,6 +630,44 @@ struct IRVariable {
         return dest;
     }
 
+    IRVariable multiply_high(IRVariable amount) {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        amount.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHI, dest, this, amount));
+
+        return dest;
+    }
+
+    IRVariable multiply_high_signed(IRVariable amount) {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        amount.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHS, dest, this, amount));
+
+        return dest;
+    }
+
+    IRVariable ctz() {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CTZ, dest, this));
+
+        return dest;
+    }
+
     IRVariable clz() {
         IRVariable dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
@@ -635,6 +676,31 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest, this));
+
+        return dest;
+    }
+
+    IRVariable popcnt() {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.POPCNT, dest, this));
+
+        return dest;
+    }
+
+    IRVariable unsigned_div(IRVariable other) {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+        other.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.UDIV, dest, this, other));
 
         return dest;
     }

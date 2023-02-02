@@ -46,11 +46,25 @@ public void emit_cmp_generic(IR* ir, IRVariable op1, IRVariable op2, int crf_d, 
     emit_set_cr_so(ir, crf_d, emit_get_xer_so(ir));
 }
 
-public void emit_set_cr_flags_generic(IR* ir, int field, IRVariable var, IRVariable so) {
+public void emit_set_cr_flags_generic(IR* ir, int field, IRVariable var) {
     emit_set_cr_lt(ir, field, var.lesser_signed(ir.constant(0)));
     emit_set_cr_gt(ir, field, var.greater_signed(ir.constant(0)));
     emit_set_cr_eq(ir, field, var.equals(ir.constant(0)));
-    emit_set_cr_so(ir, field, so);
+    emit_set_cr_so(ir, field, emit_get_xer_so(ir));
+}
+
+public int generate_rlw_mask(int mb, int me) {
+    // i hate this entire function
+
+    int i = mb;
+    int mask = 0;
+    while (i != me) {
+        mask |= (1 << (31 - i));
+        i = (i + 1) & 0x1F;
+    } 
+    mask |= (1 << (31 - i));
+
+    return mask;
 }
 
 public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
@@ -104,9 +118,12 @@ public IRVariable emit_evaluate_condition(IR* ir, int bo, int bi) {
 
 private void emit_set_cr_flag(IR* ir, int field, int bit, IRVariable value) {
     int index = (7 - field) * 4 + bit;
+
+    // SO is sticky
+    bool sticky = bit == 0;
     
     IRVariable cr = ir.get_reg(GuestReg.CR);
-    cr = cr & ~(1     << index);
+    if (!sticky) cr = cr & ~(1 << index);
     cr = cr |  (value << index);
     ir.set_reg(GuestReg.CR, cr);
 }

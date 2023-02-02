@@ -86,7 +86,7 @@ final class Jit {
 
             JitFunction generated_function = cast(JitFunction) code.getCode();
 
-            // if (instruction == 0x281d0080) {
+            // if (instruction == 0x7c49dc15) {
                 // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
                 // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
                 // foreach (instr; res) {

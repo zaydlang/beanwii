@@ -43,6 +43,8 @@ final class Wii {
         this.mem.connect_command_processor(this.command_processor);
         this.mem.connect_video_interface(this.video_interface);
         this.mem.connect_serial_interface(this.serial_interface);
+
+        this.broadway.reset();
     }
 
     public void cycle(int num_cycles) {
@@ -66,9 +68,9 @@ final class Wii {
         this.mem.map_dol(dol);
         this.broadway.set_pc(cast(u32) dol.header.entry_point);
 
-        this.broadway.set_gpr(1,  0x816ffff0); // ????
-        this.broadway.set_gpr(2,  0x81465cc0);
-        this.broadway.set_gpr(13, 0x81465320);
+        // this.broadway.set_gpr(1,  0x816ffff0); // ????
+        // this.broadway.set_gpr(2,  0x81465cc0);
+        // this.broadway.set_gpr(13, 0x81465320);
     }
 
     public void connect_multimedia_device(MultiMediaDevice device) {
