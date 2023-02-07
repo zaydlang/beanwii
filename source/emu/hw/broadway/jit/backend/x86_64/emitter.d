@@ -136,7 +136,10 @@ final class Code : CodeGenerator {
 
         emit_epilogue();
 
-        if (g_START_LOGGING) pretty_print();
+        if (g_START_LOGGING) { 
+            pretty_print(); 
+        }
+        //   error_jit("jit"); }
     }
 
     void emit_prologue() {
@@ -434,30 +437,37 @@ final class Code : CodeGenerator {
                         assert(0);
                     
                     case IRVariableType.INTEGER:
-                        register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RDX);
-                        register_allocator.assign_variable_without_moving_it(this, ir_instruction.dest, HostReg_x86_64.RAX);
-                        cdq();
-                        push(rdx);
-                        
-                        // refetch the registers in case they were moved
+                        register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RAX);
+                        register_allocator.assign_variable(this, ir_instruction.src2, HostReg_x86_64.R15);
+                        register_allocator.free_up_host_reg(this, HostReg_x86_64.RDX);
+
+                        src1 = register_allocator.get_bound_host_reg(ir_instruction.src1);
                         src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
 
-                        idiv(src2.cvt32());
+                        push(rdx);
+                        movsxd(src1.cvt64(), src1.cvt32());
+                        movsxd(src2.cvt64(), src2.cvt32());
+                        cqo();
+                        idiv(r15.cvt64());
+                        register_allocator.sudo_assign_variable(this, ir_instruction.dest, HostReg_x86_64.RAX);
+                        register_allocator.free_up_host_reg(this, HostReg_x86_64.RDX);
+
                         pop(rdx);
                 }
                 break;
             
             case IRBinaryDataOp.UDIV:
-                register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RDX);
+                register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RAX);
                 register_allocator.assign_variable(this, ir_instruction.src2, HostReg_x86_64.R15);
-                register_allocator.assign_variable_without_moving_it(this, ir_instruction.dest, HostReg_x86_64.RAX);
+                register_allocator.free_up_host_reg(this, HostReg_x86_64.RDX);
+
                 push(rdx);
-                
-                // refetch the registers in case they were moved
-                src2 = register_allocator.get_bound_host_reg(ir_instruction.src2);
-                
                 xor(rdx, rdx);
-                div(src2.cvt32());
+                mov(eax, eax);
+                div(r15);
+                register_allocator.sudo_assign_variable(this, ir_instruction.dest, HostReg_x86_64.RAX);
+                register_allocator.free_up_host_reg(this, HostReg_x86_64.RDX);
+
                 pop(rdx);
                 break;
             
@@ -711,7 +721,7 @@ final class Code : CodeGenerator {
     }
 
     void emit_BRANCH(IRInstructionBranch ir_instruction, int current_instruction_index) {
-        jmp((*ir_instruction.label).to_xbyak_label());
+        jmp((*ir_instruction.label).to_xbyak_label(), T_NEAR);
     }
 
     void emit_GET_HOST_CARRY(IRInstructionGetHostCarry ir_instruction, int current_instruction_index) {
@@ -775,6 +785,10 @@ final class Code : CodeGenerator {
         }
     }
 
+    void emit_BREAKPOINT(IRInstructionBreakpoint ir_instruction, int current_instruction_index) {
+        int3();
+    }
+
     void emit(IRInstruction ir_instruction, int current_instruction_index) {
         ir_instruction.match!(
             (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
@@ -795,7 +809,8 @@ final class Code : CodeGenerator {
             (IRInstructionHleFunc i)           => emit_HLE_FUNC(i, current_instruction_index),
             (IRInstructionPairedSingleMov i)   => emit_PAIRED_SINGLE_MOV(i, current_instruction_index),
             (IRInstructionDebugAssert i)       => emit_DEBUG_ASSERT(i, current_instruction_index),
-            (IRInstructionSext i)               => emit_SEXT(i, current_instruction_index),
+            (IRInstructionSext i)              => emit_SEXT(i, current_instruction_index),
+            (IRInstructionBreakpoint i)        => emit_BREAKPOINT(i, current_instruction_index),
         );
     }
 

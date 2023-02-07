@@ -25,7 +25,8 @@ alias IRInstruction = SumType!(
     IRInstructionHleFunc,
     IRInstructionPairedSingleMov,
     IRInstructionDebugAssert,
-    IRInstructionSext
+    IRInstructionSext,
+    IRInstructionBreakpoint
 );
 
 struct IR {
@@ -237,6 +238,22 @@ struct IR {
         true_case();
         this.bind_label(after_true_label);
     }
+    
+
+    void _if_no_phi(IRVariable cond, void delegate() true_case, void delegate() false_case) {
+        IRLabel* after_true_label = generate_new_label();
+        IRLabel* after_false_label = generate_new_label();
+
+        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
+
+        this.update_lifetime(cond.variable_id);
+
+        true_case();
+        this.emit(IRInstructionBranch(after_false_label));
+        this.bind_label(after_true_label);
+        false_case();
+        this.bind_label(after_false_label); 
+    }
 
     void _if(IRVariable cond, void delegate() true_case) {
         IRLabel* after_true_label   = generate_new_label();
@@ -317,6 +334,10 @@ struct IR {
         variable_types[to.variable_id]   = get_type(to);
 
         current_transmutation_index++;
+    }
+
+    void breakpoint() {
+        emit(IRInstructionBreakpoint());
     }
 
     void pretty_print_instruction(IRInstruction instruction) {
@@ -409,7 +430,11 @@ struct IR {
 
             (IRInstructionSext i) {
                 log_ir("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
-            }
+            },
+
+            (IRInstructionBreakpoint i) {
+                log_ir("bkpt");
+            },
         );
     }
 }
@@ -908,6 +933,10 @@ struct IRInstructionPairedSingleMov {
 
 struct IRInstructionDebugAssert {
     IRVariable cond;
+}
+
+struct IRInstructionBreakpoint {
+    
 }
 
 struct IRInstructionSext {

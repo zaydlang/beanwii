@@ -78,6 +78,7 @@ final class Jit {
 
             u32 instruction = fetch(state);
             log_instruction(instruction, state.pc);
+            log_jit("%x ", instruction);
 
             emit(ir, instruction, state.pc);
 
@@ -86,14 +87,14 @@ final class Jit {
 
             JitFunction generated_function = cast(JitFunction) code.getCode();
 
-            // if (instruction == 0x7c49dc15) {
-                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                // auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
-                // foreach (instr; res) {
-                //     log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                // }
+            // if (instruction == 0x7cf68f96) {
+            //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+            //     auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
+            //     foreach (instr; res) {
+            //         log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+            //     }
 
-                // error_jit("jit");
+            //     b("jit");
             // }
 
             jit_hash_map.opIndexAssign(generated_function, state.pc);

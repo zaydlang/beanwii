@@ -140,18 +140,27 @@ final class RegisterAllocator {
         }
     }
 
-    void relocate_variable(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
+    void free_up_host_reg(Code code, HostReg_x86_64 host_reg) {
         if (is_host_reg_bound(host_reg)) {
-            BindingVariable* binding_variable = get_free_binding_variable(ir_variable.get_type());
+            relocate_variable(code, host_reg);
+        }
+
+        bindings[host_reg].unbind_variable();
+    }
+
+    void relocate_variable(Code code, HostReg_x86_64 host_reg) {
+        if (is_host_reg_bound(host_reg)) {
+            IRVariableType type = get_type_from_host_reg(host_reg);
+            BindingVariable* binding_variable = get_free_binding_variable(type);
             binding_variable.bind_variable(get_variable_id_from_host_reg(host_reg));
             
-            code.mov(decipher_type(binding_variable.host_reg, ir_variable.get_type()), decipher_type(host_reg, ir_variable.get_type()));
+            code.mov(decipher_type(binding_variable.host_reg, type), decipher_type(host_reg, type));
             unbind_host_reg(host_reg);
         }
     }
 
-    void assign_variable_without_moving_it(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
-        relocate_variable(code, ir_variable, host_reg);
+    void sudo_assign_variable(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
+        if (is_host_reg_bound(host_reg)) relocate_variable(code, host_reg);
 
         HostReg_x86_64 old_host_reg = get_host_reg_from_variable(ir_variable);
         unbind_host_reg(old_host_reg);
@@ -160,7 +169,7 @@ final class RegisterAllocator {
     }
 
     void assign_variable(Code code, IRVariable ir_variable, HostReg_x86_64 host_reg) {
-        relocate_variable(code, ir_variable, host_reg);
+        relocate_variable(code, host_reg);
 
         HostReg_x86_64 old_host_reg = get_host_reg_from_variable(ir_variable);
         unbind_host_reg(old_host_reg);
@@ -231,5 +240,44 @@ final class RegisterAllocator {
         print_bindings();
         error_jit("No free binding variable found.");
         return &bindings[0]; // doesn't matter, error anyway
+    }
+
+    IRVariableType get_type_from_host_reg(HostReg_x86_64 host_reg) {
+        final switch (host_reg) {
+            case HostReg_x86_64.RAX:
+            case HostReg_x86_64.RBX:
+            case HostReg_x86_64.RCX:
+            case HostReg_x86_64.RDX:
+            case HostReg_x86_64.RSI:
+            case HostReg_x86_64.RDI:
+            case HostReg_x86_64.RBP:
+            case HostReg_x86_64.RSP:
+            case HostReg_x86_64.R8:
+            case HostReg_x86_64.R9:
+            case HostReg_x86_64.R10:
+            case HostReg_x86_64.R11:
+            case HostReg_x86_64.R12:
+            case HostReg_x86_64.R13:
+            case HostReg_x86_64.R14:
+            case HostReg_x86_64.R15:
+                return IRVariableType.INTEGER;
+
+            case HostReg_x86_64.XMM0:
+            case HostReg_x86_64.XMM1:
+            case HostReg_x86_64.XMM2:
+            case HostReg_x86_64.XMM3:
+            case HostReg_x86_64.XMM4:
+            case HostReg_x86_64.XMM5:
+            case HostReg_x86_64.XMM6:
+            case HostReg_x86_64.XMM7:
+                return IRVariableType.FLOAT;
+            
+            case HostReg_x86_64.SPL:
+            case HostReg_x86_64.BPL:
+            case HostReg_x86_64.SIL:
+            case HostReg_x86_64.DIL:
+                error_jit("cry about it");
+                assert(0);
+        }
     }
 }

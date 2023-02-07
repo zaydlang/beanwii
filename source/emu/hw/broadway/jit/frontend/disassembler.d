@@ -394,21 +394,38 @@ private void emit_divwx(IR* ir, u32 opcode, u32 pc) {
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
+    import emu.hw.broadway.jit.backend.x86_64.emitter;
+    // 7ebc0fd6
+    // 011111 10101 11100 00001 111 1101 0110
+
+    // 7d99bfd7
+    // 011111 01100 11001 10111 111
+ 
+// LOG: PC: 0x80004200 CR: 0x55090080 FPSCR: 0x00000000 XER: 0x80000000 MSR: 0x00002032 LR: 0x00000000 
+// LOG: fbe0dd63 ffff8065 fb74327a 13fecf5f 0456d060 db8ca980 ba5646de 0000000e 
+// LOG: a2a2d9e5 00003070 ffffffff 442294d8 00000000 8998ffff 1b788065 00003172 
+// LOG: 57aa714e fffff948 ffffffff ffffd9e5 02800000 00000000 af9f4ce7 8d20fe59 
+// LOG: 00000061 57aa79ef 00000060 a80b2466 00000000 0c30f6a2 32a6cb6e ff712860
     ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
         IRVariable result = ir.get_reg(ra) >> 31;
         ir.set_reg(rd, result);
 
         if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
         if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    });
-
-    ir._if_no_phi(ir.get_reg(rb).notequals(ir.constant(0)), () {
+    }, () {
         IRVariable result   = ir.get_reg(ra) / ir.get_reg(rb);
         IRVariable overflow = ir.get_overflow();
         ir.set_reg(rd, result);
 
         if (oe) emit_set_xer_so_ov(ir, overflow);
         if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    });
+
+    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0xFFFF_FFFF)) & ir.get_reg(ra).equals(ir.constant(0x8000_0000)), () {
+        ir.set_reg(rd, 0xFFFF_FFFF);
+
+        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
+        if (rc) emit_set_cr_flags_generic(ir, 0, ir.constant(0xFFFF_FFFF));
     });
 }
 
@@ -425,9 +442,7 @@ private void emit_divwux(IR* ir, u32 opcode, u32 pc) {
 
         if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
         if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    });
-
-    ir._if_no_phi(ir.get_reg(rb).notequals(ir.constant(0)), () {
+    }, () {
         IRVariable result   = ir.get_reg(ra).unsigned_div(ir.get_reg(rb));
         IRVariable overflow = ir.get_overflow();
         ir.set_reg(rd, result);
@@ -1005,8 +1020,14 @@ private void emit_subfx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_gpr(opcode.bits(11, 15));
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
-    IRVariable result = ir.get_reg(rb) + (~ir.get_reg(ra) + 1);
+
+    IRVariable operand = ~ir.get_reg(ra) + 1;
+    IRVariable carry = ir.get_carry();
     IRVariable overflow = ir.get_overflow();
+    IRVariable result = ir.get_reg(rb) + operand;
+    IRVariable overflow2 = ir.get_overflow();
+    carry = carry | ir.get_carry();
+    overflow = overflow | overflow2;
 
     ir.set_reg(rd, result);
 
@@ -1023,9 +1044,11 @@ private void emit_subfcx(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable operand = ~ir.get_reg(ra) + 1;
     IRVariable carry = ir.get_carry();
-    IRVariable result = ir.get_reg(rb) + operand;
     IRVariable overflow = ir.get_overflow();
+    IRVariable result = ir.get_reg(rb) + operand;
+    IRVariable overflow2 = ir.get_overflow();
     carry = carry | ir.get_carry();
+    overflow = overflow | overflow2;
     ir.set_reg(rd, result);
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
@@ -1042,9 +1065,11 @@ private void emit_subfex(IR* ir, u32 opcode, u32 pc) {
 
     IRVariable operand = (~ir.get_reg(ra) + emit_get_xer_ca(ir));
     IRVariable carry = ir.get_carry();
-    IRVariable result = ir.get_reg(rb) + operand;
     IRVariable overflow = ir.get_overflow();
+    IRVariable result = ir.get_reg(rb) + operand;
+    IRVariable overflow2 = ir.get_overflow();
     carry = carry | ir.get_carry();
+    overflow = overflow | overflow2;
     ir.set_reg(rd, result);
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
