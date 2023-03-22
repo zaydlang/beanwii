@@ -121,8 +121,8 @@ public void emit_fnmsubx(IR* ir, u32 opcode, u32 pc) {
 }
 
 public void emit_fnabsx(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = to_ps(opcode.bits(21, 25));
-    GuestReg rb = to_ps(opcode.bits(11, 15));
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
 
     assert(opcode.bits(16, 20) == 0b00000);
 
