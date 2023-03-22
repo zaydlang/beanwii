@@ -22,9 +22,9 @@ public void emit_fabs(IR* ir, u32 opcode, u32 pc) {
 }
 
 public void emit_fadd(IR* ir, u32 opcode, u32 pc) {
-    GuestReg rd = to_ps(opcode.bits(21, 25));
-    GuestReg ra = to_ps(opcode.bits(16, 20));
-    GuestReg rb = to_ps(opcode.bits(11, 15));
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg ra = to_fpr(opcode.bits(16, 20));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
 
     assert(opcode.bits(1, 5) == 0b11110);

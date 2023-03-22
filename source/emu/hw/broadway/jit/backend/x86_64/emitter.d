@@ -591,9 +591,9 @@ final class Code : CodeGenerator {
     private void emit_binary_data_op_var_add(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
         emit_binary_data_op_var_generic(
             code, ir_instruction, current_instruction_index,
-            &emit_binary_data_op_var_mul_int,
-            &emit_binary_data_op_var_mul_float,
-            &emit_binary_data_op_var_mul_paired_single
+            &emit_binary_data_op_var_add_int,
+            &emit_binary_data_op_var_add_float,
+            &emit_binary_data_op_var_add_paired_single
         );
     }
 
@@ -603,12 +603,12 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_add_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
-        code.addss(cast(Xmm) dest_reg, cast(Xmm) src2);
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.addsd(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
 
     private void emit_binary_data_op_var_add_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
         code.addps(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
 
@@ -628,7 +628,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_gtu_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         code.seta(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
@@ -653,7 +653,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_ltu_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         code.setb(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
@@ -678,7 +678,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_gts_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         code.setg(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
@@ -703,7 +703,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_lts_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         log_ir("%s %s %s", src1, src2, dest_reg);
         code.setl(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -729,7 +729,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_eq_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         code.sete(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
@@ -754,7 +754,7 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_ne_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         code.setne(dest_reg.cvt8());
         code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
@@ -784,7 +784,7 @@ final class Code : CodeGenerator {
         Label label = L();
         put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
 
-        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src);
         code.vorpd(cast(Xmm) dest_reg, word [rip + label]);
     }
 
@@ -806,7 +806,7 @@ final class Code : CodeGenerator {
         Label label = L();
         put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
 
-        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src);
         code.xorps(cast(Xmm) dest_reg, xword [rip]);
     }
 
@@ -814,7 +814,7 @@ final class Code : CodeGenerator {
         Label label = L();
         put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
 
-        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src);
         code.vxorpd(cast(Xmm) dest_reg, word [rip + label]);
     }
 
