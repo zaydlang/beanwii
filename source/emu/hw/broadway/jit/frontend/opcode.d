@@ -121,6 +121,7 @@ enum PrimaryOp3BSecondaryOpcode {
 enum PrimaryOp3FSecondaryOpcode {
     FABSX  = 0x108,
     FADDX  = 0x015,
+    FDIVX  = 0x012,
     FMR    = 0x048,
     FMULX  = 0x019,
     FMSUBX = 0x01C,

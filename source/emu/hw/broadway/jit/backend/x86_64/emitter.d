@@ -479,7 +479,9 @@ final class Code : CodeGenerator {
                         break;
                     
                     case IRVariableType.FLOAT:
-                        assert(0);
+                        movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+                        divsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+                        break;
                     
                     case IRVariableType.INTEGER:
                         register_allocator.assign_variable(this, ir_instruction.src1, HostReg_x86_64.RAX);

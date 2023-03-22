@@ -16,7 +16,7 @@ public void emit_fabsx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
 
-    assert(opcode.bits(16, 20) == 0b11110);
+    assert(opcode.bits(16, 20) == 0);
 
     ir.set_reg(rd, ir.get_reg(rb).abs());
 }
@@ -27,9 +27,20 @@ public void emit_faddx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
 
-    assert(opcode.bits(1, 5) == 0b11110);
+    assert(opcode.bits(6, 10) == 0);
 
     ir.set_reg(rd, ir.get_reg(ra) + ir.get_reg(rb));
+}
+
+public void emit_fdivx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg ra = to_fpr(opcode.bits(16, 20));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    bool record = opcode.bit(0);
+
+    assert(opcode.bits(6, 10) == 0);
+
+    ir.set_reg(rd, ir.get_reg(ra) / ir.get_reg(rb));
 }
 
 public void emit_fmsubx(IR* ir, u32 opcode, u32 pc) {
