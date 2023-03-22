@@ -84,6 +84,18 @@ public void emit_fnegx(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, -ir.get_reg(rb));
 }
 
+public void emit_fnmaddx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg ra = to_fpr(opcode.bits(16, 20));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    GuestReg rc = to_fpr(opcode.bits(6,  10));
+    bool record = opcode.bit(0);
+
+    IRVariable dest = -(ir.get_reg(ra) * ir.get_reg(rc) + ir.get_reg(rb));
+    ir.set_fpscr(dest);
+    ir.set_reg(rd, dest);
+}
+
 public void emit_fnmsubsx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_ps(opcode.bits(21, 25));
     GuestReg ra = to_ps(opcode.bits(16, 20));
@@ -94,6 +106,18 @@ public void emit_fnmsubsx(IR* ir, u32 opcode, u32 pc) {
     assert(opcode.bits(1, 5) == 0b11110);
 
     ir.set_reg(rd, -(ir.get_reg(ra) * ir.get_reg(rc) - ir.get_reg(rb)));
+}
+
+public void emit_fnmsubx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg ra = to_fpr(opcode.bits(16, 20));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    GuestReg rc = to_fpr(opcode.bits(6,  10));
+    bool record = opcode.bit(0);
+
+    IRVariable dest = -(ir.get_reg(ra) * ir.get_reg(rc) - ir.get_reg(rb));
+    ir.set_fpscr(dest);
+    ir.set_reg(rd, dest);
 }
 
 public void emit_fnabsx(IR* ir, u32 opcode, u32 pc) {
