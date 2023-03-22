@@ -43,6 +43,18 @@ public void emit_fdivx(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, ir.get_reg(ra) / ir.get_reg(rb));
 }
 
+public void emit_fmaddx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg ra = to_fpr(opcode.bits(16, 20));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    GuestReg rc = to_fpr(opcode.bits(6,  10));
+    bool record = opcode.bit(0);
+
+    IRVariable dest = ir.get_reg(ra) * ir.get_reg(rc) + ir.get_reg(rb);
+    ir.set_fpscr(dest);
+    ir.set_reg(rd, dest);
+}
+
 public void emit_fmsubx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
