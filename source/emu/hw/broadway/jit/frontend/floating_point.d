@@ -11,7 +11,7 @@ public IRVariable emit_get_hid2_pse(IR* ir) {
     return (ir.get_reg(GuestReg.HID2) >> 29) & 1;
 }
 
-public void emit_fabs(IR* ir, u32 opcode, u32 pc) {
+public void emit_fabsx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
