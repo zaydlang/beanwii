@@ -1276,8 +1276,9 @@ private void emit_op_3F(IR* ir, u32 opcode, u32 pc) {
     secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
-        case PrimaryOp3FSecondaryOpcode.FADD:   emit_fadd   (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FADDX:  emit_faddx  (ir, opcode, pc); break;
         case PrimaryOp3FSecondaryOpcode.FMSUBX: emit_fmsubx (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FMULX:  emit_fmulx  (ir, opcode, pc); break;
         case PrimaryOp3FSecondaryOpcode.FSEL:   emit_fsel   (ir, opcode, pc); break;
         default: unimplemented_opcode(opcode, pc);
     }
