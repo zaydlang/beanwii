@@ -1269,6 +1269,7 @@ private void emit_op_3F(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOp3FSecondaryOpcode.FABSX:  emit_fabsx  (ir, opcode, pc); return;
         case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr    (ir, opcode, pc); return;
         case PrimaryOp3FSecondaryOpcode.FNABSX: emit_fnabsx (ir, opcode, pc); return;    
+        case PrimaryOp3FSecondaryOpcode.FNEGX:  emit_fnegx  (ir, opcode, pc); return;
         case PrimaryOp3FSecondaryOpcode.MTFSF:  emit_mtfsf  (ir, opcode, pc); return;
         default: break;
     }

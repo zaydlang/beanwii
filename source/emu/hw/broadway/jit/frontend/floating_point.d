@@ -50,11 +50,16 @@ public void emit_fmulx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rc = to_fpr(opcode.bits(6,  10));
     bool record = opcode.bit(0);
 
-    assert(opcode.bits(1, 5) == 0b11110);
-
     ir.set_reg(rd, ir.get_reg(ra) * ir.get_reg(rc));
 }
 
+public void emit_fnegx(IR* ir, u32 opcode, u32 pc) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    bool record = opcode.bit(0);
+
+    ir.set_reg(rd, -ir.get_reg(rb));
+}
 
 public void emit_fnmsubsx(IR* ir, u32 opcode, u32 pc) {
     GuestReg rd = to_ps(opcode.bits(21, 25));

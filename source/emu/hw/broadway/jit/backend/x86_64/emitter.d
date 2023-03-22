@@ -162,9 +162,9 @@ final class Code : CodeGenerator {
 
         assert(!this.hasUndefinedLabel()); // xbyak function
 
-        // if (g_START_LOGGING) { 
+        if (g_START_LOGGING) { 
             pretty_print(); 
-        // }
+        }
         //   error_jit("jit"); }
     }
 
@@ -810,18 +810,17 @@ final class Code : CodeGenerator {
 
     private void emit_unary_data_op_neg_float(Reg dest_reg, Reg src, int current_instruction_index) {
         Label label = L();
-        put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
+        put_data(label, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]);
 
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src);
-        xorps(cast(Xmm) dest_reg, xword [rip]);
+        movupd(cast(Xmm) dest_reg, xword [rip + label]);
+        xorpd(cast(Xmm) dest_reg, cast(Xmm) src);
+        g_START_LOGGING = true;
+        // movsd(cast(Xmm) dest_reg, cast(Xmm) src);
+        // vxorps(cast(Xmm) dest_reg, xword [rip + label]);
     }
 
     private void emit_unary_data_op_neg_paired_single(Reg dest_reg, Reg src, int current_instruction_index) {
-        Label label = L();
-        put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
-
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src);
-        vxorpd(cast(Xmm) dest_reg, word [rip + label]);
+        assert(0);
     }
 
     private void emit_binary_data_op_var_generic(

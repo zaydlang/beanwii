@@ -100,6 +100,10 @@ final class Jit {
             //     b("jit");
             // }
 
+            if (g_START_LOGGING) {
+                int x = 2;
+            }
+
             jit_hash_map.opIndexAssign(generated_function, state.pc);
 
             state.pc += 4;
