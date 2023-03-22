@@ -10,6 +10,7 @@ alias IRInstruction = SumType!(
     IRInstructionGetReg,
     IRInstructionSetRegVar,
     IRInstructionSetRegImm,
+    IRInstructionSetFPSCR,
     IRInstructionBinaryDataOpImm,
     IRInstructionBinaryDataOpVar,
     IRInstructionUnaryDataOp,
@@ -219,6 +220,11 @@ struct IR {
         emit(IRInstructionSetRegImm(reg, imm));
     }
 
+    void set_fpscr(IRVariable dest) {
+        dest.update_lifetime();
+        emit(IRInstructionSetFPSCR(dest));
+    }
+
     IRLabel* generate_new_label() {
         IRLabel* label = &labels[current_label_index];
         label.id = cast(int) current_label_index;
@@ -226,7 +232,6 @@ struct IR {
 
         return label;
     }
-    
 
     void _if_no_phi(IRVariable cond, void delegate() true_case) {
         IRLabel* after_true_label = generate_new_label();
@@ -310,6 +315,10 @@ struct IR {
         for (int i = 0; i < this.num_instructions(); i++) {
             pretty_print_instruction(instructions[i]);
         }
+
+        for (int i = 0; i < 40; i++) {
+            log_ir("aAAA v%d: %s", i, variable_types[i]);
+        }
     }
 
     void update_lifetime(int variable_id) {
@@ -354,6 +363,10 @@ struct IR {
                 log_ir("st  #0x%x, %s", i.imm, i.dest.to_string());
             },
 
+            (IRInstructionSetFPSCR i) {
+                log_ir("st  v%d, FPSCR", i.src.get_id());
+            },
+
             (IRInstructionBinaryDataOpImm i) {
                 log_ir("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
             },
@@ -377,6 +390,7 @@ struct IR {
             (IRInstructionRead i) {
                 string mnemonic;
                 final switch (i.size) {
+                    case 8: mnemonic = "ldd"; break;
                     case 4: mnemonic = "ldw"; break;
                     case 2: mnemonic = "ldh"; break;
                     case 1: mnemonic = "ldb"; break;
@@ -388,6 +402,7 @@ struct IR {
             (IRInstructionWrite i) {
                 string mnemonic;
                 final switch (i.size) {
+                    case 8: mnemonic = "std"; break;
                     case 4: mnemonic = "stw"; break;
                     case 2: mnemonic = "sth"; break;
                     case 1: mnemonic = "stb"; break;
@@ -472,7 +487,8 @@ struct IRVariable {
     IRVariable opBinary(string s)(IRVariable other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
-        IRVariableType type = IRVariableType.INTEGER;
+        assert(this.get_type() == other.get_type());
+        IRVariableType type = this.get_type();
 
         IRVariable dest = ir.generate_new_variable(type);
         ir.log_transmuation(this, dest);
@@ -525,7 +541,7 @@ struct IRVariable {
     // as it stands i don't care enough to do it
 
     public IRVariable greater_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -538,7 +554,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -551,7 +567,7 @@ struct IRVariable {
     }
 
     public IRVariable greater_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -564,7 +580,7 @@ struct IRVariable {
     }
 
     public IRVariable lesser_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -577,7 +593,7 @@ struct IRVariable {
     }
 
     public IRVariable equals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -590,7 +606,7 @@ struct IRVariable {
     }
 
     public IRVariable notequals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -664,6 +680,18 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHI, dest, this, amount));
+
+        return dest;
+    }
+
+    IRVariable abs() {
+        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.ABS, dest, this));
 
         return dest;
     }
@@ -874,6 +902,10 @@ struct IRInstructionSetRegVar {
 struct IRInstructionSetRegImm {
     GuestReg dest;
     u32 imm;
+}
+
+struct IRInstructionSetFPSCR {
+    IRVariable src;
 }
 
 struct IRInstructionSetVarImmInt {

@@ -30,6 +30,7 @@ enum IRUnaryDataOp {
     NOT,
     NEG,
     MOV,
+    ABS,
     CTZ,
     CLZ,
     POPCNT,

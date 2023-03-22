@@ -99,7 +99,7 @@ final class Code : CodeGenerator {
             case IRVariableType.PAIRED_SINGLE:
                 final switch (type2) {
                     case IRVariableType.INTEGER:
-                        movd(cast(Xmm) reg1, reg2.cvt32());
+                        movq(cast(Xmm) reg1, reg2.cvt64());
                         break;
                     
                     case IRVariableType.FLOAT:
@@ -112,10 +112,23 @@ final class Code : CodeGenerator {
         }
     }
 
+    struct LabeledData {
+        u8[] data;
+        Label label;
+    }
+
+    LabeledData[0x100] labeled_datas;
+    size_t labeled_data_ptr;
+
+    void put_data(Label label, u8[] new_data) {
+        labeled_datas[labeled_data_ptr] = LabeledData(new_data, label);
+        labeled_data_ptr++;
+    }
+
     void emit(IR* ir) {
         emit_prologue();
 
-        // ir.pretty_print();
+        ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -132,13 +145,21 @@ final class Code : CodeGenerator {
             }
         }
 
-        assert(!this.hasUndefinedLabel()); // xbyak function
-
         emit_epilogue();
 
-        if (g_START_LOGGING) { 
-            pretty_print(); 
+        for (int i = 0; i < labeled_data_ptr; i++) {
+            L(labeled_datas[i].label);
+            
+            for (int j = 0; j < labeled_datas[i].data.length; j++) {
+                db(labeled_datas[i].data[j]);
+            }
         }
+
+        assert(!this.hasUndefinedLabel()); // xbyak function
+
+        // if (g_START_LOGGING) { 
+            pretty_print(); 
+        // }
         //   error_jit("jit"); }
     }
 
@@ -267,6 +288,39 @@ final class Code : CodeGenerator {
         mov(dword [rdi + offset], ir_instruction.imm);
     }
 
+    void emit_SET_FPSCR(IRInstructionSetFPSCR ir_instruction, int current_instruction_index) {
+        Xmm src_reg = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.src);
+        Xmm scratch_xmm1 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.FLOAT);
+        Xmm scratch_xmm2 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.FLOAT);
+
+        Reg scratch_int = register_allocator.get_scratch_reg(IRVariableType.INTEGER);
+
+        Label done_label = new Label();
+        Label eq_label   = new Label();
+
+        movapd(scratch_xmm2, src_reg);
+        pxor(scratch_xmm1, scratch_xmm1);
+        xor(scratch_int, scratch_int);
+        comisd(scratch_xmm1, scratch_xmm2);
+        seta(scratch_int.cvt8());
+        sal(scratch_int.cvt32(), 15);
+        comisd(scratch_xmm2, scratch_xmm1);
+        jbe(eq_label);
+        or(scratch_int, 1 << 14);
+        jmp(done_label);
+        L(eq_label);
+        ucomisd(scratch_xmm2, scratch_xmm1);
+        jp(done_label);
+        jne(done_label);
+        or(scratch_int, 1 << 13);
+        L(done_label);
+        mov(dword [rdi + cast(int) GuestReg.FPSCR.get_reg_offset()], scratch_int);
+
+        register_allocator.unbind_scratch_reg(scratch_xmm1, IRVariableType.FLOAT);
+        register_allocator.unbind_scratch_reg(scratch_xmm2, IRVariableType.FLOAT);
+        register_allocator.unbind_scratch_reg(scratch_int, IRVariableType.INTEGER);
+    }
+
     void emit_BINARY_DATA_OP_IMM(IRInstructionBinaryDataOpImm ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
@@ -364,13 +418,11 @@ final class Code : CodeGenerator {
                 break;
             
             case IRBinaryDataOp.ADD:
-                mov(dest_reg, src1);
-                add(dest_reg, src2);
+                emit_binary_data_op_var_add(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.SUB:
-                mov(dest_reg, src1);
-                sub(dest_reg, src2);
+                emit_binary_data_op_var_sub(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.XOR:
@@ -385,39 +437,27 @@ final class Code : CodeGenerator {
                 break;
             
             case IRBinaryDataOp.GTU:
-                cmp(src1, src2);
-                seta(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_gtu(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.LTU:
-                cmp(src1, src2);
-                setb(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_ltu(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.GTS:
-                cmp(src1, src2);
-                setg(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_gts(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.LTS:
-                cmp(src1, src2);
-                setl(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_lts(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.EQ:
-                cmp(src1, src2);
-                sete(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_eq(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.NE:
-                cmp(src1, src2);
-                setne(dest_reg.cvt8());
-                movzx(dest_reg.cvt32(), dest_reg.cvt8());
+                emit_binary_data_op_var_ne(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.DIV:
@@ -472,8 +512,7 @@ final class Code : CodeGenerator {
                 break;
             
             case IRBinaryDataOp.MUL:
-                mov(dest_reg, src1);
-                imul(dest_reg, src2);
+                emit_binary_data_op_var_mul(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRBinaryDataOp.MULHI:
@@ -498,6 +537,330 @@ final class Code : CodeGenerator {
         register_allocator.maybe_unbind_variable(ir_instruction.src2, current_instruction_index);
     }
 
+    alias BinaryDataOpHandler = void delegate(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index);
+    alias UnaryDataOpHandler  = void delegate(Code code, Reg dest_reg, Reg src, int current_instruction_index);
+
+    private void emit_binary_data_op_var_sub(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_sub_int,
+            &emit_binary_data_op_var_sub_float,
+            &emit_binary_data_op_var_sub_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_sub_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.mov(dest_reg, src1);
+        code.sub(dest_reg, src2);
+    }
+
+    private void emit_binary_data_op_var_sub_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.subsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_sub_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.subps(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_mul(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_mul_int,
+            &emit_binary_data_op_var_mul_float,
+            &emit_binary_data_op_var_mul_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_mul_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.mov(dest_reg, src1);
+        code.imul(dest_reg, src2);
+    }
+
+    private void emit_binary_data_op_var_mul_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.mulsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_mul_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.mulps(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_add(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_mul_int,
+            &emit_binary_data_op_var_mul_float,
+            &emit_binary_data_op_var_mul_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_add_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.add(dest_reg, src1);
+        code.imul(dest_reg, src2);
+    }
+
+    private void emit_binary_data_op_var_add_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.addss(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_add_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+        code.addps(cast(Xmm) dest_reg, cast(Xmm) src2);
+    }
+
+    private void emit_binary_data_op_var_gtu(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_gtu_int,
+            &emit_binary_data_op_var_gtu_float,
+            &emit_binary_data_op_var_gtu_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_gtu_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.seta(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_gtu_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.seta(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_gtu_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    public void emit_binary_data_op_var_ltu(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_ltu_int,
+            &emit_binary_data_op_var_ltu_float,
+            &emit_binary_data_op_var_ltu_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_ltu_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.setb(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_ltu_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.setb(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_ltu_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_binary_data_op_var_gts(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_gts_int,
+            &emit_binary_data_op_var_gts_float,
+            &emit_binary_data_op_var_gts_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_gts_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.setg(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_gts_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.setg(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_gts_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_binary_data_op_var_lts(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_lts_int,
+            &emit_binary_data_op_var_lts_float,
+            &emit_binary_data_op_var_lts_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_lts_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.setl(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_lts_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        log_ir("%s %s %s", src1, src2, dest_reg);
+        code.setl(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_lts_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_binary_data_op_var_eq(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_eq_int,
+            &emit_binary_data_op_var_eq_float,
+            &emit_binary_data_op_var_eq_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_eq_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.sete(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_eq_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.sete(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_eq_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_binary_data_op_var_ne(Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
+        emit_binary_data_op_var_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_binary_data_op_var_ne_int,
+            &emit_binary_data_op_var_ne_float,
+            &emit_binary_data_op_var_ne_paired_single
+        );
+    }
+
+    private void emit_binary_data_op_var_ne_int(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmp(src1, src2);
+        code.setne(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_ne_float(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        code.cmpss(cast(Xmm) src1, cast(Xmm) src2, 0);
+        code.setne(dest_reg.cvt8());
+        code.movzx(dest_reg.cvt64(), dest_reg.cvt8());
+    }
+
+    private void emit_binary_data_op_var_ne_paired_single(Code code, Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_unary_data_op_abs(Code code, IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
+        emit_unary_data_op_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_unary_data_op_neg_int,
+            &emit_unary_data_op_neg_float,
+            &emit_unary_data_op_neg_paired_single
+        );
+    }
+
+    private void emit_unary_data_op_abs_int(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_unary_data_op_abs_float(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        assert(0);
+    }
+
+    private void emit_unary_data_op_abs_paired_single(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        Label label = L();
+        put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
+
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.vorpd(cast(Xmm) dest_reg, word [rip + label]);
+    }
+
+    private void emit_unary_data_op_neg(Code code, IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
+        emit_unary_data_op_generic(
+            code, ir_instruction, current_instruction_index,
+            &emit_unary_data_op_neg_int,
+            &emit_unary_data_op_neg_float,
+            &emit_unary_data_op_neg_paired_single
+        );
+    }
+
+    private void emit_unary_data_op_neg_int(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        code.mov(dest_reg, src);
+        code.neg(dest_reg);
+    }
+
+    private void emit_unary_data_op_neg_float(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        Label label = L();
+        put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
+
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.xorps(cast(Xmm) dest_reg, xword [rip]);
+    }
+
+    private void emit_unary_data_op_neg_paired_single(Code code, Reg dest_reg, Reg src, int current_instruction_index) {
+        Label label = L();
+        put_data(label, [0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
+
+        code.movss(cast(Xmm) dest_reg, cast(Xmm) src);
+        code.vxorpd(cast(Xmm) dest_reg, word [rip + label]);
+    }
+
+    private void emit_binary_data_op_var_generic(
+        Code code, IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index,
+        BinaryDataOpHandler int_handler, BinaryDataOpHandler float_handler, BinaryDataOpHandler paired_single_handler
+    ) {
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
+        Reg src2     = register_allocator.get_bound_host_reg(ir_instruction.src2);
+        IRVariableType type = ir_instruction.src2.get_type();
+            
+        final switch (type) {
+            case IRVariableType.INTEGER:
+                int_handler(code, dest_reg, src1, src2, current_instruction_index);
+                break;
+            case IRVariableType.FLOAT:
+                float_handler(code, dest_reg, src1, src2, current_instruction_index);
+                break;
+            case IRVariableType.PAIRED_SINGLE:
+                paired_single_handler(code, dest_reg, src1, src2, current_instruction_index);
+                break;
+        }
+    }
+
+    private void emit_unary_data_op_generic(
+        Code code, IRInstructionUnaryDataOp ir_instruction, int current_instruction_index,
+        UnaryDataOpHandler int_handler, UnaryDataOpHandler float_handler, UnaryDataOpHandler paired_single_handler
+    ) {
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src      = register_allocator.get_bound_host_reg(ir_instruction.src);
+        IRVariableType type = ir_instruction.src.get_type();
+            
+        final switch (type) {
+            case IRVariableType.INTEGER:
+                int_handler(code, dest_reg, src, current_instruction_index);
+                break;
+            case IRVariableType.FLOAT:
+                float_handler(code, dest_reg, src, current_instruction_index);
+                break;
+            case IRVariableType.PAIRED_SINGLE:
+                paired_single_handler(code, dest_reg, src, current_instruction_index);
+                break;
+        }
+    }
+
     void emit_UNARY_DATA_OP(IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
         Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
         Reg src_reg  = register_allocator.get_bound_host_reg(ir_instruction.src);
@@ -509,8 +872,7 @@ final class Code : CodeGenerator {
                 break;
 
             case IRUnaryDataOp.NEG:
-                mov(dest_reg, src_reg);
-                neg(dest_reg);
+                emit_unary_data_op_neg(this, ir_instruction, current_instruction_index);
                 break;
             
             case IRUnaryDataOp.MOV:
@@ -535,7 +897,7 @@ final class Code : CodeGenerator {
                 break;
             
             case IRUnaryDataOp.FLT_INTERP:
-                movd(cast(Xmm) dest_reg, src_reg.cvt32());
+                movq(cast(Xmm) dest_reg, src_reg.cvt64());
                 break;
             
             case IRUnaryDataOp.FLT_CAST:
@@ -546,6 +908,10 @@ final class Code : CodeGenerator {
             
             case IRUnaryDataOp.INT_CAST:
                 cvttss2si(dest_reg, cast(Xmm) src_reg);
+                break;
+            
+            case IRUnaryDataOp.ABS:
+                emit_unary_data_op_abs(this, ir_instruction, current_instruction_index);
                 break;
             
             default: assert(0);
@@ -597,7 +963,7 @@ final class Code : CodeGenerator {
         }
 
         call(r10);
-        mov(value_reg, rax);
+        mov(value_reg, rax.cvt64());
 
         foreach (Reg reg; [rdi, rsi, r11, r10, r9, r8, rdx, rcx, rax]) {
             if (reg.getIdx() == value_reg.getIdx()) {
@@ -765,7 +1131,7 @@ final class Code : CodeGenerator {
 
         cmp(dest_reg, 0);
         je(after_assert_label);
-        mov(rax, cast(size_t) (&this.jit_assert).funcptr);
+        mov(rax.cvt64(), cast(size_t) (&this.jit_assert).funcptr);
         call(rax);
         L(after_assert_label);
 
@@ -794,6 +1160,7 @@ final class Code : CodeGenerator {
             (IRInstructionGetReg i)            => emit_GET_REG(i, current_instruction_index),
             (IRInstructionSetRegVar i)         => emit_SET_REG_VAR(i, current_instruction_index),
             (IRInstructionSetRegImm i)         => emit_SET_REG_IMM(i, current_instruction_index),
+            (IRInstructionSetFPSCR i)          => emit_SET_FPSCR(i, current_instruction_index),
             (IRInstructionBinaryDataOpImm i)   => emit_BINARY_DATA_OP_IMM(i, current_instruction_index),
             (IRInstructionBinaryDataOpVar i)   => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
             (IRInstructionUnaryDataOp i)       => emit_UNARY_DATA_OP(i, current_instruction_index),

@@ -44,18 +44,19 @@ final class Broadway {
             state.gprs[i] = 0;
         }
 
-        state.cr   = 0;
-        state.xer  = 0;
-        state.ctr  = 0;
-        state.msr  = 0x00002032;
-        state.hid0 = 0;
-        state.hid2 = 0;
-        state.srr0 = 0;
-        state.fpsr = 0;
-        state.l2cr = 0;
+        state.cr    = 0;
+        state.xer   = 0;
+        state.ctr   = 0;
+        state.msr   = 0x00002032;
+        state.hid0  = 0;
+        state.hid2  = 0;
+        state.srr0  = 0;
+        state.fpsr  = 0;
+        state.fpscr = 0;
+        state.l2cr  = 0;
 
-        state.pc  = 0;
-        state.lr  = 0;
+        state.pc    = 0;
+        state.lr    = 0;
     }
 
     // returns the number of instructions executed

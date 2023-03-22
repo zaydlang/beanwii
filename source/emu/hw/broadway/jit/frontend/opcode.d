@@ -36,6 +36,7 @@ enum PrimaryOpcode {
     OP_04  = 0x04,
     OP_13  = 0x13,
     OP_1F  = 0x1F,
+    OP_3B  = 0x3B,
     OP_3F  = 0x3F,
 }
 
@@ -113,7 +114,16 @@ enum PrimaryOp1FSecondaryOpcode {
     XOR     = 0x13C,
 }
 
+enum PrimaryOp3BSecondaryOpcode {
+    FNMSUBSX = 0x1E
+}
+
 enum PrimaryOp3FSecondaryOpcode {
+    FABS   = 0x108,
+    FADD   = 0x015,
     FMR    = 0x048,
+    FMSUBX = 0x01C,
+    FNABSX = 0x088,
+    FSEL   = 0x017,
     MTFSF  = 0x2C7
 }

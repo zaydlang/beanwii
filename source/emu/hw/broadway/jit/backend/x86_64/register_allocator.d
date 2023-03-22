@@ -36,6 +36,12 @@ final class RegisterAllocator {
             this.variable = new_variable_id;
         }
 
+        public void bind_as_scratch_reg() {
+            if (variable_bound) error_jit("Tried to bind %s as scratch reg when it was already bound to %s.", host_reg, variable);
+
+            variable_bound = true;
+        }
+
         public void unbind_variable() {
             variable_bound = false;
         }
@@ -71,11 +77,15 @@ final class RegisterAllocator {
         }
     }
 
-    // Reg get_scratch_reg(IRVariableType type) {
-    //     BindingVariable* binding_variable = get_free_binding_variable(ir_variable.get_type());
-    //     binding_variable.bind_as_scratch_reg();
-    //     return binding_variable.host_reg;
-    // }
+    Reg get_scratch_reg(IRVariableType type) {
+        BindingVariable* binding_variable = get_free_binding_variable(type);
+        binding_variable.bind_as_scratch_reg();
+        return decipher_type(binding_variable.host_reg, type);
+    }
+
+    void unbind_scratch_reg(Reg reg, IRVariableType type) {
+        get_binding_variable_from_reg(reg, type).unbind_variable();
+    }
 
     // void unbind_scratch_reg(Reg reg) {
     //     bindings[reg].unbind_variable();
@@ -104,6 +114,17 @@ final class RegisterAllocator {
             case IRVariableType.PAIRED_SINGLE:
                 return host_reg.to_xbyak_xmm();
         }
+    }
+
+    BindingVariable* get_binding_variable_from_reg(Reg reg, IRVariableType type) {
+        int offset;
+        final switch (type) {
+            case IRVariableType.INTEGER:       offset = HostReg_x86_64.RAX; break;
+            case IRVariableType.FLOAT:         offset = HostReg_x86_64.XMM0; break;
+            case IRVariableType.PAIRED_SINGLE: offset = HostReg_x86_64.XMM0; break;
+        }
+
+        return &bindings[reg.getIdx() + offset];
     }
 
     void bind_variable_to_host_reg(IRVariable ir_variable, HostReg_x86_64 host_reg) {

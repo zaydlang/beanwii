@@ -19,6 +19,7 @@ struct BroadwayState {
     u32     hid2;
     u32     srr0;
     u32     fpsr;
+    u32     fpscr;
     u32     l2cr;
     
     u32     lr;
@@ -29,12 +30,18 @@ public void log_state(BroadwayState* state) {
     if (true) { // mimic dolphin style logs for diffing
         import std.stdio;
         writefln("LOG: fregs PC: 0x%08x CRval: 0x%08x FPSCR: 0x%08x XER: 0x%08x MSR: 0x%08x LR: 0x%08x ",
-            state.pc, state.cr, state.fpsr, state.xer, state.msr, state.lr
+            state.pc, state.cr, state.fpscr, state.xer, state.msr, state.lr
         );
 
         writef("LOG: ");
         for (int i = 0; i < 32; i++) {
             writef("%08x ", state.gprs[i]);
+        }
+
+        writef(" ");
+
+        for (int i = 0; i < 32; i++) {
+            writef("f%02d: %016x %016x ", i, state.fprs[i], 0);
         }
         writefln("");
     } else {

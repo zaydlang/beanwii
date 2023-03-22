@@ -22,6 +22,7 @@ enum GuestReg {
 
     SRR0,
     FPSR,
+    FPSCR,
 
     L2CR,
 
@@ -64,17 +65,18 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.PS0:  .. case GuestReg.PS31: return BroadwayState.fprs.offsetof + (reg - GuestReg.PS0) * 8;
         case GuestReg.GQR0: .. case GuestReg.GQR7: return BroadwayState.gqrs.offsetof + (reg - GuestReg.GQR0) * 4;
     
-        case GuestReg.CR:   return BroadwayState.cr.offsetof;
-        case GuestReg.XER:  return BroadwayState.xer.offsetof;
-        case GuestReg.CTR:  return BroadwayState.ctr.offsetof;
-        case GuestReg.MSR:  return BroadwayState.msr.offsetof;
-        case GuestReg.HID0: return BroadwayState.hid0.offsetof;
-        case GuestReg.HID2: return BroadwayState.hid2.offsetof;
-        case GuestReg.SRR0: return BroadwayState.srr0.offsetof;
-        case GuestReg.FPSR: return BroadwayState.fpsr.offsetof;
-        case GuestReg.L2CR: return BroadwayState.l2cr.offsetof;
-        case GuestReg.LR:   return BroadwayState.lr.offsetof;
-        case GuestReg.PC:   return BroadwayState.pc.offsetof;
+        case GuestReg.CR:    return BroadwayState.cr.offsetof;
+        case GuestReg.XER:   return BroadwayState.xer.offsetof;
+        case GuestReg.CTR:   return BroadwayState.ctr.offsetof;
+        case GuestReg.MSR:   return BroadwayState.msr.offsetof;
+        case GuestReg.HID0:  return BroadwayState.hid0.offsetof;
+        case GuestReg.HID2:  return BroadwayState.hid2.offsetof;
+        case GuestReg.SRR0:  return BroadwayState.srr0.offsetof;
+        case GuestReg.FPSR:  return BroadwayState.fpsr.offsetof;
+        case GuestReg.FPSCR: return BroadwayState.fpscr.offsetof;
+        case GuestReg.L2CR:  return BroadwayState.l2cr.offsetof;
+        case GuestReg.LR:    return BroadwayState.lr.offsetof;
+        case GuestReg.PC:    return BroadwayState.pc.offsetof;
 
         default: assert(0);
     }

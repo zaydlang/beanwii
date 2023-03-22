@@ -1,5 +1,6 @@
 module emu.hw.broadway.jit.frontend.disassembler;
 
+import emu.hw.broadway.jit.frontend.floating_point;
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.frontend.opcode;
@@ -533,7 +534,7 @@ private void emit_lfd(IR* ir, u32 opcode, u32 pc) {
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
-    ir.set_reg(rd, ir.read_u64(ir.get_reg(ra) + sext_32(d, 16)));
+    ir.set_reg(rd, ir.read_u64(ir.get_reg(ra) + sext_32(d, 16)).interpret_as_float());
 }
 
 private void emit_lhz(IR* ir, u32 opcode, u32 pc) {
@@ -1251,17 +1252,37 @@ private void emit_op_1F(IR* ir, u32 opcode, u32 pc) {
     }
 }
 
-private void emit_op_3F(IR* ir, u32 opcode, u32 pc) {
-
-    int secondary_opcode = opcode.bits(1, 10);
+private void emit_op_3B(IR* ir, u32 opcode, u32 pc) {
+    int secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
-        case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr   (ir, opcode, pc); break;
-        case PrimaryOp3FSecondaryOpcode.MTFSF:  emit_mtfsf (ir, opcode, pc); break;
+        case PrimaryOp3BSecondaryOpcode.FNMSUBSX: emit_fnmsubsx(ir, opcode, pc); break;
 
         default: unimplemented_opcode(opcode, pc);
     }
 }
+
+private void emit_op_3F(IR* ir, u32 opcode, u32 pc) {
+    int secondary_opcode = opcode.bits(1, 10);
+
+    switch (secondary_opcode) {
+        case PrimaryOp3FSecondaryOpcode.FABS:   emit_fabs   (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FADD:   emit_fadd   (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr    (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FNABSX: emit_fnabsx (ir, opcode, pc); break;    
+        case PrimaryOp3FSecondaryOpcode.MTFSF:  emit_mtfsf  (ir, opcode, pc); break;
+        default: break;
+    }
+
+    secondary_opcode = opcode.bits(1, 5);
+
+    switch (secondary_opcode) {
+        case PrimaryOp3FSecondaryOpcode.FMSUBX: emit_fmsubx (ir, opcode, pc); break;
+        case PrimaryOp3FSecondaryOpcode.FSEL:   emit_fsel   (ir, opcode, pc); break;
+        default: unimplemented_opcode(opcode, pc);
+    }
+}
+
 public void emit(IR* ir, u32 opcode, u32 pc) {
     int primary_opcode = opcode.bits(26, 31);
 
@@ -1301,6 +1322,7 @@ public void emit(IR* ir, u32 opcode, u32 pc) {
         case PrimaryOpcode.OP_04:  emit_op_04 (ir, opcode, pc); break;
         case PrimaryOpcode.OP_13:  emit_op_13 (ir, opcode, pc); break;
         case PrimaryOpcode.OP_1F:  emit_op_1F (ir, opcode, pc); break;
+        case PrimaryOpcode.OP_3B:  emit_op_3B (ir, opcode, pc); break;
         case PrimaryOpcode.OP_3F:  emit_op_3F (ir, opcode, pc); break;
 
         default: unimplemented_opcode(opcode, pc);

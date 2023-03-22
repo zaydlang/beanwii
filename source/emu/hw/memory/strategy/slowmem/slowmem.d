@@ -71,7 +71,7 @@ final class SlowMem : MemStrategy {
                 assert(0);
         }
 
-        // log_slowmem("Read 0x%08x from address 0x%08x", result, address);
+        log_slowmem("Read 0x%08x from address 0x%08x", result, address);
         return result;
     }
 
