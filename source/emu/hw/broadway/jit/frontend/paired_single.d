@@ -3,11 +3,12 @@ module emu.hw.broadway.jit.frontend.paired_single;
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
 import emu.hw.broadway.jit.ir.ir;
+import emu.hw.broadway.jit.jit;
 import util.bitop;
 import util.log;
 import util.number;
 
-public void emit_psq_l(IR* ir, u32 opcode, u32 pc) {
+public void emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd  = to_ps (opcode.bits(21, 25));
     GuestReg ra  = to_gpr(opcode.bits(16, 20));
     GuestReg gqr = to_gqr(opcode.bits(12, 14));
@@ -36,7 +37,7 @@ public void emit_psq_l(IR* ir, u32 opcode, u32 pc) {
     ir.set_reg(rd, paired_single);
 }
 
-public void emit_ps_mr(IR* ir, u32 opcode, u32 pc) {
+public void emit_ps_mr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg frd = to_ps(opcode.bits(21, 25));
     GuestReg frb = to_ps(opcode.bits(11, 15));
 

@@ -96,20 +96,25 @@ final class Code : CodeGenerator {
                 mov(reg1, reg2);
                 break;
             
-            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
             case IRVariableType.PAIRED_SINGLE:
                 final switch (type2) {
                     case IRVariableType.INTEGER:
                         movq(cast(Xmm) reg1, reg2.cvt64());
                         break;
                     
-                    case IRVariableType.FLOAT:
+                    case IRVariableType.DOUBLE:
                     case IRVariableType.PAIRED_SINGLE:
                         movq(cast(Xmm) reg1, cast(Xmm) reg2);
                         break;
+
+                    case IRVariableType.FLOAT:
+                        assert(0);
                 }
                 break;
 
+            case IRVariableType.FLOAT:
+                assert(0);
         }
     }
 
@@ -258,9 +263,13 @@ final class Code : CodeGenerator {
                     mov(host_reg, dword [rdi + offset]);
                     break;
                 
-                case IRVariableType.FLOAT:
+                case IRVariableType.DOUBLE:
                 case IRVariableType.PAIRED_SINGLE:
                     movq(cast(Xmm) host_reg, qword [rdi + offset]);
+                    break;
+
+                case IRVariableType.FLOAT:
+                    movss(cast(Xmm) host_reg, dword [rdi + offset]);
                     break;
             }
         // }
@@ -277,9 +286,13 @@ final class Code : CodeGenerator {
                 mov(dword [rdi + offset], src_reg);
                 break;
             
-            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
             case IRVariableType.PAIRED_SINGLE:
                 movq(qword [rdi + offset], cast(Xmm) src_reg);
+                break;
+
+            case IRVariableType.FLOAT:
+                movss(dword [rdi + offset], cast(Xmm) src_reg);
                 break;
         }
 
@@ -295,8 +308,8 @@ final class Code : CodeGenerator {
 
     void emit_SET_FPSCR(IRInstructionSetFPSCR ir_instruction, int current_instruction_index) {
         Xmm src_reg = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.src);
-        Xmm scratch_xmm1 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.FLOAT);
-        Xmm scratch_xmm2 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.FLOAT);
+        Xmm scratch_xmm1 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.DOUBLE);
+        Xmm scratch_xmm2 = cast(Xmm) register_allocator.get_scratch_reg(IRVariableType.DOUBLE);
 
         Reg scratch_int = register_allocator.get_scratch_reg(IRVariableType.INTEGER);
 
@@ -321,8 +334,8 @@ final class Code : CodeGenerator {
         L(done_label);
         mov(dword [rdi + cast(int) GuestReg.FPSCR.get_reg_offset()], scratch_int);
 
-        register_allocator.unbind_scratch_reg(scratch_xmm1, IRVariableType.FLOAT);
-        register_allocator.unbind_scratch_reg(scratch_xmm2, IRVariableType.FLOAT);
+        register_allocator.unbind_scratch_reg(scratch_xmm1, IRVariableType.DOUBLE);
+        register_allocator.unbind_scratch_reg(scratch_xmm2, IRVariableType.DOUBLE);
         register_allocator.unbind_scratch_reg(scratch_int, IRVariableType.INTEGER);
     }
 
@@ -478,7 +491,7 @@ final class Code : CodeGenerator {
                         divss(cast(Xmm) dest_reg, cast(Xmm) src1);
                         break;
                     
-                    case IRVariableType.FLOAT:
+                    case IRVariableType.DOUBLE:
                         movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
                         divsd(cast(Xmm) dest_reg, cast(Xmm) src2);
                         break;
@@ -500,6 +513,10 @@ final class Code : CodeGenerator {
                         register_allocator.free_up_host_reg(this, HostReg_x86_64.RDX);
 
                         pop(rdx);
+                        break;
+                    
+                    case IRVariableType.FLOAT:
+                        assert(0);
                 }
                 break;
             
@@ -551,7 +568,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_sub_int,
-            &emit_binary_data_op_var_sub_float,
+            &emit_binary_data_op_var_sub_double,
             &emit_binary_data_op_var_sub_paired_single
         );
     }
@@ -561,7 +578,7 @@ final class Code : CodeGenerator {
         sub(dest_reg, src2);
     }
 
-    private void emit_binary_data_op_var_sub_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_sub_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
         subsd(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
@@ -575,7 +592,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_mul_int,
-            &emit_binary_data_op_var_mul_float,
+            &emit_binary_data_op_var_mul_double,
             &emit_binary_data_op_var_mul_paired_single
         );
     }
@@ -585,7 +602,7 @@ final class Code : CodeGenerator {
         imul(dest_reg, src2);
     }
 
-    private void emit_binary_data_op_var_mul_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_mul_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
         mulsd(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
@@ -596,12 +613,30 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_add(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
-        emit_binary_data_op_var_generic(
-            ir_instruction, current_instruction_index,
-            &emit_binary_data_op_var_add_int,
-            &emit_binary_data_op_var_add_float,
-            &emit_binary_data_op_var_add_paired_single
-        );
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
+        Reg src2     = register_allocator.get_bound_host_reg(ir_instruction.src2);
+        IRVariableType type = ir_instruction.src2.get_type();
+
+        final switch (type) {
+            case IRVariableType.PAIRED_SINGLE:
+                assert(0);
+            
+            case IRVariableType.DOUBLE:
+                movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+                addsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+                break;
+            
+            case IRVariableType.INTEGER:
+                mov(dest_reg, src1);
+                add(dest_reg, src2);
+                break;
+            
+            case IRVariableType.FLOAT:
+                movss(cast(Xmm) dest_reg, cast(Xmm) src1);
+                addss(cast(Xmm) dest_reg, cast(Xmm) src2);
+                break;
+        }
     }
 
     private void emit_binary_data_op_var_add_int(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
@@ -609,7 +644,7 @@ final class Code : CodeGenerator {
         imul(dest_reg, src2);
     }
 
-    private void emit_binary_data_op_var_add_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_add_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
         addsd(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
@@ -623,7 +658,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_gtu_int,
-            &emit_binary_data_op_var_gtu_float,
+            &emit_binary_data_op_var_gtu_double,
             &emit_binary_data_op_var_gtu_paired_single
         );
     }
@@ -634,7 +669,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_gtu_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_gtu_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         seta(dest_reg.cvt8());
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -648,7 +683,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_ltu_int,
-            &emit_binary_data_op_var_ltu_float,
+            &emit_binary_data_op_var_ltu_double,
             &emit_binary_data_op_var_ltu_paired_single
         );
     }
@@ -659,7 +694,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_ltu_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_ltu_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         setb(dest_reg.cvt8());
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -673,7 +708,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_gts_int,
-            &emit_binary_data_op_var_gts_float,
+            &emit_binary_data_op_var_gts_double,
             &emit_binary_data_op_var_gts_paired_single
         );
     }
@@ -684,7 +719,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_gts_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_gts_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         setg(dest_reg.cvt8());
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -698,7 +733,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_lts_int,
-            &emit_binary_data_op_var_lts_float,
+            &emit_binary_data_op_var_lts_double,
             &emit_binary_data_op_var_lts_paired_single
         );
     }
@@ -709,7 +744,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_lts_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_lts_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         log_ir("%s %s %s", src1, src2, dest_reg);
         setl(dest_reg.cvt8());
@@ -724,7 +759,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_eq_int,
-            &emit_binary_data_op_var_eq_float,
+            &emit_binary_data_op_var_eq_double,
             &emit_binary_data_op_var_eq_paired_single
         );
     }
@@ -735,7 +770,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_eq_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_eq_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         sete(dest_reg.cvt8());
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -749,7 +784,7 @@ final class Code : CodeGenerator {
         emit_binary_data_op_var_generic(
             ir_instruction, current_instruction_index,
             &emit_binary_data_op_var_ne_int,
-            &emit_binary_data_op_var_ne_float,
+            &emit_binary_data_op_var_ne_double,
             &emit_binary_data_op_var_ne_paired_single
         );
     }
@@ -760,7 +795,7 @@ final class Code : CodeGenerator {
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
     }
 
-    private void emit_binary_data_op_var_ne_float(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
+    private void emit_binary_data_op_var_ne_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
         cmpsd(cast(Xmm) src1, cast(Xmm) src2, 0);
         setne(dest_reg.cvt8());
         movzx(dest_reg.cvt64(), dest_reg.cvt8());
@@ -774,7 +809,7 @@ final class Code : CodeGenerator {
         emit_unary_data_op_generic(
             ir_instruction, current_instruction_index,
             &emit_unary_data_op_abs_int,
-            &emit_unary_data_op_abs_float,
+            &emit_unary_data_op_abs_double,
             &emit_unary_data_op_abs_paired_single
         );
     }
@@ -783,7 +818,7 @@ final class Code : CodeGenerator {
         assert(0);
     }
 
-    private void emit_unary_data_op_abs_float(Reg dest_reg, Reg src, int current_instruction_index) {
+    private void emit_unary_data_op_abs_double(Reg dest_reg, Reg src, int current_instruction_index) {
         Label label = L();
         put_data(label, [0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
@@ -800,7 +835,7 @@ final class Code : CodeGenerator {
         emit_unary_data_op_generic(
             ir_instruction, current_instruction_index,
             &emit_unary_data_op_neg_int,
-            &emit_unary_data_op_neg_float,
+            &emit_unary_data_op_neg_double,
             &emit_unary_data_op_neg_paired_single
         );
     }
@@ -810,7 +845,7 @@ final class Code : CodeGenerator {
         neg(dest_reg);
     }
 
-    private void emit_unary_data_op_neg_float(Reg dest_reg, Reg src, int current_instruction_index) {
+    private void emit_unary_data_op_neg_double(Reg dest_reg, Reg src, int current_instruction_index) {
         Label label = L();
         put_data(label, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]);
 
@@ -838,12 +873,14 @@ final class Code : CodeGenerator {
             case IRVariableType.INTEGER:
                 int_handler(dest_reg, src1, src2, current_instruction_index);
                 break;
-            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
                 float_handler(dest_reg, src1, src2, current_instruction_index);
                 break;
             case IRVariableType.PAIRED_SINGLE:
                 paired_single_handler(dest_reg, src1, src2, current_instruction_index);
                 break;
+            case IRVariableType.FLOAT:
+                assert(0);
         }
     }
 
@@ -859,12 +896,14 @@ final class Code : CodeGenerator {
             case IRVariableType.INTEGER:
                 int_handler(dest_reg, src, current_instruction_index);
                 break;
-            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
                 float_handler(dest_reg, src, current_instruction_index);
                 break;
             case IRVariableType.PAIRED_SINGLE:
                 paired_single_handler(dest_reg, src, current_instruction_index);
                 break;
+            case IRVariableType.FLOAT:
+                assert(0);
         }
     }
 
@@ -934,7 +973,7 @@ final class Code : CodeGenerator {
         register_allocator.maybe_unbind_variable(ir_instruction.dest, current_instruction_index);
     }
 
-    void emit_SET_VAR_IMM_FLOAT(IRInstructionSetVarImmFloat ir_instruction, int current_instruction_index) {
+    void emit_SET_VAR_IMM_DOUBLE(IRInstructionSetVarImmFloat ir_instruction, int current_instruction_index) {
         Xmm dest_reg = cast(Xmm) register_allocator.get_bound_host_reg(ir_instruction.dest);
 
         // cry about it
@@ -1172,7 +1211,7 @@ final class Code : CodeGenerator {
             (IRInstructionBinaryDataOpVar i)   => emit_BINARY_DATA_OP_VAR(i, current_instruction_index),
             (IRInstructionUnaryDataOp i)       => emit_UNARY_DATA_OP(i, current_instruction_index),
             (IRInstructionSetVarImmInt i)      => emit_SET_VAR_IMM_INT(i, current_instruction_index),
-            (IRInstructionSetVarImmFloat i)    => emit_SET_VAR_IMM_FLOAT(i, current_instruction_index),
+            (IRInstructionSetVarImmFloat i)    => emit_SET_VAR_IMM_DOUBLE(i, current_instruction_index),
             (IRInstructionRead i)              => emit_READ(i, current_instruction_index),
             (IRInstructionWrite i)             => emit_WRITE(i, current_instruction_index),
             (IRInstructionReadSized i)         => emit_READ_SIZED(i, current_instruction_index),

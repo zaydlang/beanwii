@@ -10,8 +10,10 @@ enum GuestReg {
     F0,  F1,  F2,  F3,  F4,  F5,  F6,  F7,  F8,  F9,  F10, F11, F12, F13, F14, F15,
     F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31,
 
-    PS0,  PS1,  PS2,  PS3,  PS4,  PS5,  PS6,  PS7,  PS8,  PS9,  PS10, PS11, PS12, PS13, PS14, PS15,
-    PS16, PS17, PS18, PS19, PS20, PS21, PS22, PS23, PS24, PS25, PS26, PS27, PS28, PS29, PS30, PS31,
+    PS0_0, PS0_1, PS1_0, PS1_1, PS2_0, PS2_1, PS3_0, PS3_1, PS4_0, PS4_1, PS5_0, PS5_1, PS6_0, PS6_1, PS7_0, PS7_1,
+    PS8_0, PS8_1, PS9_0, PS9_1, PS10_0, PS10_1, PS11_0, PS11_1, PS12_0, PS12_1, PS13_0, PS13_1, PS14_0, PS14_1, PS15_0, PS15_1,
+    PS16_0, PS16_1, PS17_0, PS17_1, PS18_0, PS18_1, PS19_0, PS19_1, PS20_0, PS20_1, PS21_0, PS21_1, PS22_0, PS22_1, PS23_0, PS23_1,
+    PS24_0, PS24_1, PS25_0, PS25_1, PS26_0, PS26_1, PS27_0, PS27_1, PS28_0, PS28_1, PS29_0, PS29_1, PS30_0, PS30_1, PS31_0, PS31_1,
 
     CR,
     XER,
@@ -49,7 +51,15 @@ public GuestReg to_gqr(int reg) {
 }
 
 public GuestReg to_ps(int reg) {
-    return cast(GuestReg) reg + GuestReg.PS0;
+    return cast(GuestReg) reg + GuestReg.PS0_0;
+}
+
+public GuestReg to_ps0(int reg) {
+    return cast(GuestReg) (reg * 2) + GuestReg.PS0_0;
+}
+
+public GuestReg to_ps1(int reg) {
+    return cast(GuestReg) (reg * 2) + GuestReg.PS0_1;
 }
 
 public string to_string(GuestReg reg) {
@@ -60,10 +70,10 @@ public size_t get_reg_offset(GuestReg reg) {
     import emu.hw.broadway.state;
 
     switch (reg) {
-        case GuestReg.R0:   .. case GuestReg.R31:  return BroadwayState.gprs.offsetof + (reg - GuestReg.R0) * 4;
-        case GuestReg.F0:   .. case GuestReg.F31:  return BroadwayState.fprs.offsetof + (reg - GuestReg.F0) * 8;
-        case GuestReg.PS0:  .. case GuestReg.PS31: return BroadwayState.fprs.offsetof + (reg - GuestReg.PS0) * 8;
-        case GuestReg.GQR0: .. case GuestReg.GQR7: return BroadwayState.gqrs.offsetof + (reg - GuestReg.GQR0) * 4;
+        case GuestReg.R0:    .. case GuestReg.R31:    return BroadwayState.gprs.offsetof + (reg - GuestReg.R0) * 4;
+        case GuestReg.F0:    .. case GuestReg.F31:    return BroadwayState.fprs.offsetof + (reg - GuestReg.F0) * 8;
+        case GuestReg.GQR0:  .. case GuestReg.GQR7:   return BroadwayState.gqrs.offsetof + (reg - GuestReg.GQR0) * 4;
+        case GuestReg.PS0_0: .. case GuestReg.PS31_1: return BroadwayState.fprs.offsetof + (reg - GuestReg.PS0_0) * 4;
     
         case GuestReg.CR:    return BroadwayState.cr.offsetof;
         case GuestReg.XER:   return BroadwayState.xer.offsetof;

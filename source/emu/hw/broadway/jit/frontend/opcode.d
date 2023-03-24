@@ -115,6 +115,7 @@ enum PrimaryOp1FSecondaryOpcode {
 }
 
 enum PrimaryOp3BSecondaryOpcode {
+    FADDSX   = 0x015,
     FNMSUBSX = 0x1E
 }
 

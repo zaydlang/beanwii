@@ -7,6 +7,7 @@ import emu.hw.broadway.jit.backend.x86_64.emitter;
 import emu.hw.broadway.jit.ir.ir;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
+import util.bitop;
 import util.log;
 import util.number;
 import util.ringbuffer;
@@ -14,6 +15,11 @@ import util.ringbuffer;
 alias ReadHandler  = u32 function(u32 address);
 alias WriteHandler = void function(u32 address, u32 value);
 alias HleHandler   = void function(int param);
+
+struct JitContext {
+    u32 pc;
+    bool pse;
+}
 
 struct JitConfig {
     ReadHandler  read_handler8;
@@ -68,9 +74,6 @@ final class Jit {
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        // temporary
-        import inteli.smmintrin;
-        _mm_setcsr(0x1F80);
         JitFunction cached_function = jit_hash_map.require(state.pc, null);
 
         if (cached_function != null && false) {
@@ -79,11 +82,17 @@ final class Jit {
         } else {
             ir.reset();
 
+            JitContext ctx = JitContext(
+                state.pc, 
+                state.hid2.bit(30) // HID2[PSE]
+            );
+
             u32 instruction = fetch(state);
-            log_instruction(instruction, state.pc);
+            log_instruction(instruction, ctx.pc);
+            
             log_jit("%x ", instruction);
 
-            emit(ir, instruction, state.pc);
+            emit(ir, instruction, ctx);
 
             code.reset();
             code.emit(ir);
@@ -108,7 +117,10 @@ final class Jit {
 
             state.pc += 4;
             this.debug_ring.add(DebugState(*state, instruction));
+
+            log_jit("Entering generated function...");
             generated_function(state);
+            log_jit("Left generated function.");
 
             return 1;
         }

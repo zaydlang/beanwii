@@ -111,6 +111,7 @@ final class RegisterAllocator {
                 return host_reg.to_xbyak_reg32();
             
             case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
             case IRVariableType.PAIRED_SINGLE:
                 return host_reg.to_xbyak_xmm();
         }
@@ -121,6 +122,7 @@ final class RegisterAllocator {
         final switch (type) {
             case IRVariableType.INTEGER:       offset = HostReg_x86_64.RAX; break;
             case IRVariableType.FLOAT:         offset = HostReg_x86_64.XMM0; break;
+            case IRVariableType.DOUBLE:        offset = HostReg_x86_64.XMM0; break;
             case IRVariableType.PAIRED_SINGLE: offset = HostReg_x86_64.XMM0; break;
         }
 
@@ -239,12 +241,13 @@ final class RegisterAllocator {
                 break;
             
             case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
                 start = HostReg_x86_64.XMM0;
                 end   = HostReg_x86_64.XMM7;
                 break;
 
             case IRVariableType.PAIRED_SINGLE:
-                goto case IRVariableType.FLOAT;
+                goto case IRVariableType.DOUBLE;
         }
 
         for (int i = start; i <= end; i++) {
@@ -291,7 +294,7 @@ final class RegisterAllocator {
             case HostReg_x86_64.XMM5:
             case HostReg_x86_64.XMM6:
             case HostReg_x86_64.XMM7:
-                return IRVariableType.FLOAT;
+                return IRVariableType.DOUBLE;
             
             case HostReg_x86_64.SPL:
             case HostReg_x86_64.BPL:

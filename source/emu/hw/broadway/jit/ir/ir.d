@@ -118,7 +118,7 @@ struct IR {
     }
 
     IRVariable constant(float constant) {
-        IRVariable dest = generate_new_variable(IRVariableType.FLOAT);
+        IRVariable dest = generate_new_variable(IRVariableType.DOUBLE);
         emit(IRInstructionSetVarImmFloat(dest, constant));
         
         return dest;
@@ -457,13 +457,14 @@ struct IR {
 enum IRVariableType {
     INTEGER,
     FLOAT,
+    DOUBLE,
     PAIRED_SINGLE
 }
 
 private IRVariableType get_variable_type_from_guest_reg(GuestReg guest_reg) {
     switch (guest_reg) {
-        case GuestReg.PS0: .. case GuestReg.PS31: return IRVariableType.PAIRED_SINGLE;
-        case GuestReg.F0:  .. case GuestReg.F31:  return IRVariableType.FLOAT;
+        case GuestReg.PS0_0: .. case GuestReg.PS31_1: return IRVariableType.FLOAT;
+        case GuestReg.F0:    .. case GuestReg.F31:    return IRVariableType.DOUBLE;
 
         default: 
             return IRVariableType.INTEGER;
@@ -507,7 +508,7 @@ struct IRVariable {
 
         IRVariableType type = IRVariableType.INTEGER;
         if (op == IRBinaryDataOp.DIV) {
-            type = IRVariableType.FLOAT;
+            type = IRVariableType.DOUBLE;
         }
 
         IRVariable dest = ir.generate_new_variable(type);
@@ -523,7 +524,7 @@ struct IRVariable {
 
     void opIndexAssign(IRVariable other, size_t index) {
         assert(ir.get_type(this)  == IRVariableType.PAIRED_SINGLE);
-        assert(ir.get_type(other) == IRVariableType.FLOAT);
+        assert(ir.get_type(other) == IRVariableType.DOUBLE);
         assert(index < 2);
 
         IRVariable old = this;
@@ -761,7 +762,7 @@ struct IRVariable {
     IRVariable to_float() {
         assert(ir.get_type(this) == IRVariableType.INTEGER);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
+        IRVariable dest = ir.generate_new_variable(IRVariableType.DOUBLE);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
@@ -773,7 +774,7 @@ struct IRVariable {
     }
 
     IRVariable to_int() {
-        assert(ir.get_type(this) == IRVariableType.FLOAT);
+        assert(ir.get_type(this) == IRVariableType.DOUBLE);
 
         IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
@@ -789,7 +790,7 @@ struct IRVariable {
     IRVariable interpret_as_float() {
         assert(ir.get_type(this) == IRVariableType.INTEGER);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.FLOAT);
+        IRVariable dest = ir.generate_new_variable(IRVariableType.DOUBLE);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
