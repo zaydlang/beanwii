@@ -102,6 +102,16 @@ public void emit_fmaddx(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(rd, dest);
 }
 
+public void emit_fmr(IR* ir, u32 opcode, JitContext ctx) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    bool record = opcode.bit(0);
+
+    assert(opcode.bits(16, 20) == 0);
+
+    ir.set_reg(rd, ir.get_reg(rb));
+}
+
 public void emit_fmsubsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);

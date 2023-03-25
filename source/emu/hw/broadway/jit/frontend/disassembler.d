@@ -492,16 +492,6 @@ private void emit_extsh(IR* ir, u32 opcode, JitContext ctx) {
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
 }
 
-private void emit_fmr(IR* ir, u32 opcode, JitContext ctx) {
-    GuestReg frD = to_fpr(opcode.bits(21, 25));
-    GuestReg frB = to_fpr(opcode.bits(11, 15));
-
-    assert(opcode.bits(16, 20) == 0);
-    assert(opcode.bit(0) == 0);
-
-    ir.set_reg(frD, ir.get_reg(frB));
-}
-
 private void emit_hle(IR* ir, u32 opcode, JitContext ctx) {
     int hle_function_id = opcode.bits(21, 25);
     ir.run_hle_func(hle_function_id);
