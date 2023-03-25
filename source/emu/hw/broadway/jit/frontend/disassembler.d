@@ -1258,6 +1258,7 @@ private void emit_op_3B(IR* ir, u32 opcode, JitContext ctx) {
 
     switch (secondary_opcode) {
         case PrimaryOp3BSecondaryOpcode.FADDSX:   emit_faddsx  (ir, opcode, ctx); break;
+        case PrimaryOp3BSecondaryOpcode.FMADDSX:  emit_fmaddsx (ir, opcode, ctx); break;
         case PrimaryOp3BSecondaryOpcode.FNMSUBSX: emit_fnmsubsx(ir, opcode, ctx); break;
 
         default: unimplemented_opcode(opcode, ctx);

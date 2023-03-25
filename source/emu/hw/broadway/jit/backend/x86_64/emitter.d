@@ -588,27 +588,26 @@ final class Code : CodeGenerator {
     }
 
     private void emit_binary_data_op_var_mul(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
-        emit_binary_data_op_var_generic(
-            ir_instruction, current_instruction_index,
-            &emit_binary_data_op_var_mul_int,
-            &emit_binary_data_op_var_mul_double,
-            &emit_binary_data_op_var_mul_paired_single
-        );
-    }
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
+        Reg src2     = register_allocator.get_bound_host_reg(ir_instruction.src2);
+        IRVariableType type = ir_instruction.src2.get_type();
 
-    private void emit_binary_data_op_var_mul_int(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        mov(dest_reg, src1);
-        imul(dest_reg, src2);
-    }
-
-    private void emit_binary_data_op_var_mul_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
-        mulsd(cast(Xmm) dest_reg, cast(Xmm) src2);
-    }
-
-    private void emit_binary_data_op_var_mul_paired_single(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movss(cast(Xmm) dest_reg, cast(Xmm) src1);
-        mulps(cast(Xmm) dest_reg, cast(Xmm) src2);
+        final switch (type) {
+            case IRVariableType.PAIRED_SINGLE:
+                assert(0);
+            
+            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
+                movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+                mulsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+                break;
+            
+            case IRVariableType.INTEGER:
+                mov(dest_reg, src1);
+                imul(dest_reg, src2);
+                break;
+        }
     }
 
     private void emit_binary_data_op_var_add(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
@@ -632,21 +631,6 @@ final class Code : CodeGenerator {
                 add(dest_reg, src2);
                 break;
         }
-    }
-
-    private void emit_binary_data_op_var_add_int(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        add(dest_reg, src1);
-        imul(dest_reg, src2);
-    }
-
-    private void emit_binary_data_op_var_add_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
-        addsd(cast(Xmm) dest_reg, cast(Xmm) src2);
-    }
-
-    private void emit_binary_data_op_var_add_paired_single(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
-        addps(cast(Xmm) dest_reg, cast(Xmm) src2);
     }
 
     private void emit_binary_data_op_var_gtu(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {

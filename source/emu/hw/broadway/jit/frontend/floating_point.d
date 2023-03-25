@@ -60,6 +60,21 @@ public void emit_fdivx(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(rd, ir.get_reg(ra) / ir.get_reg(rb));
 }
 
+public void emit_fmaddsx(IR* ir, u32 opcode, JitContext ctx) {
+    int op_a = opcode.bits(16, 20);
+    int op_b = opcode.bits(11, 15);
+    int op_c = opcode.bits(6, 10);
+    int op_d = opcode.bits(21, 25);
+    
+    bool record = opcode.bit(0);
+
+    IRVariable result = ir.get_reg(to_ps0(op_a)) * ir.get_reg(to_ps0(op_c)) + ir.get_reg(to_ps0(op_b));
+    ir.set_reg(to_ps0(op_d), result);
+    if (ctx.pse) {
+        ir.set_reg(to_ps1(op_d), result);
+    }
+}
+
 public void emit_fmaddx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
