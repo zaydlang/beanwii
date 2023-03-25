@@ -269,7 +269,8 @@ final class Code : CodeGenerator {
                     break;
 
                 case IRVariableType.FLOAT:
-                    movss(cast(Xmm) host_reg, dword [rdi + offset]);
+                    movsd(cast(Xmm) host_reg, dword [rdi + offset]);
+                    cvtsd2ss(cast(Xmm) host_reg, cast(Xmm) host_reg);
                     break;
             }
         // }
@@ -292,7 +293,9 @@ final class Code : CodeGenerator {
                 break;
 
             case IRVariableType.FLOAT:
-                movss(dword [rdi + offset], cast(Xmm) src_reg);
+                cvtss2sd(cast(Xmm) src_reg, cast(Xmm) src_reg);
+                movsd(dword [rdi + offset], cast(Xmm) src_reg);
+                cvtsd2ss(cast(Xmm) src_reg, cast(Xmm) src_reg); // TODO: if src_reg is dead, don't do this
                 break;
         }
 

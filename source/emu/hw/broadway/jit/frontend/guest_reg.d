@@ -71,9 +71,9 @@ public size_t get_reg_offset(GuestReg reg) {
 
     switch (reg) {
         case GuestReg.R0:    .. case GuestReg.R31:    return BroadwayState.gprs.offsetof + (reg - GuestReg.R0) * 4;
-        case GuestReg.F0:    .. case GuestReg.F31:    return BroadwayState.fprs.offsetof + (reg - GuestReg.F0) * 8;
+        case GuestReg.F0:    .. case GuestReg.F31:    return BroadwayState.ps.offsetof   + (reg - GuestReg.F0) * 16;
         case GuestReg.GQR0:  .. case GuestReg.GQR7:   return BroadwayState.gqrs.offsetof + (reg - GuestReg.GQR0) * 4;
-        case GuestReg.PS0_0: .. case GuestReg.PS31_1: return BroadwayState.fprs.offsetof + (reg - GuestReg.PS0_0) * 4;
+        case GuestReg.PS0_0: .. case GuestReg.PS31_1: return BroadwayState.ps.offsetof   + (reg - GuestReg.PS0_0) * 8;
     
         case GuestReg.CR:    return BroadwayState.cr.offsetof;
         case GuestReg.XER:   return BroadwayState.xer.offsetof;

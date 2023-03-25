@@ -8,7 +8,7 @@ struct BroadwayState {
     align(1):
    
     u32[32] gprs;
-    u64[32] fprs;
+    PairedSingle[32] ps;
 
     u32     cr; 
     u32     xer;
@@ -26,6 +26,12 @@ struct BroadwayState {
     u32     pc;
 }
 
+struct PairedSingle {
+    align(1):
+    u64 ps0;
+    u64 ps1;
+}
+
 public void log_state(BroadwayState* state) {
     if (true) { // mimic dolphin style logs for diffing
         import std.stdio;
@@ -41,7 +47,7 @@ public void log_state(BroadwayState* state) {
         writef(" ");
 
         for (int i = 0; i < 32; i++) {
-            writef("f%02d: %016x %016x ", i, state.fprs[i], 0);
+            writef("f%02d: %016x %016x ", i, state.ps[i].ps0, state.ps[i].ps1);
         }
         writefln("");
     } else {

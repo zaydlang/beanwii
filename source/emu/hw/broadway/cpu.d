@@ -98,14 +98,6 @@ final class Broadway {
         return this.state.gprs[gpr];
     }
 
-    public void set_fpr(int fpr, double value) {
-        *(cast(float*) &this.state.fprs[fpr]) = value;
-    }
-
-    public double get_fpr(int fpr) {
-        return *(cast(double*) &this.state.fprs[fpr]);
-    }
-
     public void set_gqr(int gqr, u32 value) {
         this.state.gqrs[gqr] = value;
     }

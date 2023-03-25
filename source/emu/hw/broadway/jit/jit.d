@@ -74,6 +74,10 @@ final class Jit {
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
+        // TODO: jit this
+        import inteli.xmmintrin;
+        _mm_setcsr(0x1F80 | (0 << 13));
+
         JitFunction cached_function = jit_hash_map.require(state.pc, null);
 
         if (cached_function != null && false) {
