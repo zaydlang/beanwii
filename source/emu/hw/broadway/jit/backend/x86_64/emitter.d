@@ -264,13 +264,9 @@ final class Code : CodeGenerator {
                     break;
                 
                 case IRVariableType.DOUBLE:
+                case IRVariableType.FLOAT:
                 case IRVariableType.PAIRED_SINGLE:
                     movq(cast(Xmm) host_reg, qword [rdi + offset]);
-                    break;
-
-                case IRVariableType.FLOAT:
-                    movsd(cast(Xmm) host_reg, dword [rdi + offset]);
-                    cvtsd2ss(cast(Xmm) host_reg, cast(Xmm) host_reg);
                     break;
             }
         // }
@@ -293,9 +289,9 @@ final class Code : CodeGenerator {
                 break;
 
             case IRVariableType.FLOAT:
+                cvtsd2ss(cast(Xmm) src_reg, cast(Xmm) src_reg);
                 cvtss2sd(cast(Xmm) src_reg, cast(Xmm) src_reg);
                 movsd(dword [rdi + offset], cast(Xmm) src_reg);
-                cvtsd2ss(cast(Xmm) src_reg, cast(Xmm) src_reg); // TODO: if src_reg is dead, don't do this
                 break;
         }
 
@@ -625,6 +621,7 @@ final class Code : CodeGenerator {
             case IRVariableType.PAIRED_SINGLE:
                 assert(0);
             
+            case IRVariableType.FLOAT:
             case IRVariableType.DOUBLE:
                 movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
                 addsd(cast(Xmm) dest_reg, cast(Xmm) src2);
@@ -633,11 +630,6 @@ final class Code : CodeGenerator {
             case IRVariableType.INTEGER:
                 mov(dest_reg, src1);
                 add(dest_reg, src2);
-                break;
-            
-            case IRVariableType.FLOAT:
-                movss(cast(Xmm) dest_reg, cast(Xmm) src1);
-                addss(cast(Xmm) dest_reg, cast(Xmm) src2);
                 break;
         }
     }
