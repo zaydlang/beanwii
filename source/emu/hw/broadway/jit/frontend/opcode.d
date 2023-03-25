@@ -115,9 +115,14 @@ enum PrimaryOp1FSecondaryOpcode {
 }
 
 enum PrimaryOp3BSecondaryOpcode {
-    FADDSX   = 0x015,
-    FMADDSX  = 0x01D,
-    FNMSUBSX = 0x1E
+    FADDSX   = 0x15,
+    FDIVSX   = 0x12,
+    FMADDSX  = 0x1D,
+    FMSUBSX  = 0x1C,
+    FMULSX   = 0x19,
+    FNMADDSX = 0x1F,
+    FNMSUBSX = 0x1E,
+    FSUBSX   = 0x14,
 }
 
 enum PrimaryOp3FSecondaryOpcode {

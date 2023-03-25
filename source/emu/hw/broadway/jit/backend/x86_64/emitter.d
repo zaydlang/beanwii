@@ -490,6 +490,7 @@ final class Code : CodeGenerator {
                         divss(cast(Xmm) dest_reg, cast(Xmm) src1);
                         break;
                     
+                    case IRVariableType.FLOAT:
                     case IRVariableType.DOUBLE:
                         movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
                         divsd(cast(Xmm) dest_reg, cast(Xmm) src2);
@@ -513,9 +514,6 @@ final class Code : CodeGenerator {
 
                         pop(rdx);
                         break;
-                    
-                    case IRVariableType.FLOAT:
-                        assert(0);
                 }
                 break;
             
@@ -564,27 +562,26 @@ final class Code : CodeGenerator {
     alias UnaryDataOpHandler  = void delegate(Reg dest_reg, Reg src, int current_instruction_index);
 
     private void emit_binary_data_op_var_sub(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
-        emit_binary_data_op_var_generic(
-            ir_instruction, current_instruction_index,
-            &emit_binary_data_op_var_sub_int,
-            &emit_binary_data_op_var_sub_double,
-            &emit_binary_data_op_var_sub_paired_single
-        );
-    }
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src1     = register_allocator.get_bound_host_reg(ir_instruction.src1);
+        Reg src2     = register_allocator.get_bound_host_reg(ir_instruction.src2);
+        IRVariableType type = ir_instruction.src2.get_type();
 
-    private void emit_binary_data_op_var_sub_int(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        mov(dest_reg, src1);
-        sub(dest_reg, src2);
-    }
-
-    private void emit_binary_data_op_var_sub_double(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
-        subsd(cast(Xmm) dest_reg, cast(Xmm) src2);
-    }
-
-    private void emit_binary_data_op_var_sub_paired_single(Reg dest_reg, Reg src1, Reg src2, int current_instruction_index) {
-        movss(cast(Xmm) dest_reg, cast(Xmm) src1);
-        subps(cast(Xmm) dest_reg, cast(Xmm) src2);
+        final switch (type) {
+            case IRVariableType.PAIRED_SINGLE:
+                assert(0);
+            
+            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
+                movsd(cast(Xmm) dest_reg, cast(Xmm) src1);
+                subsd(cast(Xmm) dest_reg, cast(Xmm) src2);
+                break;
+            
+            case IRVariableType.INTEGER:
+                mov(dest_reg, src1);
+                sub(dest_reg, src2);
+                break;
+        }
     }
 
     private void emit_binary_data_op_var_mul(IRInstructionBinaryDataOpVar ir_instruction, int current_instruction_index) {
@@ -811,32 +808,27 @@ final class Code : CodeGenerator {
     }
 
     private void emit_unary_data_op_neg(IRInstructionUnaryDataOp ir_instruction, int current_instruction_index) {
-        emit_unary_data_op_generic(
-            ir_instruction, current_instruction_index,
-            &emit_unary_data_op_neg_int,
-            &emit_unary_data_op_neg_double,
-            &emit_unary_data_op_neg_paired_single
-        );
-    }
+        Reg dest_reg = register_allocator.get_bound_host_reg(ir_instruction.dest);
+        Reg src      = register_allocator.get_bound_host_reg(ir_instruction.src);
+        IRVariableType type = ir_instruction.src.get_type();
+            
+        final switch (type) {
+            case IRVariableType.INTEGER:
+                mov(dest_reg, src);
+                neg(dest_reg);
+                break;
+            case IRVariableType.FLOAT:
+            case IRVariableType.DOUBLE:
+                Label label = L();
+                put_data(label, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]);
 
-    private void emit_unary_data_op_neg_int(Reg dest_reg, Reg src, int current_instruction_index) {
-        mov(dest_reg, src);
-        neg(dest_reg);
-    }
-
-    private void emit_unary_data_op_neg_double(Reg dest_reg, Reg src, int current_instruction_index) {
-        Label label = L();
-        put_data(label, [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80]);
-
-        movupd(cast(Xmm) dest_reg, xword [rip + label]);
-        xorpd(cast(Xmm) dest_reg, cast(Xmm) src);
-        g_START_LOGGING = true;
-        // movsd(cast(Xmm) dest_reg, cast(Xmm) src);
-        // vxorps(cast(Xmm) dest_reg, xword [rip + label]);
-    }
-
-    private void emit_unary_data_op_neg_paired_single(Reg dest_reg, Reg src, int current_instruction_index) {
-        assert(0);
+                movupd(cast(Xmm) dest_reg, xword [rip + label]);
+                xorpd(cast(Xmm) dest_reg, cast(Xmm) src);
+                break;
+            case IRVariableType.PAIRED_SINGLE:
+                assert(0);
+                assert(0);
+        }
     }
 
     private void emit_binary_data_op_var_generic(
