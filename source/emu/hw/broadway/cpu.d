@@ -1,6 +1,7 @@
 module emu.hw.broadway.cpu;
 
 import emu.hw.broadway.hle;
+import emu.hw.broadway.interrupt;
 import emu.hw.broadway.state;
 import emu.hw.broadway.jit.jit;
 import emu.hw.memory.strategy.memstrategy;
@@ -9,15 +10,16 @@ import util.log;
 import util.number;
 
 final class Broadway {
-    private Mem           mem;
-    private BroadwayState state;
-    private Jit           jit;
-    private HleContext    hle_context;
-
-    private size_t        ringbuffer_size;
+    private Mem                 mem;
+    private BroadwayState       state;
+    private Jit                 jit;
+    private HleContext          hle_context;
+    private InterruptController interrupt_controller;
+    private size_t              ringbuffer_size;
 
     public this(size_t ringbuffer_size) {
         this.ringbuffer_size = ringbuffer_size;
+        this.interrupt_controller = new InterruptController();
     }
 
     public void connect_mem(Mem mem) {
@@ -177,5 +179,9 @@ final class Broadway {
 
     public u32 get_pc() {
         return state.pc;
+    }
+
+    public InterruptController get_interrupt_controller() {
+        return this.interrupt_controller;
     }
 }

@@ -1,6 +1,7 @@
 module emu.hw.memory.strategy.slowmem.slowmem;
 
 import emu.hw.broadway.hle;
+import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
 import emu.hw.disk.dol;
 import emu.hw.memory.spec;
@@ -173,5 +174,9 @@ final class SlowMem : MemStrategy {
 
     public void connect_serial_interface(SerialInterface si) {
         this.mmio.connect_serial_interface(si);
+    }
+
+    public void connect_interrupt_controller(InterruptController ic) {
+        this.mmio.connect_interrupt_controller(ic);
     }
 }

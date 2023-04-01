@@ -1,5 +1,6 @@
 module emu.hw.memory.strategy.memstrategy;
 
+import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
 import emu.hw.disk.dol;
 import emu.hw.memory.strategy.slowmem.slowmem;
@@ -27,4 +28,5 @@ interface MemStrategy {
     public void connect_command_processor(CommandProcessor cp);
     public void connect_video_interface(VideoInterface vi);
     public void connect_serial_interface(SerialInterface si);
+    public void connect_interrupt_controller(InterruptController ic);
 }

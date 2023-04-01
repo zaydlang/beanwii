@@ -3,6 +3,7 @@ module emu.hw.wii;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
+import emu.hw.broadway.interrupt;
 import emu.hw.broadway.hle;
 import emu.hw.cp.cp;
 import emu.hw.disk.apploader;
@@ -43,6 +44,7 @@ final class Wii {
         this.mem.connect_command_processor(this.command_processor);
         this.mem.connect_video_interface(this.video_interface);
         this.mem.connect_serial_interface(this.serial_interface);
+        this.mem.connect_interrupt_controller(this.broadway.get_interrupt_controller());
 
         this.broadway.reset();
     }

@@ -65,6 +65,13 @@ public u8 get_byte(T)(T value, int index) {
     return (value >> (index * 8)) & 0xFF;
 }
 
+public u32 set_byte(T)(T value, int index, u8 b) {
+    assert(is_number!T);
+    assert(index < T.sizeof);
+
+    return (value & ~(0xFF << (index * 8))) | (b << (index * 8));
+}
+
 public auto create_mask(size_t start, size_t end) {
     if (end - start >= 31) return 0xFFFFFFFF;
 
