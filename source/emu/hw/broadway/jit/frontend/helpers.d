@@ -187,6 +187,10 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 1017: return GuestReg.L2CR;
         case 952:  return GuestReg.MMCR0;
         case 956:  return GuestReg.MMCR1;
+        case 953:  return GuestReg.PMC1;
+        case 954:  return GuestReg.PMC2;
+        case 957:  return GuestReg.PMC3;
+        case 958:  return GuestReg.PMC4;
 
         default: 
             error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);
