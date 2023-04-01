@@ -291,3 +291,16 @@ public void emit_fsubsx(IR* ir, u32 opcode, JitContext ctx) {
         ir.set_reg(to_ps1(op_d), result);
     }
 }
+
+public void emit_mftsb1(IR* ir, u32 opcode, JitContext ctx) {
+    int bit = opcode.bits(21, 25);
+    bool record = opcode.bit(0);
+
+    assert(opcode.bits(16, 20) == 0b00000);
+    assert(opcode.bits(11, 15) == 0b00000);
+
+    // what does this bit even mean in this opcode????
+    assert(!record);
+
+    ir.set_reg(GuestReg.FPSCR, ir.get_reg(GuestReg.FPSCR) | ir.constant(1 << bit));
+}

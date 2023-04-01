@@ -1271,6 +1271,7 @@ private void emit_op_3F(IR* ir, u32 opcode, JitContext ctx) {
         case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr    (ir, opcode, ctx); return;
         case PrimaryOp3FSecondaryOpcode.FNABSX: emit_fnabsx (ir, opcode, ctx); return;    
         case PrimaryOp3FSecondaryOpcode.FNEGX:  emit_fnegx  (ir, opcode, ctx); return;
+        case PrimaryOp3FSecondaryOpcode.MFTSB1: emit_mftsb1 (ir, opcode, ctx); return;
         case PrimaryOp3FSecondaryOpcode.MTFSF:  emit_mtfsf  (ir, opcode, ctx); return;
         default: break;
     }
