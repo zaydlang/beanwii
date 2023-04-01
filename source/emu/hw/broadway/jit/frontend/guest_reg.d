@@ -36,6 +36,7 @@ enum GuestReg {
 
     HID0,
     HID2,
+    HID4,
 
     TBL,
     TBU,
@@ -87,6 +88,7 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.MSR:   return BroadwayState.msr.offsetof;
         case GuestReg.HID0:  return BroadwayState.hid0.offsetof;
         case GuestReg.HID2:  return BroadwayState.hid2.offsetof;
+        case GuestReg.HID4:  return BroadwayState.hid4.offsetof;
         case GuestReg.SRR0:  return BroadwayState.srr0.offsetof;
         case GuestReg.FPSR:  return BroadwayState.fpsr.offsetof;
         case GuestReg.FPSCR: return BroadwayState.fpscr.offsetof;

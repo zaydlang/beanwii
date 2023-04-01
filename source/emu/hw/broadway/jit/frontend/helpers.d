@@ -184,6 +184,7 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 919:  return GuestReg.GQR7;
         case 1008: return GuestReg.HID0;
         case 920:  return GuestReg.HID2;
+        case 1011: return GuestReg.HID4;
         case 1017: return GuestReg.L2CR;
         case 952:  return GuestReg.MMCR0;
         case 956:  return GuestReg.MMCR1;
