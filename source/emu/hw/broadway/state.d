@@ -21,7 +21,8 @@ struct BroadwayState {
     u32     fpsr;
     u32     fpscr;
     u32     l2cr;
-
+    u32     mmcr0;
+    u32     mmcr1;
     u32     tbu;
     u32     tbl;
     

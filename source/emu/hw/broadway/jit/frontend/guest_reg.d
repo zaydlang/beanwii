@@ -25,6 +25,8 @@ enum GuestReg {
     SRR0,
     FPSR,
     FPSCR,
+    MMCR0,
+    MMCR1,
 
     L2CR,
 
@@ -87,6 +89,8 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.L2CR:  return BroadwayState.l2cr.offsetof;
         case GuestReg.TBU:   return BroadwayState.tbu.offsetof;
         case GuestReg.TBL:   return BroadwayState.tbl.offsetof;
+        case GuestReg.MMCR0: return BroadwayState.mmcr0.offsetof;
+        case GuestReg.MMCR1: return BroadwayState.mmcr1.offsetof;
         case GuestReg.LR:    return BroadwayState.lr.offsetof;
         case GuestReg.PC:    return BroadwayState.pc.offsetof;
 

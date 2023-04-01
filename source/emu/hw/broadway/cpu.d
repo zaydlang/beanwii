@@ -54,6 +54,10 @@ final class Broadway {
         state.fpsr  = 0;
         state.fpscr = 0;
         state.l2cr  = 0;
+        state.mmcr0 = 0;
+        state.mmcr1 = 0;
+        state.tbu   = 0;
+        state.tbl   = 0;
 
         state.pc    = 0;
         state.lr    = 0;
