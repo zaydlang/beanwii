@@ -167,9 +167,9 @@ final class Code : CodeGenerator {
 
         assert(!this.hasUndefinedLabel()); // xbyak function
 
-        if (g_START_LOGGING) { 
+        // if (g_START_LOGGING) { 
             pretty_print(); 
-        }
+        // }
         //   error_jit("jit"); }
     }
 

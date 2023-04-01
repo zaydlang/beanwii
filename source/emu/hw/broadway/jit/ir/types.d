@@ -36,7 +36,8 @@ enum IRUnaryDataOp {
     POPCNT,
     FLT_CAST,
     FLT_INTERP,
-    INT_CAST
+    INT_CAST,
+    SATURATED_INT_CAST
 }
 
 string to_string(IRBinaryDataOp op) {

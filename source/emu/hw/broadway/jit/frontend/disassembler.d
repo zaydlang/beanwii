@@ -1254,6 +1254,7 @@ private void emit_op_3B(IR* ir, u32 opcode, JitContext ctx) {
         case PrimaryOp3BSecondaryOpcode.FMULSX:   emit_fmulsx  (ir, opcode, ctx); break;
         case PrimaryOp3BSecondaryOpcode.FNMADDSX: emit_fnmaddsx(ir, opcode, ctx); break;
         case PrimaryOp3BSecondaryOpcode.FNMSUBSX: emit_fnmsubsx(ir, opcode, ctx); break;
+        case PrimaryOp3BSecondaryOpcode.FRESX:    emit_fresx   (ir, opcode, ctx); break;
         case PrimaryOp3BSecondaryOpcode.FSUBSX:   emit_fsubsx  (ir, opcode, ctx); break;
 
         default: unimplemented_opcode(opcode, ctx);
@@ -1265,6 +1266,7 @@ private void emit_op_3F(IR* ir, u32 opcode, JitContext ctx) {
 
     switch (secondary_opcode) {
         case PrimaryOp3FSecondaryOpcode.FABSX:  emit_fabsx  (ir, opcode, ctx); return;
+        case PrimaryOp3FSecondaryOpcode.FCTIWX: emit_fctiwx (ir, opcode, ctx); return;
         case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr    (ir, opcode, ctx); return;
         case PrimaryOp3FSecondaryOpcode.FNABSX: emit_fnabsx (ir, opcode, ctx); return;    
         case PrimaryOp3FSecondaryOpcode.FNEGX:  emit_fnegx  (ir, opcode, ctx); return;

@@ -110,6 +110,7 @@ struct IR {
     IRVariableType get_type(IRVariable variable) {
         return variable_types[variable.variable_id];
     }
+
     IRVariable constant(int constant) {
         IRVariable dest = generate_new_variable(IRVariableType.INTEGER);
         emit(IRInstructionSetVarImmInt(dest, constant));
@@ -118,6 +119,13 @@ struct IR {
     }
 
     IRVariable constant(float constant) {
+        IRVariable dest = generate_new_variable(IRVariableType.FLOAT);
+        emit(IRInstructionSetVarImmFloat(dest, constant));
+        
+        return dest;
+    }
+
+    IRVariable constant(double constant) {
         IRVariable dest = generate_new_variable(IRVariableType.DOUBLE);
         emit(IRInstructionSetVarImmFloat(dest, constant));
         
@@ -783,6 +791,20 @@ struct IRVariable {
         dest.update_lifetime();
 
         ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.INT_CAST, dest, this));
+
+        return dest;
+    }
+
+    IRVariable to_saturated_int() {
+        assert(ir.get_type(this) == IRVariableType.DOUBLE);
+
+        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+        ir.log_transmuation(this, dest);
+
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.SATURATED_INT_CAST, dest, this));
 
         return dest;
     }

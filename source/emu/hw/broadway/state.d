@@ -33,7 +33,7 @@ struct PairedSingle {
 }
 
 public void log_state(BroadwayState* state) {
-    if (true) { // mimic dolphin style logs for diffing
+    if (false) { // mimic dolphin style logs for diffing
         import std.stdio;
         writefln("LOG: fregs PC: 0x%08x CRval: 0x%08x FPSCR: 0x%08x XER: 0x%08x MSR: 0x%08x LR: 0x%08x ",
             state.pc, state.cr, state.fpscr, state.xer, state.msr, state.lr

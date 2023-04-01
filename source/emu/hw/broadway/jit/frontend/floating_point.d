@@ -49,6 +49,16 @@ public void emit_faddx(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(rd, ir.get_reg(ra) + ir.get_reg(rb));
 }
 
+public void emit_fctiwx(IR* ir, u32 opcode, JitContext ctx) {
+    GuestReg rd = to_fpr(opcode.bits(21, 25));
+    GuestReg rb = to_fpr(opcode.bits(11, 15));
+    bool record = opcode.bit(0);
+
+    assert(opcode.bits(16, 20) == 0);
+
+    // ir.set_reg(rd, result.to_saturated_int());
+}
+
 public void emit_fdivsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_d = opcode.bits(21, 25);
     int op_a = opcode.bits(16, 20);
@@ -232,6 +242,24 @@ public void emit_fnabsx(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(16, 20) == 0b00000);
 
     ir.set_reg(rd, -ir.get_reg(rb).abs());
+}
+
+public void emit_fresx(IR* ir, u32 opcode, JitContext ctx) {
+    int op_b = opcode.bits(11, 15);
+    int op_d = opcode.bits(21, 25);
+    bool record = opcode.bit(0);
+
+    assert(opcode.bits(16, 20) == 0b00000);
+    assert(opcode.bits(6,  10) == 0b00000);
+
+    import emu.hw.broadway.jit.backend.x86_64.emitter;
+    g_START_LOGGING = true;
+
+    IRVariable result = ir.constant(1.0f) / ir.get_reg(to_ps0(op_b));
+    ir.set_reg(to_ps0(op_d), result);
+    if (ctx.pse) {
+        ir.set_reg(to_ps1(op_d), result);
+    }
 }
 
 public void emit_fsel(IR* ir, u32 opcode, JitContext ctx) {
