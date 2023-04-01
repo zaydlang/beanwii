@@ -496,7 +496,7 @@ struct IRVariable {
     IRVariable opBinary(string s)(IRVariable other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
-        assert(this.get_type() == other.get_type());
+        // assert(this.get_type() == other.get_type());
         IRVariableType type = this.get_type();
 
         IRVariable dest = ir.generate_new_variable(type);

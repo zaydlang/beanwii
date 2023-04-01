@@ -85,6 +85,8 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.FPSR:  return BroadwayState.fpsr.offsetof;
         case GuestReg.FPSCR: return BroadwayState.fpscr.offsetof;
         case GuestReg.L2CR:  return BroadwayState.l2cr.offsetof;
+        case GuestReg.TBU:   return BroadwayState.tbu.offsetof;
+        case GuestReg.TBL:   return BroadwayState.tbl.offsetof;
         case GuestReg.LR:    return BroadwayState.lr.offsetof;
         case GuestReg.PC:    return BroadwayState.pc.offsetof;
 

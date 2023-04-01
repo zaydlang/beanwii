@@ -610,7 +610,7 @@ private void emit_mfspr(IR* ir, u32 opcode, JitContext ctx) {
 
 private void emit_mftb(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
-    int tb_id = opcode.bits(16, 20) || (opcode.bits(11, 15) << 5);
+    int tb_id = opcode.bits(16, 20) | (opcode.bits(11, 15) << 5);
 
     GuestReg tb_reg;
     switch (tb_id) {
@@ -1209,6 +1209,7 @@ private void emit_op_1F(IR* ir, u32 opcode, JitContext ctx) {
         case PrimaryOp1FSecondaryOpcode.LWZX:    emit_lwzx   (ir, opcode, ctx); break;
         case PrimaryOp1FSecondaryOpcode.MFMSR:   emit_mfmsr  (ir, opcode, ctx); break;
         case PrimaryOp1FSecondaryOpcode.MFSPR:   emit_mfspr  (ir, opcode, ctx); break;
+        case PrimaryOp1FSecondaryOpcode.MFTB:    emit_mftb  (ir, opcode, ctx); break;
         case PrimaryOp1FSecondaryOpcode.MTMSR:   emit_mtmsr  (ir, opcode, ctx); break;
         case PrimaryOp1FSecondaryOpcode.MTSPR:   emit_mtspr  (ir, opcode, ctx); break;
         case PrimaryOp1FSecondaryOpcode.MULLW:   emit_mullwx (ir, opcode, ctx); break;

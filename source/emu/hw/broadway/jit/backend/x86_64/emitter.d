@@ -138,7 +138,7 @@ final class Code : CodeGenerator {
     void emit(IR* ir) {
         emit_prologue();
 
-        ir.pretty_print();
+        // ir.pretty_print();
 
         for (int i = 0; i < ir.num_instructions(); i++) {
             for (int j = 0; j < ir.num_labels(); j++) {
@@ -168,7 +168,7 @@ final class Code : CodeGenerator {
         assert(!this.hasUndefinedLabel()); // xbyak function
 
         // if (g_START_LOGGING) { 
-            pretty_print(); 
+            // pretty_print(); 
         // }
         //   error_jit("jit"); }
     }

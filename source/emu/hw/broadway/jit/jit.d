@@ -75,7 +75,6 @@ final class Jit {
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
         // TODO: jit this
-        import inteli.xmmintrin;
         // _mm_setcsr(0x1F80 | (0 << 13));
 
         JitFunction cached_function = jit_hash_map.require(state.pc, null);
@@ -92,9 +91,7 @@ final class Jit {
             );
 
             u32 instruction = fetch(state);
-            log_instruction(instruction, ctx.pc);
-            
-            log_jit("%x ", instruction);
+            // log_instruction(instruction, ctx.pc);
 
             emit(ir, instruction, ctx);
 
@@ -122,9 +119,7 @@ final class Jit {
             state.pc += 4;
             this.debug_ring.add(DebugState(*state, instruction));
 
-            log_jit("Entering generated function...");
             generated_function(state);
-            log_jit("Left generated function.");
 
             return 1;
         }

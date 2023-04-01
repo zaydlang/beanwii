@@ -9,32 +9,32 @@ import util.log;
 import util.number;
 
 public void emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
-    GuestReg rd  = to_ps (opcode.bits(21, 25));
-    GuestReg ra  = to_gpr(opcode.bits(16, 20));
-    GuestReg gqr = to_gqr(opcode.bits(12, 14));
+    // GuestReg rd  = to_ps (opcode.bits(21, 25));
+    // GuestReg ra  = to_gpr(opcode.bits(16, 20));
+    // GuestReg gqr = to_gqr(opcode.bits(12, 14));
 
-    bool w = opcode.bit(15);
-    int d = opcode.bits(0, 11);
+    // bool w = opcode.bit(15);
+    // int d = opcode.bits(0, 11);
 
-    IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
-    address = address + sext_32(d, 12);
+    // IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
+    // address = address + sext_32(d, 12);
 
-    IRVariable gqr_value = ir.get_reg(gqr);
-    IRVariable gqr_type  = get_gqr_dequantization_type(ir, gqr_value);
-    IRVariable gqr_scale = get_gqr_dequantization_scale(ir, gqr_value);
+    // IRVariable gqr_value = ir.get_reg(gqr);
+    // IRVariable gqr_type  = get_gqr_dequantization_type(ir, gqr_value);
+    // IRVariable gqr_scale = get_gqr_dequantization_scale(ir, gqr_value);
 
-    IRVariable access_size = get_gqr_type_size(ir, gqr_type);
+    // IRVariable access_size = get_gqr_type_size(ir, gqr_type);
 
-    IRVariable paired_single = ir.get_reg(rd);
-    if (w) {
-        paired_single[0] = dequantize(ir, ir.read_sized(address, access_size), gqr_type, gqr_scale);
-        paired_single[1] = ir.constant(1.0f);
-    } else {
-        paired_single[0] = dequantize(ir, ir.read_sized(address, access_size), gqr_type, gqr_scale);
-        paired_single[1] = dequantize(ir, ir.read_sized(address + access_size, access_size), gqr_type, gqr_scale);
-    }
+    // IRVariable paired_single = ir.get_reg(rd);
+    // if (w) {
+    //     paired_single[0] = dequantize(ir, ir.read_sized(address, access_size), gqr_type, gqr_scale);
+    //     paired_single[1] = ir.constant(1.0f);
+    // } else {
+    //     paired_single[0] = dequantize(ir, ir.read_sized(address, access_size), gqr_type, gqr_scale);
+    //     paired_single[1] = dequantize(ir, ir.read_sized(address + access_size, access_size), gqr_type, gqr_scale);
+    // }
 
-    ir.set_reg(rd, paired_single);
+    // ir.set_reg(rd, paired_single);
 }
 
 public void emit_ps_mr(IR* ir, u32 opcode, JitContext ctx) {
