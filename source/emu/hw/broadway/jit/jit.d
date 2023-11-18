@@ -2,9 +2,9 @@ module emu.hw.broadway.jit.jit;
 
 import capstone;
 import dklib.khash;
-import emu.hw.broadway.jit.frontend.disassembler;
-import emu.hw.broadway.jit.backend.x86_64.emitter;
-import emu.hw.broadway.jit.ir.ir;
+// import emu.hw.broadway.jit.frontend.disassembler;
+// import emu.hw.broadway.jit.backend.x86_64.emitter;
+import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import util.bitop;
@@ -47,7 +47,7 @@ final class Jit {
     private alias DebugRing  = RingBuffer!(DebugState);
 
     private Mem         mem;
-    private Code        code;
+    // private Code        code;
     private IR*         ir;
     private JitHashMap* jit_hash_map;
 
@@ -57,14 +57,14 @@ final class Jit {
     this(JitConfig config, Mem mem, size_t ringbuffer_size) {
         this.mem          = mem;
         
-        this.code         = new Code(config);
-        this.ir           = new IR();
-        this.jit_hash_map = new JitHashMap();
+        // // this.code         = new Code(config);
+        // this.ir           = new IR();
+        // this.jit_hash_map = new JitHashMap();
 
-        this.capstone     = create(Arch.ppc, ModeFlags(Mode.bit32));
-        this.debug_ring   = new DebugRing(ringbuffer_size);
+        // this.capstone     = create(Arch.ppc, ModeFlags(Mode.bit32));
+        // this.debug_ring   = new DebugRing(ringbuffer_size);
         
-        this.ir.setup();
+        // this.ir.setup();
     }
 
     private u32 fetch(BroadwayState* state) {
@@ -74,55 +74,55 @@ final class Jit {
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        // TODO: jit this
-        // _mm_setcsr(0x1F80 | (0 << 13));
+        // // TODO: jit this
+        // // _mm_setcsr(0x1F80 | (0 << 13));
 
-        JitFunction cached_function = jit_hash_map.require(state.pc, null);
+        // JitFunction cached_function = jit_hash_map.require(state.pc, null);
 
-        if (cached_function != null && false) {
-            cached_function(state);
+        // if (cached_function != null && false) {
+        //     cached_function(state);
+        //     return 1;
+        // } else {
+        //     ir.reset();
+
+        //     JitContext ctx = JitContext(
+        //         state.pc, 
+        //         state.hid2.bit(30) // HID2[PSE]
+        //     );
+
+        //     u32 instruction = fetch(state);
+        //     // log_instruction(instruction, ctx.pc);
+
+        //     emit(ir, instruction, ctx);
+
+        //     code.reset();
+        //     code.emit(ir);
+
+        //     JitFunction generated_function = cast(JitFunction) code.getCode();
+
+        //     // if (instruction == 0x7cf68f96) {
+        //     //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        //     //     auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
+        //     //     foreach (instr; res) {
+        //     //         log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+        //     //     }
+
+        //     //     b("jit");
+        //     // }
+
+        //     if (g_START_LOGGING) {
+        //         int x = 2;
+        //     }
+
+        //     jit_hash_map.opIndexAssign(generated_function, state.pc);
+
+        //     state.pc += 4;
+        //     this.debug_ring.add(DebugState(*state, instruction));
+
+        //     generated_function(state);
+
             return 1;
-        } else {
-            ir.reset();
-
-            JitContext ctx = JitContext(
-                state.pc, 
-                state.hid2.bit(30) // HID2[PSE]
-            );
-
-            u32 instruction = fetch(state);
-            // log_instruction(instruction, ctx.pc);
-
-            emit(ir, instruction, ctx);
-
-            code.reset();
-            code.emit(ir);
-
-            JitFunction generated_function = cast(JitFunction) code.getCode();
-
-            // if (instruction == 0x7cf68f96) {
-            //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-            //     auto res = x86_capstone.disasm((cast(ubyte*) generated_function)[0 .. code.getSize()], 0);
-            //     foreach (instr; res) {
-            //         log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-            //     }
-
-            //     b("jit");
-            // }
-
-            if (g_START_LOGGING) {
-                int x = 2;
-            }
-
-            jit_hash_map.opIndexAssign(generated_function, state.pc);
-
-            state.pc += 4;
-            this.debug_ring.add(DebugState(*state, instruction));
-
-            generated_function(state);
-
-            return 1;
-        }
+        // }
     }
 
     private void log_instruction(u32 instruction, u32 pc) {

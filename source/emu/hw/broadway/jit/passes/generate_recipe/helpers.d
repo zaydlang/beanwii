@@ -1,9 +1,9 @@
-module emu.hw.broadway.jit.frontend.helpers;
+module emu.hw.broadway.jit.passes.generate_recipe.helpers;
 
-import emu.hw.broadway.jit.frontend.guest_reg;
-import emu.hw.broadway.jit.frontend.helpers;
-import emu.hw.broadway.jit.frontend.opcode;
-import emu.hw.broadway.jit.ir.ir;
+import emu.hw.broadway.jit.common.guest_reg;
+import emu.hw.broadway.jit.ir.instruction;
+import emu.hw.broadway.jit.passes.generate_recipe.helpers;
+import emu.hw.broadway.jit.passes.generate_recipe.opcode;
 import std.sumtype;
 import util.bitop;
 import util.log;

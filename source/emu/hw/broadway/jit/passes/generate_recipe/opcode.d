@@ -1,4 +1,4 @@
-module emu.hw.broadway.jit.frontend.opcode;
+module emu.hw.broadway.jit.passes.generate_recipe.opcode;
 
 enum PrimaryOpcode {
     ADDI   = 0x0E,

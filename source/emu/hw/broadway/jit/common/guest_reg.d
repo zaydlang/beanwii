@@ -1,4 +1,4 @@
-module emu.hw.broadway.jit.frontend.guest_reg;
+module emu.hw.broadway.jit.common.guest_reg;
 
 import std.conv;
 import std.uni;

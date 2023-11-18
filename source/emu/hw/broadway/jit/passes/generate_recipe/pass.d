@@ -1,12 +1,12 @@
-module source.emu.hw.broadway.jit.passes.generate_recipe;
+module emu.hw.broadway.jit.passes.generate_recipe.pass;
 
-import emu.hw.broadway.jit.frontend.floating_point;
-import emu.hw.broadway.jit.frontend.guest_reg;
-import emu.hw.broadway.jit.frontend.helpers;
-import emu.hw.broadway.jit.frontend.opcode;
-import emu.hw.broadway.jit.frontend.paired_single;
-import emu.hw.broadway.jit.ir.ir;
+import emu.hw.broadway.jit.common.guest_reg;
+import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.jit.jit;
+import emu.hw.broadway.jit.passes.generate_recipe.floating_point;
+import emu.hw.broadway.jit.passes.generate_recipe.helpers;
+import emu.hw.broadway.jit.passes.generate_recipe.opcode;
+import emu.hw.broadway.jit.passes.generate_recipe.paired_single;
 import util.bitop;
 import util.log;
 import util.number;
@@ -396,18 +396,6 @@ private void emit_divwx(IR* ir, u32 opcode, JitContext ctx) {
     bool     rc = opcode.bit(0);
     bool     oe = opcode.bit(10);
 
-    import emu.hw.broadway.jit.backend.x86_64.emitter;
-    // 7ebc0fd6
-    // 011111 10101 11100 00001 111 1101 0110
-
-    // 7d99bfd7
-    // 011111 01100 11001 10111 111
- 
-// LOG: PC: 0x80004200 CR: 0x55090080 FPSCR: 0x00000000 XER: 0x80000000 MSR: 0x00002032 LR: 0x00000000 
-// LOG: fbe0dd63 ffff8065 fb74327a 13fecf5f 0456d060 db8ca980 ba5646de 0000000e 
-// LOG: a2a2d9e5 00003070 ffffffff 442294d8 00000000 8998ffff 1b788065 00003172 
-// LOG: 57aa714e fffff948 ffffffff ffffd9e5 02800000 00000000 af9f4ce7 8d20fe59 
-// LOG: 00000061 57aa79ef 00000060 a80b2466 00000000 0c30f6a2 32a6cb6e ff712860
     ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
         IRVariable result = ir.get_reg(ra) >> 31;
         ir.set_reg(rd, result);
@@ -519,8 +507,6 @@ private void emit_lbzu(IR* ir, u32 opcode, JitContext ctx) {
 }
 
 private void emit_lfd(IR* ir, u32 opcode, JitContext ctx) {
-    import emu.hw.broadway.jit.backend.x86_64.emitter;
-
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);

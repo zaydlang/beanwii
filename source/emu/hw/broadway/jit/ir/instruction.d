@@ -1,6 +1,6 @@
-module emu.hw.broadway.jit.ir.ir;
+module emu.hw.broadway.jit.ir.instruction;
 
-import emu.hw.broadway.jit.frontend.guest_reg;
+import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.types;
 import std.sumtype;
 import util.log;

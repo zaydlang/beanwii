@@ -1,9 +1,9 @@
-module source.emu.hw.broadway.jit.passes.generate_recipe.floating_point;
+module emu.hw.broadway.jit.passes.generate_recipe.floating_point;
 
-import emu.hw.broadway.jit.frontend.guest_reg;
-import emu.hw.broadway.jit.frontend.helpers;
-import emu.hw.broadway.jit.ir.ir;
+import emu.hw.broadway.jit.common.guest_reg;
+import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.jit.jit;
+import emu.hw.broadway.jit.passes.generate_recipe.helpers;
 import util.bitop;
 import util.log;
 import util.number;
@@ -251,9 +251,6 @@ public void emit_fresx(IR* ir, u32 opcode, JitContext ctx) {
 
     assert(opcode.bits(16, 20) == 0b00000);
     assert(opcode.bits(6,  10) == 0b00000);
-
-    import emu.hw.broadway.jit.backend.x86_64.emitter;
-    g_START_LOGGING = true;
 
     IRVariable result = ir.constant(1.0f) / ir.get_reg(to_ps0(op_b));
     ir.set_reg(to_ps0(op_d), result);
