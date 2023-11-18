@@ -2,6 +2,7 @@ module ui.runner;
 
 import core.sync.mutex;
 import emu.hw.wii;
+import raylib;
 import std.datetime.stopwatch;
 import ui.device;
 
@@ -34,6 +35,10 @@ final class Runner {
     }
 
     void tick() {
+        if (WindowShouldClose) {
+            CloseWindow();
+        }
+
         fps++;
         
         if (stopwatch.peek.total!"msecs" > 1000) {
@@ -54,4 +59,4 @@ final class Runner {
             tick();
         }
 }
-}
+}   
