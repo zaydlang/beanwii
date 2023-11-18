@@ -1,4 +1,4 @@
-module emu.hw.broadway.jit.frontend.disassembler;
+module source.emu.hw.broadway.jit.passes.generate_recipe;
 
 import emu.hw.broadway.jit.frontend.floating_point;
 import emu.hw.broadway.jit.frontend.guest_reg;
@@ -1291,7 +1291,7 @@ private void emit_op_3F(IR* ir, u32 opcode, JitContext ctx) {
     }
 }
 
-public void emit(IR* ir, u32 opcode, JitContext ctx) {
+public void generate_recipe(IR* ir, u32 opcode, JitContext ctx) {
     int primary_opcode = opcode.bits(26, 31);
 
     switch (primary_opcode) {

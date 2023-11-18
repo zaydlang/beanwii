@@ -1,4 +1,4 @@
-module emu.hw.broadway.jit.frontend.floating_point;
+module source.emu.hw.broadway.jit.passes.generate_recipe.floating_point;
 
 import emu.hw.broadway.jit.frontend.guest_reg;
 import emu.hw.broadway.jit.frontend.helpers;
