@@ -120,13 +120,13 @@ version (linux) {
                 wii_disp_bounds.width, bounds.height - wii_disp_bounds.height);
 
             // panel 3 is smaller width and 100% tall, docked to the right
-            const panel3_right_dock_width = cast(int)(region1_bounds.width * 0.3);
-            panel3_bounds = Rectangle(region1_bounds.x + region1_bounds.width - panel3_right_dock_width, region1_bounds.y,
-                panel3_right_dock_width, region1_bounds.height);
+            // const panel3_right_dock_width = cast(int)(region1_bounds.width * 0.3);
+            // panel3_bounds = Rectangle(region1_bounds.x + region1_bounds.width - panel3_right_dock_width, region1_bounds.y,
+            //     panel3_right_dock_width, region1_bounds.height);
 
-            // panel 2 is to the right of the video display, and fairly wide, to the left of panel 3
+            // panel 2 is to the right of the video display, and fairly wide
             panel2_bounds = Rectangle(region1_bounds.x, region1_bounds.y,
-                region1_bounds.width - panel3_bounds.width, region1_bounds.height);
+                region1_bounds.width, region1_bounds.height);
 
             UpdateNuklear(ctx);
 
@@ -176,111 +176,138 @@ version (linux) {
 
             if (nk_begin(ctx, "panel 2", RectangleToNuklear(ctx, panel2_bounds),
                     nk_panel_flags.NK_WINDOW_BORDER)) {
+                nk_layout_row_dynamic(ctx, 30, 1);
+                nk_label(ctx, "Jit Sandbox", nk_text_alignment.NK_TEXT_LEFT);
+                nk_layout_row_end(ctx);
+
+                nk_layout_row_dynamic(ctx, 30, 500);
+                nk_layout_row_end(ctx);
+
+                nk_layout_row_dynamic(ctx, 30, 1);
+                // have a button and some rows
+                if (nk_button_label(ctx, "Generate Recipe"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Optimize GetReg"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Optimize SetReg"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Constant Folding"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Dead Code Elimination"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Impose x86 Conventions"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Allocate Registers"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Optimize Dead Moves"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+                if (nk_button_label(ctx, "Code Emission"))
+                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
 
                 // menu bar
-                nk_menubar_begin(ctx);
-                nk_layout_row_begin(ctx, nk_layout_format.NK_STATIC, 25, 2);
-                nk_layout_row_push(ctx, 45);
-                if (nk_menu_begin_label(ctx, "File", nk_text_alignment.NK_TEXT_LEFT, nk_vec2_(120, 200))) {
-                    nk_layout_row_dynamic(ctx, 25, 1);
-                    if (nk_menu_item_label(ctx, "Open", nk_text_alignment.NK_TEXT_LEFT))
-                        TraceLog(TraceLogLevel.LOG_INFO, "Open");
-                    if (nk_menu_item_label(ctx, "Close", nk_text_alignment.NK_TEXT_LEFT))
-                        TraceLog(TraceLogLevel.LOG_INFO, "Close");
-                    nk_menu_end(ctx);
-                }
-                nk_layout_row_push(ctx, 45);
-                if (nk_menu_begin_label(ctx, "Edit", nk_text_alignment.NK_TEXT_LEFT, nk_vec2_(120, 200))) {
-                    nk_layout_row_dynamic(ctx, 25, 1);
-                    if (nk_menu_item_label(ctx, "Copy", nk_text_alignment.NK_TEXT_LEFT))
-                        TraceLog(TraceLogLevel.LOG_INFO, "Copy");
-                    if (nk_menu_item_label(ctx, "Paste", nk_text_alignment.NK_TEXT_LEFT))
-                        TraceLog(TraceLogLevel.LOG_INFO, "Paste");
-                    nk_menu_end(ctx);
-                }
-                nk_menubar_end(ctx);
-                nk_layout_row_dynamic(ctx, UI_PAD, 1);
+            //     nk_menubar_begin(ctx);
+            //     nk_layout_row_begin(ctx, nk_layout_format.NK_STATIC, 25, 2);
+            //     nk_layout_row_push(ctx, 45);
+            //     if (nk_menu_begin_label(ctx, "File", nk_text_alignment.NK_TEXT_LEFT, nk_vec2_(120, 200))) {
+            //         nk_layout_row_dynamic(ctx, 25, 1);
+            //         if (nk_menu_item_label(ctx, "Open", nk_text_alignment.NK_TEXT_LEFT))
+            //             TraceLog(TraceLogLevel.LOG_INFO, "Open");
+            //         if (nk_menu_item_label(ctx, "Close", nk_text_alignment.NK_TEXT_LEFT))
+            //             TraceLog(TraceLogLevel.LOG_INFO, "Close");
+            //         nk_menu_end(ctx);
+            //     }
+            //     nk_layout_row_push(ctx, 45);
+            //     if (nk_menu_begin_label(ctx, "Edit", nk_text_alignment.NK_TEXT_LEFT, nk_vec2_(120, 200))) {
+            //         nk_layout_row_dynamic(ctx, 25, 1);
+            //         if (nk_menu_item_label(ctx, "Copy", nk_text_alignment.NK_TEXT_LEFT))
+            //             TraceLog(TraceLogLevel.LOG_INFO, "Copy");
+            //         if (nk_menu_item_label(ctx, "Paste", nk_text_alignment.NK_TEXT_LEFT))
+            //             TraceLog(TraceLogLevel.LOG_INFO, "Paste");
+            //         nk_menu_end(ctx);
+            //     }
+            //     nk_menubar_end(ctx);
+            //     nk_layout_row_dynamic(ctx, UI_PAD, 1);
 
-                enum Difficulty {
-                    Easy,
-                    Hard,
-                }
+            //     enum Difficulty {
+            //         Easy,
+            //         Hard,
+            //     }
 
-                static auto diff_opt = Difficulty.Easy;
-                static auto property = 20;
+            //     static auto diff_opt = Difficulty.Easy;
+            //     static auto property = 20;
 
-                mixin(GEN_NK_TABS!(Panel1Tab)("panel1_tab"));
+            //     mixin(GEN_NK_TABS!(Panel1Tab)("panel1_tab"));
 
-                auto curr_win_space = nk_window_get_content_region_size(ctx);
-                nk_layout_row_dynamic(ctx, curr_win_space.y - 42, 1);
+            //     auto curr_win_space = nk_window_get_content_region_size(ctx);
+            //     nk_layout_row_dynamic(ctx, curr_win_space.y - 42, 1);
 
-                if (nk_group_begin(ctx, "dashboard", nk_panel_flags.NK_WINDOW_BORDER)) {
-                    nk_layout_row_dynamic(ctx, UI_PAD, 1);
-                    switch (panel1_tab) {
-                    case Panel1Tab.Tab1:
-                        nk_layout_row_static(ctx, 30, 80, 1);
-                        if (nk_button_label(ctx, "button"))
-                            TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+            //     if (nk_group_begin(ctx, "dashboard", nk_panel_flags.NK_WINDOW_BORDER)) {
+            //         nk_layout_row_dynamic(ctx, UI_PAD, 1);
+            //         switch (panel1_tab) {
+            //         case Panel1Tab.Tab1:
+            //             nk_layout_row_static(ctx, 30, 80, 1);
+            //             if (nk_button_label(ctx, "button"))
+            //                 TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
 
-                        nk_layout_row_dynamic(ctx, 30, 2);
-                        if (nk_option_label(ctx, "easy", diff_opt == Difficulty.Easy))
-                            diff_opt = Difficulty.Easy;
-                        if (nk_option_label(ctx, "hard", diff_opt == Difficulty.Hard))
-                            diff_opt = Difficulty.Hard;
-                        break;
-                    case Panel1Tab.Tab2:
-                        nk_layout_row_dynamic(ctx, 25, 1);
-                        nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
+            //             nk_layout_row_dynamic(ctx, 30, 2);
+            //             if (nk_option_label(ctx, "easy", diff_opt == Difficulty.Easy))
+            //                 diff_opt = Difficulty.Easy;
+            //             if (nk_option_label(ctx, "hard", diff_opt == Difficulty.Hard))
+            //                 diff_opt = Difficulty.Hard;
+            //             break;
+            //         case Panel1Tab.Tab2:
+            //             nk_layout_row_dynamic(ctx, 25, 1);
+            //             nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
 
-                        nk_layout_row_dynamic(ctx, 20, 1);
-                        nk_label(ctx, "background:", nk_text_alignment.NK_TEXT_LEFT);
-                        nk_layout_row_dynamic(ctx, 25, 1);
-                        if (nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx), 400))) {
-                            nk_layout_row_dynamic(ctx, 120, 1);
-                            bg = nk_color_picker(ctx, bg, nk_color_format.NK_RGBA);
-                            nk_layout_row_dynamic(ctx, 25, 1);
-                            bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f, 0.005f);
-                            bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f, 0.005f);
-                            bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f, 0.005f);
-                            bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f, 0.005f);
-                            nk_combo_end(ctx);
-                        }
-                        break;
-                    case Panel1Tab.Tab3:
-                        nk_layout_row_dynamic(ctx, 30, 1);
-                        nk_label(ctx, "Tab 3", nk_text_alignment.NK_TEXT_LEFT);
-                        break;
-                    default:
-                        break;
-                    }
-                    nk_group_end(ctx);
-                }
+            //             nk_layout_row_dynamic(ctx, 20, 1);
+            //             nk_label(ctx, "background:", nk_text_alignment.NK_TEXT_LEFT);
+            //             nk_layout_row_dynamic(ctx, 25, 1);
+            //             if (nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx), 400))) {
+            //                 nk_layout_row_dynamic(ctx, 120, 1);
+            //                 bg = nk_color_picker(ctx, bg, nk_color_format.NK_RGBA);
+            //                 nk_layout_row_dynamic(ctx, 25, 1);
+            //                 bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f, 0.005f);
+            //                 bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f, 0.005f);
+            //                 bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f, 0.005f);
+            //                 bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f, 0.005f);
+            //                 nk_combo_end(ctx);
+            //             }
+            //             break;
+            //         case Panel1Tab.Tab3:
+            //             nk_layout_row_dynamic(ctx, 30, 1);
+            //             nk_label(ctx, "Tab 3", nk_text_alignment.NK_TEXT_LEFT);
+            //             break;
+            //         default:
+            //             break;
+            //         }
+            //         nk_group_end(ctx);
+            //     }
             }
 
             nk_end(ctx);
 
-            if (nk_begin(ctx, "panel 3", RectangleToNuklear(ctx, panel3_bounds),
-                    nk_panel_flags.NK_WINDOW_BORDER | nk_panel_flags.NK_WINDOW_TITLE)) {
-                nk_layout_row_dynamic(ctx, UI_PAD, 1);
-                // // have a button and some rows
-                // if (nk_button_label(ctx, "button"))
-                //     TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                // nk_layout_row_dynamic(ctx, 30, 2);
-                // // have some labels and some rows
-                // nk_label(ctx, "first label", nk_text_alignment.NK_TEXT_LEFT);
-                // nk_label(ctx, "second label", nk_text_alignment.NK_TEXT_LEFT);
+            // if (nk_begin(ctx, "panel 3", RectangleToNuklear(ctx, panel3_bounds),
+            //         nk_panel_flags.NK_WINDOW_BORDER | nk_panel_flags.NK_WINDOW_TITLE)) {
+            //     nk_layout_row_dynamic(ctx, UI_PAD, 1);
+            //     // // have a button and some rows
+            //     // if (nk_button_label(ctx, "button"))
+            //     //     TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+            //     // nk_layout_row_dynamic(ctx, 30, 2);
+            //     // // have some labels and some rows
+            //     // nk_label(ctx, "first label", nk_text_alignment.NK_TEXT_LEFT);
+            //     // nk_label(ctx, "second label", nk_text_alignment.NK_TEXT_LEFT);
 
-                nk_layout_row_dynamic(ctx, 480, 1);
-                nk_list_view list_view;
-                if (nk_list_view_begin(ctx, &list_view, "test_list", 0, 12, 1024)) {
-                    nk_layout_row_dynamic(ctx, 30, 1);
-                    for (int i = 0; i < list_view.count; i++) {
-                        auto id = list_view.begin + i;
-                        nk_label(ctx, format("item %d", id).c_str, nk_text_alignment.NK_TEXT_LEFT);
-                    }
-                    nk_list_view_end(&list_view);
-                }
-            }
+            //     nk_layout_row_dynamic(ctx, 480, 1);
+            //     nk_list_view list_view;
+            //     if (nk_list_view_begin(ctx, &list_view, "test_list", 0, 12, 1024)) {
+            //         nk_layout_row_dynamic(ctx, 30, 1);
+            //         for (int i = 0; i < list_view.count; i++) {
+            //             auto id = list_view.begin + i;
+            //             nk_label(ctx, format("item %d", id).c_str, nk_text_alignment.NK_TEXT_LEFT);
+            //         }
+            //         nk_list_view_end(&list_view);
+            //     }
+            // }
 
             nk_end(ctx);
 
