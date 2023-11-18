@@ -31,7 +31,7 @@ version (unittest) {} else {
 
 		parse_and_load_file(wii, disk_data);
 		
-		auto reng = new RengMultimediaDevice(1, false);
+		auto reng = new RengMultimediaDevice(1, true);
 		wii.connect_multimedia_device(reng);
 		
 		new Runner(wii, reng).run();

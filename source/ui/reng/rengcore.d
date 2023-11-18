@@ -13,16 +13,16 @@ class RengCore : Core {
     int width;
     int height;
     int screen_scale;
-    bool start_full_ui = false;
+    bool start_debugger;
 
-    this(int screen_scale, bool full_ui) {
-        this.start_full_ui = full_ui;
+    this(int screen_scale, bool start_debugger) {
+        this.start_debugger = start_debugger;
 
         this.width  = WII_SCREEN_WIDTH * screen_scale;
         this.height = WII_SCREEN_HEIGHT * screen_scale;
         this.screen_scale = screen_scale;
 
-        if (this.start_full_ui) {
+        if (this.start_debugger) {
             this.width  = max(this.width,  1280);
             this.height = max(this.height, 720);
 
@@ -40,7 +40,7 @@ class RengCore : Core {
 
         screen_scale *= cast(int) window.scale_dpi;
 
-        if (start_full_ui) {
+        if (start_debugger) {
             load_scenes([new EmuDebugInterfaceScene(screen_scale)]);
         } else {
             load_scenes([new EmuScene(screen_scale)]);
