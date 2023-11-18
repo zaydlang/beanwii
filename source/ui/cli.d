@@ -14,13 +14,12 @@ CliArgs parse_cli_args(string[] args) {
 		.add(new Argument("rom_path", "path to rom file"))
         .add(new Option("r", "ringbuffer_size", "the number of instructions to capture in the broadway ring buffer")
             .optional().defaultValue("0"))
-        .add(new Option("d", "debug", "start the debugger")
-            .optional().defaultValue("false"))
+        .add(new Flag("d", "debug", "start the debugger"))
         .parse(args);
 
     return CliArgs(
         program.arg("rom_path"),
         to!int(program.option("ringbuffer_size")),
-        to!bool(program.option("debug"))
+        to!bool(program.flag("debug"))
     );
 }

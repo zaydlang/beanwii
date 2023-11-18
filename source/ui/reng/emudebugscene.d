@@ -1,6 +1,7 @@
 module ui.reng.emudebugscene;
 
 import re;
+import ui.reng.wiidebugger;
 import ui.reng.wiivideo;
 
 class EmuDebugInterfaceScene : Scene2D {
@@ -20,7 +21,7 @@ class EmuDebugInterfaceScene : Scene2D {
         auto wii_debugger_nt = create_entity("wii_debugger");
 
         // TODO: figure this out!
-        // wii_debugger_nt.add_component(new DSDebuggerUIRoot());
+        wii_debugger_nt.add_component(new WiiDebuggerUIRoot());
     }
 
     override void update() {

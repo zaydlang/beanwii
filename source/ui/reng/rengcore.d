@@ -27,7 +27,6 @@ class RengCore : Core {
             this.height = max(this.height, 720);
 
             sync_render_window_resolution = true;
-            auto_compensate_hidpi = true;
         }
 
         // raylib.SetConfigFlags(raylib.ConfigFlags.FLAG_WINDOW_RESIZABLE);
