@@ -41,6 +41,8 @@ version (linux) {
             SetNuklearScaling(ctx, cast(int) Core.window.scale_dpi);
             apply_style(ctx);
 
+            ui.reng.jit.debugger.setup();
+
             // nk_color[nk_style_colors.NK_COLOR_COUNT] table;
             // table[nk_style_colors.NK_COLOR_TEXT] = nk_rgba(190, 190, 190, 255);
             // table[nk_style_colors.NK_COLOR_WINDOW] = nk_rgba(30, 33, 40, 215);
