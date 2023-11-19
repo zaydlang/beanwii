@@ -1,23 +1,21 @@
 module ui.reng.wiidebugger;
 
 version (linux) {
+    import nuklear_ext;
+    import raylib;
+    import raylib_nuklear;
     import re;
     import re.gfx;
     import re.math;
     import re.ecs;
     import re.ng.diag;
     import re.util.interop;
-
-    import raylib;
-    import raylib_nuklear;
-    import nuklear_ext;
-
     import std.array;
     import std.conv;
     import std.string;
-
-    import ui.reng.wiivideo;
+    import ui.reng.jit.debugger;
     import ui.reng.nuklear_style;
+    import ui.reng.wiivideo;
 
     enum UI_FS = 16; // font size
 
@@ -184,25 +182,8 @@ version (linux) {
                 nk_layout_row_end(ctx);
 
                 nk_layout_row_dynamic(ctx, 30, 1);
-                // have a button and some rows
-                if (nk_button_label(ctx, "Generate Recipe"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Optimize GetReg"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Optimize SetReg"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Constant Folding"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Dead Code Elimination"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Impose x86 Conventions"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Allocate Registers"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Optimize Dead Moves"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
-                if (nk_button_label(ctx, "Code Emission"))
-                    TraceLog(TraceLogLevel.LOG_INFO, "button pressed");
+
+                ui.reng.jit.debugger.setup_debugger(ctx);
 
                 // menu bar
             //     nk_menubar_begin(ctx);
