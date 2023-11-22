@@ -1,22 +1,30 @@
 module ui.reng.jit.debugger;
 
 version (linux) {
-    import nuklear;
-    import nuklear_ext;
-    import raylib;
-    import raylib_nuklear;
-    import re;
-    import re.gfx;
-    import re.math;
-    import re.ecs;
-    import re.ng.diag;
-    import re.util.interop;
-	import std.algorithm;
-	import std.array;
-	import std.conv;
-	import std.range;
+import emu.hw.wii;
+import nuklear;
+import nuklear_ext;
+import raylib;
+import raylib_nuklear;
+import re;
+import re.gfx;
+import re.math;
+import re.ecs;
+import re.ng.diag;
+import re.util.interop;
+import std.algorithm;
+import std.array;
+import std.conv;
+import std.range;
 
-    struct Pass {
+final class JitDebugger {
+    private WiiDebugger wii_debugger;
+
+    this(WiiDebugger wii_debugger) {
+        this.wii_debugger = wii_debugger;
+    }
+
+    private struct Pass {
         string name;
         void function() run;
     }
@@ -48,7 +56,7 @@ version (linux) {
         nk_textedit_init_fixed(&sandbox_text_edit, sandbox_text_buffer.ptr, SANDBOX_EDITOR_SIZE - 1);
     }
         
-    void setup_debugger(nk_context* ctx) {
+    void update(nk_context* ctx) {
         static foreach (pass; passes) {
             if (nk_button_label(ctx, pass.name.ptr)) {
                 pass.run();
@@ -57,4 +65,5 @@ version (linux) {
 
         nk_edit_buffer(ctx, nk_edit_types.NK_EDIT_FIELD, &sandbox_text_edit, &nk_filter_default);
     }
+}
 }

@@ -23,11 +23,13 @@ version (linux) {
     class WiiDebuggerUIRoot : Component, Renderable2D, Updatable {
         mixin Reflect;
 
-        WiiDebugger wii_debugger;
-        WiiVideo wii_video_display;
+        private WiiDebugger wii_debugger;
+        private JitDebugger jit_debugger;
+        private WiiVideo wii_video_display;
 
         this(WiiDebugger wii_debugger) {
             this.wii_debugger = wii_debugger;
+            jit_debugger = new JitDebugger(wii_debugger);
         }
 
         @property public Rectangle bounds() {
@@ -46,8 +48,6 @@ version (linux) {
             ctx = InitNuklearEx(ui_font, UI_FS);
             SetNuklearScaling(ctx, cast(int) Core.window.scale_dpi);
             apply_style(ctx);
-
-            ui.reng.jit.debugger.setup();
 
             // nk_color[nk_style_colors.NK_COLOR_COUNT] table;
             // table[nk_style_colors.NK_COLOR_TEXT] = nk_rgba(190, 190, 190, 255);
@@ -191,7 +191,7 @@ version (linux) {
 
                 nk_layout_row_dynamic(ctx, 30, 1);
 
-                ui.reng.jit.debugger.setup_debugger(ctx);
+                jit_debugger.update(ctx);
 
                 // menu bar
             //     nk_menubar_begin(ctx);
