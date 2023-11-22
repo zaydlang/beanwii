@@ -41,9 +41,9 @@ final class JitDebugger {
         Pass("Code Emission", &unimplemented)
     ];
 
-	nk_text_edit sandbox_text_edit;
-    enum SANDBOX_EDITOR_SIZE = 1000;
-    char[1000] sandbox_text_buffer;
+	private nk_text_edit sandbox_text_edit;
+    private enum SANDBOX_EDITOR_SIZE = 1000;
+    private char[SANDBOX_EDITOR_SIZE] sandbox_text_buffer;
 
     void generate_recipe() {
     }
