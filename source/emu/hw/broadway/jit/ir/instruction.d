@@ -2,6 +2,7 @@ module emu.hw.broadway.jit.ir.instruction;
 
 import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.types;
+import std.format;
 import std.sumtype;
 import util.log;
 import util.number;
@@ -357,42 +358,55 @@ struct IR {
         emit(IRInstructionBreakpoint());
     }
 
-    void pretty_print_instruction(IRInstruction instruction) {
-        instruction.match!(
+    public string disassemble() {
+        string result = "";
+        log_ir("%d instructions", num_instructions());
+
+        for (int i = 0; i < num_instructions(); i++) {
+            result ~= format("%s\n", disassemble(instructions[i]));
+        }
+
+        result ~= "\0";
+
+        return result;
+    }
+
+    private string disassemble(IRInstruction instruction) {
+        return instruction.match!(
             (IRInstructionGetReg i) {
-                log_ir("ld  v%d, %s", i.dest.get_id(), i.src.to_string());
+                return format("ld  v%d, %s", i.dest.get_id(), i.src.to_string());
             },
 
             (IRInstructionSetRegVar i) {
-                log_ir("st  v%d, %s", i.src.get_id(), i.dest.to_string());
+                return format("st  v%d, %s", i.src.get_id(), i.dest.to_string());
             },
 
             (IRInstructionSetRegImm i) {
-                log_ir("st  #0x%x, %s", i.imm, i.dest.to_string());
+                return format("st  #0x%x, %s", i.imm, i.dest.to_string());
             },
 
             (IRInstructionSetFPSCR i) {
-                log_ir("st  v%d, FPSCR", i.src.get_id());
+                return format("st  v%d, FPSCR", i.src.get_id());
             },
 
             (IRInstructionBinaryDataOpImm i) {
-                log_ir("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
+                return format("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
             },
 
             (IRInstructionBinaryDataOpVar i) {
-                log_ir("%s v%d, v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2.get_id());
+                return format("%s v%d, v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2.get_id());
             },
 
             (IRInstructionUnaryDataOp i) {
-                log_ir("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
+                return format("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
             },
 
             (IRInstructionSetVarImmInt i) {
-                log_ir("ld  v%d, 0x%x", i.dest.get_id(), i.imm);
+                return format("ld  v%d, 0x%x", i.dest.get_id(), i.imm);
             },
 
             (IRInstructionSetVarImmFloat i) {
-                log_ir("ld  v%d, %f", i.dest.get_id(), i.imm);
+                return format("ld  v%d, %f", i.dest.get_id(), i.imm);
             },
 
             (IRInstructionRead i) {
@@ -404,7 +418,7 @@ struct IR {
                     case 1: mnemonic = "ldb"; break;
                 }
                 
-                log_ir("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             },
 
             (IRInstructionWrite i) {
@@ -416,49 +430,53 @@ struct IR {
                     case 1: mnemonic = "stb"; break;
                 }
                 
-                log_ir("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
             },
 
             (IRInstructionConditionalBranch i) {
-                log_ir("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
+                return format("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
             },
 
             (IRInstructionBranch i) {
-                log_ir("b   #%d", i.label.instruction_index);
+                return format("b   #%d", i.label.instruction_index);
             },
 
             (IRInstructionGetHostCarry i) {
-                log_ir("getc v%d", i.dest.get_id());
+                return format("getc v%d", i.dest.get_id());
             },
 
             (IRInstructionGetHostOverflow i) {
-                log_ir("getv v%d", i.dest.get_id());
+                return format("getv v%d", i.dest.get_id());
             },
 
             (IRInstructionHleFunc i) {
-                log_ir("hle %d", i.function_id);
+                return format("hle %d", i.function_id);
             },
 
             (IRInstructionPairedSingleMov i) {
-                log_ir("mov ps%d:%d, ps%d", i.dest.get_id(), i.index, i.src.get_id());
+                return format("mov ps%d:%d, ps%d", i.dest.get_id(), i.index, i.src.get_id());
             },
 
             (IRInstructionReadSized i) {
-                log_ir("ld  v%d, [v%d] (size: %d)", i.dest.get_id(), i.address.get_id(), i.size.get_id());
+                return format("ld  v%d, [v%d] (size: %d)", i.dest.get_id(), i.address.get_id(), i.size.get_id());
             },
 
             (IRInstructionDebugAssert i) {
-                log_ir("assert v%d", i.cond.get_id());
+                return format("assert v%d", i.cond.get_id());
             },
 
             (IRInstructionSext i) {
-                log_ir("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
+                return format("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
             },
 
             (IRInstructionBreakpoint i) {
-                log_ir("bkpt");
+                return format("bkpt");
             },
         );
+    }
+
+    void pretty_print_instruction(IRInstruction instruction) {
+        log_ir(disassemble(instruction));
     }
 }
 

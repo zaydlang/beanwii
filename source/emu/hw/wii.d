@@ -225,6 +225,11 @@ final class Wii {
 }
 
 final class WiiDebugger {
+    import emu.hw.broadway.jit.passes.generate_recipe.pass;
+    import emu.hw.broadway.jit.ir.instruction;
+    import emu.hw.broadway.jit.jit;
+    import util.bitop;
+
     Wii wii;
 
     this(Wii wii) {
@@ -232,7 +237,7 @@ final class WiiDebugger {
     }
 
     public u32 get_pc() {
-        return wii.broadway.get_pc();
+        return wii.broadway.get_pc() + 4;
     }
 
     public void write_be_u64(u32 addr, u64 value) {
@@ -265,5 +270,20 @@ final class WiiDebugger {
 
     public u8 read_be_u8(u32 addr) {
         return wii.mem.read_be_u8(addr);
+    }
+
+    public string generate_recipe(u32 opcode) {
+        IR* ir = new IR();
+        ir.setup();
+        ir.reset();
+
+        JitContext ctx = JitContext(
+            wii.broadway.get_pc(), 
+            wii.broadway.get_hid2().bit(30) // HID2[PSE]
+        );
+
+        emu.hw.broadway.jit.passes.generate_recipe.pass.generate_recipe(ir, opcode, ctx);
+
+        return ir.disassemble();
     }
 }
