@@ -11,6 +11,10 @@ version (linux) {
     import re.ecs;
     import re.ng.diag;
     import re.util.interop;
+	import std.algorithm;
+	import std.array;
+	import std.conv;
+	import std.range;
 
     struct Pass {
         string name;
@@ -28,11 +32,12 @@ version (linux) {
         Pass("Optimize Dead Moves", &unimplemented),
         Pass("Code Emission", &unimplemented)
     ];
-	nk_text_edit debug_edit;
+
+	nk_text_edit sandbox_text_edit;
+    enum SANDBOX_EDITOR_SIZE = 1000;
+    char[1000] sandbox_text_buffer;
 
     void generate_recipe() {
-        import std.stdio;
-        writefln("str: %s", test.ptr);
     }
 
     void unimplemented() {
@@ -40,7 +45,7 @@ version (linux) {
     }
 
     void setup() {
-        nk_textedit_init_fixed(&debug_edit, test.ptr, test.sizeof - 1);
+        nk_textedit_init_fixed(&debug_edit, sandbox_text_buffer.ptr, SANDBOX_EDITOR_SIZE - 1);
     }
         
     void setup_debugger(nk_context* ctx) {
@@ -50,6 +55,6 @@ version (linux) {
             }
         }
 
-        nk_edit_buffer(ctx, nk_edit_types.NK_EDIT_FIELD, &debug_edit, &nk_filter_default);
+        nk_edit_buffer(ctx, nk_edit_types.NK_EDIT_FIELD, &sandbox_text_edit, &nk_filter_default);
     }
 }
