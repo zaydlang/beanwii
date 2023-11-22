@@ -234,4 +234,36 @@ final class WiiDebugger {
     public u32 get_pc() {
         return wii.broadway.get_pc();
     }
+
+    public void write_be_u64(u32 addr, u64 value) {
+        wii.mem.write_be_u64(addr, value);
+    }
+
+    public void write_be_u32(u32 addr, u32 value) {
+        wii.mem.write_be_u32(addr, value);
+    }
+
+    public void write_be_u16(u32 addr, u16 value) {
+        wii.mem.write_be_u16(addr, value);
+    }
+
+    public void write_be_u8(u32 addr, u8 value) {
+        wii.mem.write_be_u8(addr, value);
+    }
+
+    public u64 read_be_u64(u32 addr) {
+        return wii.mem.read_be_u64(addr);
+    }
+
+    public u32 read_be_u32(u32 addr) {
+        return wii.mem.read_be_u32(addr);
+    }
+
+    public u16 read_be_u16(u32 addr) {
+        return wii.mem.read_be_u16(addr);
+    }
+
+    public u8 read_be_u8(u32 addr) {
+        return wii.mem.read_be_u8(addr);
+    }
 }

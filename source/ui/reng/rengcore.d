@@ -18,11 +18,12 @@ class RengCore : Core {
     Wii wii;
 
     this(Wii wii, int screen_scale, bool start_debugger) {
+        this.wii            = wii;
+        this.screen_scale   = screen_scale;
         this.start_debugger = start_debugger;
 
         this.width  = WII_SCREEN_WIDTH * screen_scale;
         this.height = WII_SCREEN_HEIGHT * screen_scale;
-        this.screen_scale = screen_scale;
 
         if (this.start_debugger) {
             this.width  = max(this.width,  1280);
