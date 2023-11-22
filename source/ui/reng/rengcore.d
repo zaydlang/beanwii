@@ -1,5 +1,6 @@
 module ui.reng.rengcore;
 
+import emu.hw.wii;
 import raylib;
 import re;
 import re.math;
@@ -14,8 +15,9 @@ class RengCore : Core {
     int height;
     int screen_scale;
     bool start_debugger;
+    Wii wii;
 
-    this(int screen_scale, bool start_debugger) {
+    this(Wii wii, int screen_scale, bool start_debugger) {
         this.start_debugger = start_debugger;
 
         this.width  = WII_SCREEN_WIDTH * screen_scale;
@@ -40,7 +42,7 @@ class RengCore : Core {
         screen_scale *= cast(int) window.scale_dpi;
 
         if (start_debugger) {
-            load_scenes([new EmuDebugInterfaceScene(screen_scale)]);
+            load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);
         } else {
             load_scenes([new EmuScene(screen_scale)]);
         }

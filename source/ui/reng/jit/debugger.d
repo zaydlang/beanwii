@@ -45,7 +45,7 @@ version (linux) {
     }
 
     void setup() {
-        nk_textedit_init_fixed(&debug_edit, sandbox_text_buffer.ptr, SANDBOX_EDITOR_SIZE - 1);
+        nk_textedit_init_fixed(&sandbox_text_edit, sandbox_text_buffer.ptr, SANDBOX_EDITOR_SIZE - 1);
     }
         
     void setup_debugger(nk_context* ctx) {

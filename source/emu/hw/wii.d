@@ -218,4 +218,20 @@ final class Wii {
     public void on_error() {
         broadway.on_error();
     }
+
+    public WiiDebugger get_debugger() {
+        return new WiiDebugger(this);
+    }
+}
+
+final class WiiDebugger {
+    Wii wii;
+
+    this(Wii wii) {
+        this.wii = wii;
+    }
+
+    public u32 get_pc() {
+        return wii.broadway.get_pc();
+    }
 }

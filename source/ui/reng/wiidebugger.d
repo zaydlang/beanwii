@@ -1,6 +1,7 @@
 module ui.reng.wiidebugger;
 
 version (linux) {
+    import emu.hw.wii;
     import nuklear_ext;
     import raylib;
     import raylib_nuklear;
@@ -22,7 +23,12 @@ version (linux) {
     class WiiDebuggerUIRoot : Component, Renderable2D, Updatable {
         mixin Reflect;
 
+        WiiDebugger wii_debugger;
         WiiVideo wii_video_display;
+
+        this(WiiDebugger wii_debugger) {
+            this.wii_debugger = wii_debugger;
+        }
 
         @property public Rectangle bounds() {
             return Rectangle(transform.position2.x, transform.position2.y,
