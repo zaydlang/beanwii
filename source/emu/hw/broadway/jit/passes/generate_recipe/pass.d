@@ -2,16 +2,25 @@ module emu.hw.broadway.jit.passes.generate_recipe.pass;
 
 import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.instruction;
+import emu.hw.broadway.jit.ir.recipe;
 import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.jit.passes.generate_recipe.floating_point;
 import emu.hw.broadway.jit.passes.generate_recipe.helpers;
 import emu.hw.broadway.jit.passes.generate_recipe.opcode;
 import emu.hw.broadway.jit.passes.generate_recipe.paired_single;
+import emu.hw.memory.strategy.memstrategy;
 import util.bitop;
 import util.log;
 import util.number;
 
-private void emit_addcx(IR* ir, u32 opcode, JitContext ctx) {
+enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
+
+enum GenerateRecipeAction {
+    STOP,
+    CONTINUE,
+}
+
+private GenerateRecipeAction emit_addcx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -27,9 +36,11 @@ private void emit_addcx(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -47,9 +58,11 @@ private void emit_addex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addi(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm = sext_32(opcode.bits(0, 15), 16);
@@ -60,9 +73,11 @@ private void emit_addi(IR* ir, u32 opcode, JitContext ctx) {
         IRVariable src = ir.get_reg(ra);
         ir.set_reg(rd, src + simm);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addic(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addic(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm = sext_32(opcode.bits(0, 15), 16);
@@ -74,9 +89,11 @@ private void emit_addic(IR* ir, u32 opcode, JitContext ctx) {
         true,  // XER CA
         false, // XER SO & OV
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addic_(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addic_(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd   = to_gpr(opcode.bits(21, 25));
     GuestReg ra   = to_gpr(opcode.bits(16, 20));
     int      simm = sext_32(opcode.bits(0, 15), 16);
@@ -88,9 +105,11 @@ private void emit_addic_(IR* ir, u32 opcode, JitContext ctx) {
         true,  // XER CA
         false, // XER SO & OV
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addis(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addis(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm = opcode.bits(0, 15); // no need to sext cuz it gets shifted by 16
@@ -101,9 +120,11 @@ private void emit_addis(IR* ir, u32 opcode, JitContext ctx) {
         IRVariable src = ir.get_reg(ra);
         ir.set_reg(rd, src + (simm << 16));
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addmex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addmex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
@@ -118,12 +139,11 @@ private void emit_addmex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addx(IR* ir, u32 opcode, JitContext ctx) {
-    // 7dcdbe15
-    // 011111 01110 01101 10111 110 0001 0101
-    //        14    13    23
+private GenerateRecipeAction emit_addx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -137,9 +157,11 @@ private void emit_addx(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_addzex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_addzex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
@@ -154,9 +176,11 @@ private void emit_addzex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_and(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_and(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -166,9 +190,11 @@ private void emit_and(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_andc(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_andc(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -178,9 +204,11 @@ private void emit_andc(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_andi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_andi(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15);
@@ -189,9 +217,11 @@ private void emit_andi(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_andis(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_andis(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15);
@@ -200,9 +230,11 @@ private void emit_andis(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.STOP;
 }
 
-private void emit_b(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_b(IR* ir, u32 opcode, JitContext ctx) {
     bool aa = opcode.bit(1);
     bool lk = opcode.bit(0);
     int  li = opcode.bits(2, 25);
@@ -215,9 +247,11 @@ private void emit_b(IR* ir, u32 opcode, JitContext ctx) {
     if (branch_address == ctx.pc) error_broadway("branch to self");
 
     ir.set_reg(GuestReg.PC, branch_address);
+
+    return GenerateRecipeAction.STOP;
 }
 
-private void emit_bc(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_bc(IR* ir, u32 opcode, JitContext ctx) {
     bool lk = opcode.bit(0);
     bool aa = opcode.bit(1);
     int  bo = opcode.bits(21, 25);
@@ -239,9 +273,11 @@ private void emit_bc(IR* ir, u32 opcode, JitContext ctx) {
             ir.set_reg(GuestReg.PC, ctx.pc + (sext_32(bd, 14) << 2));
         }
     });
+
+    return GenerateRecipeAction.STOP;
 }
 
-private void emit_bcctr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_bcctr(IR* ir, u32 opcode, JitContext ctx) {
     bool lk = opcode.bit(0);
     int  bo = opcode.bits(21, 25);
     int  bi = opcode.bits(16, 20);
@@ -256,9 +292,11 @@ private void emit_bcctr(IR* ir, u32 opcode, JitContext ctx) {
         // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
         ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR));
     });
+
+    return GenerateRecipeAction.STOP;
 }
 
-private void emit_bclr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_bclr(IR* ir, u32 opcode, JitContext ctx) {
     bool lk = opcode.bit(0);
     int  bo = opcode.bits(21, 25);
     int  bi = opcode.bits(16, 20);
@@ -271,9 +309,11 @@ private void emit_bclr(IR* ir, u32 opcode, JitContext ctx) {
         // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
         ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
     });
+
+    return GenerateRecipeAction.STOP;
 }
 
-private void emit_cntlzw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_cntlzw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
@@ -284,9 +324,11 @@ private void emit_cntlzw(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_cmp(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_cmp(IR* ir, u32 opcode, JitContext ctx) {
     int crf_d = opcode.bits(23, 25);
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -304,9 +346,11 @@ private void emit_cmp(IR* ir, u32 opcode, JitContext ctx) {
         crf_d,
         true
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_cmpl(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_cmpl(IR* ir, u32 opcode, JitContext ctx) {
     int crf_d = opcode.bits(23, 25);
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -324,9 +368,11 @@ private void emit_cmpl(IR* ir, u32 opcode, JitContext ctx) {
         crf_d,
         false
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_cmpli(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_cmpli(IR* ir, u32 opcode, JitContext ctx) {
     int  crf_d = opcode.bits(23, 25);
     int  uimm  = opcode.bits(0, 15);
 
@@ -342,9 +388,11 @@ private void emit_cmpli(IR* ir, u32 opcode, JitContext ctx) {
         crf_d,
         false
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_cmpi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_cmpi(IR* ir, u32 opcode, JitContext ctx) {
     int crf_d    = opcode.bits(23, 25);
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int simm    = sext_32(opcode.bits(0, 15), 16);
@@ -360,9 +408,11 @@ private void emit_cmpi(IR* ir, u32 opcode, JitContext ctx) {
         crf_d,
         true
     );
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_crxor(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_crxor(IR* ir, u32 opcode, JitContext ctx) {
     int crbD = 31 - opcode.bits(21, 25);
     int crbA = 31 - opcode.bits(16, 20);
     int crbB = 31 - opcode.bits(11, 15);
@@ -373,23 +423,31 @@ private void emit_crxor(IR* ir, u32 opcode, JitContext ctx) {
     cr = cr & ~(1 << crbD);
     cr = cr | ((((cr >> crbA) & 1) ^ ((cr >> crbB) & 1)) << crbD);
     ir.set_reg(GuestReg.CR, cr);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_dcbf(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_dcbf(IR* ir, u32 opcode, JitContext ctx) {
     // i'm just not going to emulate cache stuff
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_dcbi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_dcbi(IR* ir, u32 opcode, JitContext ctx) {
     // i'm just not going to emulate cache stuff
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_dcbst(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_dcbst(IR* ir, u32 opcode, JitContext ctx) {
     // TODO: do i really have to emulate this opcode? it sounds awful for performance.
     // for now i'll just do this silly hack...
     assert(opcode.bits(21, 25) == 0);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_divwx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_divwx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -417,9 +475,11 @@ private void emit_divwx(IR* ir, u32 opcode, JitContext ctx) {
         if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
         if (rc) emit_set_cr_flags_generic(ir, 0, ir.constant(0xFFFF_FFFF));
     });
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_divwux(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_divwux(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -440,9 +500,11 @@ private void emit_divwux(IR* ir, u32 opcode, JitContext ctx) {
         if (oe) emit_set_xer_so_ov(ir, overflow);
         if (rc) emit_set_cr_flags_generic(ir, 0, result);
     });
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_eqv(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_eqv(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -452,9 +514,11 @@ private void emit_eqv(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_extsb(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_extsb(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool rc = opcode.bit(0);
@@ -465,9 +529,11 @@ private void emit_extsb(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_extsh(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_extsh(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool rc = opcode.bit(0);
@@ -478,22 +544,30 @@ private void emit_extsh(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_hle(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_hle(IR* ir, u32 opcode, JitContext ctx) {
     int hle_function_id = opcode.bits(21, 25);
     ir.run_hle_func(hle_function_id);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_icbi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_icbi(IR* ir, u32 opcode, JitContext ctx) {
     // i'm just not going to emulate cache stuff
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_isync(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_isync(IR* ir, u32 opcode, JitContext ctx) {
     // not needed for emulation
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lbzu(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lbzu(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
@@ -504,17 +578,21 @@ private void emit_lbzu(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable address = ir.get_reg(ra) + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u8(address));
     ir.set_reg(ra, address);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lfd(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lfd(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
 
     ir.set_reg(rd, ir.read_u64(ir.get_reg(ra) + sext_32(d, 16)).interpret_as_float());
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lhz(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lhz(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
@@ -522,9 +600,11 @@ private void emit_lhz(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u16(address));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lwz(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lwz(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
@@ -532,9 +612,11 @@ private void emit_lwz(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lwzu(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lwzu(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int d       = opcode.bits(0, 15);
@@ -543,9 +625,11 @@ private void emit_lwzu(IR* ir, u32 opcode, JitContext ctx) {
     address = address + sext_32(d, 16);
     ir.set_reg(rd, ir.read_u32(address));
     ir.set_reg(ra, address);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_lwzx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_lwzx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -553,18 +637,22 @@ private void emit_lwzx(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable address = ra == 0 ? ir.constant(0) : ir.get_reg(ra);
     address = address + ir.get_reg(rb);
     ir.set_reg(rd, ir.read_u32(address));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mfmsr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mfmsr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
 
     assert(opcode.bit(0) == 0);
     assert(opcode.bits(11, 20) == 0b00000_00000);
 
     ir.set_reg(rd, ir.get_reg(GuestReg.MSR));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mtfsf(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mtfsf(IR* ir, u32 opcode, JitContext ctx) {
     int fm = opcode.bits(17, 24);
     GuestReg frB = to_fpr(opcode.bits(11, 15));
 
@@ -580,9 +668,11 @@ private void emit_mtfsf(IR* ir, u32 opcode, JitContext ctx) {
     }
 
     ir.set_reg(GuestReg.FPSR, (ir.get_reg(GuestReg.FPSR) & ~mask) | (ir.get_reg(frB).to_int() & mask));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mfspr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mfspr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     int spr     = opcode.bits(11, 15) << 5 | opcode.bits(16, 20);
 
@@ -592,9 +682,11 @@ private void emit_mfspr(IR* ir, u32 opcode, JitContext ctx) {
 
     GuestReg src = get_spr_from_encoding(spr);
     ir.set_reg(rd, ir.get_reg(src));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mftb(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mftb(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     int tb_id = opcode.bits(16, 20) | (opcode.bits(11, 15) << 5);
 
@@ -606,18 +698,22 @@ private void emit_mftb(IR* ir, u32 opcode, JitContext ctx) {
     }
 
     ir.set_reg(rd, ir.get_reg(tb_reg));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mtmsr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mtmsr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
 
     assert(opcode.bit(0) == 0);
     assert(opcode.bits(11, 20) == 0b00000_00000);
 
     ir.set_reg(GuestReg.MSR, ir.get_reg(rs));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mtspr(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mtspr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     int spr     = opcode.bits(11, 15) << 5 | opcode.bits(16, 20);
 
@@ -625,18 +721,22 @@ private void emit_mtspr(IR* ir, u32 opcode, JitContext ctx) {
     
     GuestReg src = get_spr_from_encoding(spr);
     ir.set_reg(src, ir.get_reg(rd));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mulli(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mulli(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd   = to_gpr(opcode.bits(21, 25));
     GuestReg ra   = to_gpr(opcode.bits(16, 20));
     int      simm = sext_32(opcode.bits(0, 15), 16);
 
     IRVariable result = ir.get_reg(ra) * simm;
     ir.set_reg(rd, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mullwx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mullwx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -649,9 +749,11 @@ private void emit_mullwx(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mulhw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mulhw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -669,9 +771,11 @@ private void emit_mulhw(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_mulhwu(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_mulhwu(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -689,9 +793,11 @@ private void emit_mulhwu(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_nand(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_nand(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -702,9 +808,11 @@ private void emit_nand(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_negx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_negx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
@@ -719,9 +827,11 @@ private void emit_negx(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_nor(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_nor(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -731,9 +841,11 @@ private void emit_nor(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_or(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_or(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -744,9 +856,11 @@ private void emit_or(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_orc(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_orc(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -757,27 +871,33 @@ private void emit_orc(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_ori(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_ori(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15);
 
     IRVariable result = ir.get_reg(rs) | uimm;
     ir.set_reg(ra, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_oris(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_oris(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int uimm = opcode.bits(0, 15) << 16;
 
     IRVariable result = ir.get_reg(rs) | uimm;
     ir.set_reg(ra, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_rlwimi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_rlwimi(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
@@ -792,9 +912,11 @@ private void emit_rlwimi(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_rlwinm(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_rlwinm(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
@@ -809,9 +931,11 @@ private void emit_rlwinm(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_rlwnm(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_rlwnm(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -826,14 +950,18 @@ private void emit_rlwnm(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_sc(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_sc(IR* ir, u32 opcode, JitContext ctx) {
     // apparently syscalls are only used for "sync" and "isync" on the Wii
     // and that's something i don't need to emulate
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_slw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_slw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -852,9 +980,11 @@ private void emit_slw(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable overflow = ir.get_overflow();
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_sraw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_sraw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -876,9 +1006,11 @@ private void emit_sraw(IR* ir, u32 opcode, JitContext ctx) {
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_srawi(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_srawi(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      sh = opcode.bits(11, 15);
@@ -893,9 +1025,11 @@ private void emit_srawi(IR* ir, u32 opcode, JitContext ctx) {
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
 
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_srw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_srw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -914,9 +1048,11 @@ private void emit_srw(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(ra, result);
 
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_stb(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_stb(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
@@ -927,9 +1063,11 @@ private void emit_stb(IR* ir, u32 opcode, JitContext ctx) {
     address = address + sext_32(offset, 16);
 
     ir.write_u8(address, ir.get_reg(rs));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_stbu(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_stbu(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
@@ -941,9 +1079,11 @@ private void emit_stbu(IR* ir, u32 opcode, JitContext ctx) {
 
     ir.set_reg(ra, address);
     ir.write_u8(address, ir.get_reg(rs));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_sth(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_sth(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
@@ -954,9 +1094,11 @@ private void emit_sth(IR* ir, u32 opcode, JitContext ctx) {
     } else {
         ir.write_u16(ir.get_reg(ra) + sext_32(offset, 16), ir.get_reg(rs));
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_stw(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_stw(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
@@ -965,9 +1107,11 @@ private void emit_stw(IR* ir, u32 opcode, JitContext ctx) {
     address = address + sext_32(offset, 16);
 
     ir.write_u32(address, ir.get_reg(rs));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_stwx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_stwx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -976,9 +1120,11 @@ private void emit_stwx(IR* ir, u32 opcode, JitContext ctx) {
 
     IRVariable address = ra == 0 ? ir.constant(rb) : ir.get_reg(ra) + ir.constant(rb);
     ir.write_u32(address, ir.get_reg(rs));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_stwu(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_stwu(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int offset  = opcode.bits(0, 15);
@@ -990,9 +1136,11 @@ private void emit_stwu(IR* ir, u32 opcode, JitContext ctx) {
 
     ir.write_u32(address, ir.get_reg(rs));
     ir.set_reg(ra, address);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -1011,9 +1159,11 @@ private void emit_subfx(IR* ir, u32 opcode, JitContext ctx) {
 
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfcx(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfcx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -1032,9 +1182,11 @@ private void emit_subfcx(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -1053,9 +1205,11 @@ private void emit_subfex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfic(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfic(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     int      imm = opcode.bits(0, 15);
@@ -1065,9 +1219,11 @@ private void emit_subfic(IR* ir, u32 opcode, JitContext ctx) {
     ir.set_reg(rd, result);
 
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfmex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfmex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
 
@@ -1084,9 +1240,11 @@ private void emit_subfmex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_subfzex(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_subfzex(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     bool     rc = opcode.bit(0);
@@ -1104,13 +1262,17 @@ private void emit_subfzex(IR* ir, u32 opcode, JitContext ctx) {
     if (oe) emit_set_xer_so_ov(ir, overflow);
     if (rc) emit_set_cr_flags_generic(ir, 0, result);
     emit_set_xer_ca(ir, carry_out);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_sync(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_sync(IR* ir, u32 opcode, JitContext ctx) {
     // not needed for emulation
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_xor(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_xor(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -1120,207 +1282,229 @@ private void emit_xor(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable overflow = ir.get_overflow();
 
     if (rc) emit_set_cr_flags_generic(ir, 0, ir.get_reg(ra));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_xori(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_xori(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs  = to_gpr(opcode.bits(21, 25));
     GuestReg ra  = to_gpr(opcode.bits(16, 20));
     int      imm = opcode.bits(0, 15);
 
     ir.set_reg(ra, ir.get_reg(rs) ^ imm);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_xoris(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_xoris(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rs  = to_gpr(opcode.bits(21, 25));
     GuestReg ra  = to_gpr(opcode.bits(16, 20));
     int      imm = opcode.bits(0, 15);
 
     ir.set_reg(ra, ir.get_reg(rs) ^ (imm << 16));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-private void emit_op_04(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_op_04(IR* ir, u32 opcode, JitContext ctx) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp04SecondaryOpcode.PS_MR: emit_ps_mr(ir, opcode, ctx); break;
+        case PrimaryOp04SecondaryOpcode.PS_MR: return emit_ps_mr(ir, opcode, ctx);
 
-        default: unimplemented_opcode(opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
 }
 
-private void emit_op_13(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_op_13(IR* ir, u32 opcode, JitContext ctx) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp13SecondaryOpcode.BCCTR: emit_bcctr(ir, opcode, ctx); break;
-        case PrimaryOp13SecondaryOpcode.BCLR:  emit_bclr (ir, opcode, ctx); break;
-        case PrimaryOp13SecondaryOpcode.CRXOR: emit_crxor(ir, opcode, ctx); break;
-        case PrimaryOp13SecondaryOpcode.ISYNC: emit_isync(ir, opcode, ctx); break;
+        case PrimaryOp13SecondaryOpcode.BCCTR: return emit_bcctr(ir, opcode, ctx);
+        case PrimaryOp13SecondaryOpcode.BCLR:  return emit_bclr (ir, opcode, ctx);
+        case PrimaryOp13SecondaryOpcode.CRXOR: return emit_crxor(ir, opcode, ctx);
+        case PrimaryOp13SecondaryOpcode.ISYNC: return emit_isync(ir, opcode, ctx);
 
-        default: unimplemented_opcode(opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
 }
 
-private void emit_op_1F(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_op_1F(IR* ir, u32 opcode, JitContext ctx) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp1FSecondaryOpcode.ADD:     emit_addx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDC:    emit_addcx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDCO:   emit_addcx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDE:    emit_addex  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDEO:   emit_addex  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDO:    emit_addx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDME:   emit_addmex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDMEO:  emit_addmex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDZE:   emit_addzex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ADDZEO:  emit_addzex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.AND:     emit_and    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ANDC:    emit_andc   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.CNTLZW:  emit_cntlzw (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.CMP:     emit_cmp    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.CMPL:    emit_cmpl   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DCBF:    emit_dcbf   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DCBI:    emit_dcbi   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DCBST:   emit_dcbst  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DIVW:    emit_divwx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DIVWO:   emit_divwx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DIVWU:   emit_divwux (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.DIVWUO:  emit_divwux (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.EQV:     emit_eqv    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.EXTSB:   emit_extsb  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.EXTSH:   emit_extsh  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.HLE:     emit_hle    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ICBI:    emit_icbi   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.LWZX:    emit_lwzx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MFMSR:   emit_mfmsr  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MFSPR:   emit_mfspr  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MFTB:    emit_mftb  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MTMSR:   emit_mtmsr  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MTSPR:   emit_mtspr  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MULLW:   emit_mullwx (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MULLWO:  emit_mullwx (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MULHW:   emit_mulhw  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.MULHWU:  emit_mulhwu (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.NAND:    emit_nand   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.NEG:     emit_negx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.NEGO:    emit_negx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.NOR:     emit_nor    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.OR:      emit_or     (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.ORC:     emit_orc    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SLW:     emit_slw    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SRAW:    emit_sraw   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SRAWI:   emit_srawi  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SRW:     emit_srw    (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.STWX:    emit_stwx   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBF:    emit_subfx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFO:   emit_subfx  (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFC:   emit_subfcx (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFCO:  emit_subfcx (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFE:   emit_subfex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFEO:  emit_subfex (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFME:  emit_subfmex(ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFMEO: emit_subfmex(ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFZE:  emit_subfzex(ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SUBFZEO: emit_subfzex(ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.SYNC:    emit_sync   (ir, opcode, ctx); break;
-        case PrimaryOp1FSecondaryOpcode.XOR:     emit_xor    (ir, opcode, ctx); break;
+        case PrimaryOp1FSecondaryOpcode.ADD:     return emit_addx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDC:    return emit_addcx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDCO:   return emit_addcx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDE:    return emit_addex  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDEO:   return emit_addex  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDO:    return emit_addx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDME:   return emit_addmex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDMEO:  return emit_addmex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDZE:   return emit_addzex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ADDZEO:  return emit_addzex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.AND:     return emit_and    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ANDC:    return emit_andc   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.CNTLZW:  return emit_cntlzw (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.CMP:     return emit_cmp    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.CMPL:    return emit_cmpl   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DCBF:    return emit_dcbf   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DCBI:    return emit_dcbi   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DCBST:   return emit_dcbst  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DIVW:    return emit_divwx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DIVWO:   return emit_divwx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DIVWU:   return emit_divwux (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.DIVWUO:  return emit_divwux (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.EQV:     return emit_eqv    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.EXTSB:   return emit_extsb  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.EXTSH:   return emit_extsh  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.HLE:     return emit_hle    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ICBI:    return emit_icbi   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.LWZX:    return emit_lwzx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MFMSR:   return emit_mfmsr  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MFSPR:   return emit_mfspr  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MFTB:    return emit_mftb   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MTMSR:   return emit_mtmsr  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MTSPR:   return emit_mtspr  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MULLW:   return emit_mullwx (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MULLWO:  return emit_mullwx (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MULHW:   return emit_mulhw  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.MULHWU:  return emit_mulhwu (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.NAND:    return emit_nand   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.NEG:     return emit_negx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.NEGO:    return emit_negx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.NOR:     return emit_nor    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.OR:      return emit_or     (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.ORC:     return emit_orc    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SLW:     return emit_slw    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SRAW:    return emit_sraw   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SRAWI:   return emit_srawi  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SRW:     return emit_srw    (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.STWX:    return emit_stwx   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBF:    return emit_subfx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFO:   return emit_subfx  (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFC:   return emit_subfcx (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFCO:  return emit_subfcx (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFE:   return emit_subfex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFEO:  return emit_subfex (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFME:  return emit_subfmex(ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFMEO: return emit_subfmex(ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFZE:  return emit_subfzex(ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SUBFZEO: return emit_subfzex(ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.SYNC:    return emit_sync   (ir, opcode, ctx);
+        case PrimaryOp1FSecondaryOpcode.XOR:     return emit_xor    (ir, opcode, ctx);
 
-        default: unimplemented_opcode(opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
 }
 
-private void emit_op_3B(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_op_3B(IR* ir, u32 opcode, JitContext ctx) {
     int secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
-        case PrimaryOp3BSecondaryOpcode.FADDSX:   emit_faddsx  (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FDIVSX:   emit_fdivsx  (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FMADDSX:  emit_fmaddsx (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FMSUBSX:  emit_fmsubsx (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FMULSX:   emit_fmulsx  (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FNMADDSX: emit_fnmaddsx(ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FNMSUBSX: emit_fnmsubsx(ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FRESX:    emit_fresx   (ir, opcode, ctx); break;
-        case PrimaryOp3BSecondaryOpcode.FSUBSX:   emit_fsubsx  (ir, opcode, ctx); break;
+        case PrimaryOp3BSecondaryOpcode.FADDSX:   return emit_faddsx  (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FDIVSX:   return emit_fdivsx  (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FMADDSX:  return emit_fmaddsx (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FMSUBSX:  return emit_fmsubsx (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FMULSX:   return emit_fmulsx  (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FNMADDSX: return emit_fnmaddsx(ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FNMSUBSX: return emit_fnmsubsx(ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FRESX:    return emit_fresx   (ir, opcode, ctx);
+        case PrimaryOp3BSecondaryOpcode.FSUBSX:   return emit_fsubsx  (ir, opcode, ctx);
 
-        default: unimplemented_opcode(opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
 }
 
-private void emit_op_3F(IR* ir, u32 opcode, JitContext ctx) {
+private GenerateRecipeAction emit_op_3F(IR* ir, u32 opcode, JitContext ctx) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp3FSecondaryOpcode.FABSX:  emit_fabsx  (ir, opcode, ctx); return;
-        case PrimaryOp3FSecondaryOpcode.FCTIWX: emit_fctiwx (ir, opcode, ctx); return;
-        case PrimaryOp3FSecondaryOpcode.FMR:    emit_fmr    (ir, opcode, ctx); return;
-        case PrimaryOp3FSecondaryOpcode.FNABSX: emit_fnabsx (ir, opcode, ctx); return;    
-        case PrimaryOp3FSecondaryOpcode.FNEGX:  emit_fnegx  (ir, opcode, ctx); return;
-        case PrimaryOp3FSecondaryOpcode.MFTSB1: emit_mftsb1 (ir, opcode, ctx); return;
-        case PrimaryOp3FSecondaryOpcode.MTFSF:  emit_mtfsf  (ir, opcode, ctx); return;
+        case PrimaryOp3FSecondaryOpcode.FABSX:  return emit_fabsx  (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FCTIWX: return emit_fctiwx (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FMR:    return emit_fmr    (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FNABSX: return emit_fnabsx (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FNEGX:  return emit_fnegx  (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.MFTSB1: return emit_mftsb1 (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.MTFSF:  return emit_mtfsf  (ir, opcode, ctx);
         default: break;
     }
 
     secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
-        case PrimaryOp3FSecondaryOpcode.FADDX:   emit_faddx  (ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FDIVX:   emit_fdivx  (ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FMADDX:  emit_fmaddx (ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FMSUBX:  emit_fmsubx (ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FMULX:   emit_fmulx  (ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FNMADDX: emit_fnmaddx(ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FNMSUBX: emit_fnmsubx(ir, opcode, ctx); break;
-        case PrimaryOp3FSecondaryOpcode.FSEL:    emit_fsel   (ir, opcode, ctx); break;
-        default: unimplemented_opcode(opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FADDX:   return emit_faddx  (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FDIVX:   return emit_fdivx  (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FMADDX:  return emit_fmaddx (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FMSUBX:  return emit_fmsubx (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FMULX:   return emit_fmulx  (ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(ir, opcode, ctx);
+        case PrimaryOp3FSecondaryOpcode.FSEL:    return emit_fsel   (ir, opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
 }
 
-public void generate_recipe(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction disassemble(IR* ir, u32 opcode, JitContext ctx) {
     int primary_opcode = opcode.bits(26, 31);
 
     switch (primary_opcode) {
-        case PrimaryOpcode.ADDI:   emit_addi  (ir, opcode, ctx); break;
-        case PrimaryOpcode.ADDIC:  emit_addic (ir, opcode, ctx); break;
-        case PrimaryOpcode.ADDIC_: emit_addic_(ir, opcode, ctx); break;
-        case PrimaryOpcode.ADDIS:  emit_addis (ir, opcode, ctx); break;
-        case PrimaryOpcode.ANDI:   emit_andi  (ir, opcode, ctx); break;
-        case PrimaryOpcode.ANDIS:  emit_andis (ir, opcode, ctx); break;
-        case PrimaryOpcode.B:      emit_b     (ir, opcode, ctx); break;
-        case PrimaryOpcode.BC:     emit_bc    (ir, opcode, ctx); break;
-        case PrimaryOpcode.CMPLI:  emit_cmpli (ir, opcode, ctx); break;
-        case PrimaryOpcode.CMPI:   emit_cmpi  (ir, opcode, ctx); break;
-        case PrimaryOpcode.LBZU:   emit_lbzu  (ir, opcode, ctx); break;
-        case PrimaryOpcode.LFD:    emit_lfd   (ir, opcode, ctx); break;
-        case PrimaryOpcode.LHZ:    emit_lhz   (ir, opcode, ctx); break;
-        case PrimaryOpcode.LWZ:    emit_lwz   (ir, opcode, ctx); break;
-        case PrimaryOpcode.LWZU:   emit_lwzu  (ir, opcode, ctx); break;
-        case PrimaryOpcode.MULLI:  emit_mulli (ir, opcode, ctx); break;
-        case PrimaryOpcode.ORI:    emit_ori   (ir, opcode, ctx); break;
-        case PrimaryOpcode.ORIS:   emit_oris  (ir, opcode, ctx); break;
-        case PrimaryOpcode.PSQ_L:  emit_psq_l (ir, opcode, ctx); break;
-        case PrimaryOpcode.RLWIMI: emit_rlwimi(ir, opcode, ctx); break;
-        case PrimaryOpcode.RLWINM: emit_rlwinm(ir, opcode, ctx); break;
-        case PrimaryOpcode.RLWNM:  emit_rlwnm (ir, opcode, ctx); break;
-        case PrimaryOpcode.SC:     emit_sc    (ir, opcode, ctx); break;
-        case PrimaryOpcode.STB:    emit_stb   (ir, opcode, ctx); break;
-        case PrimaryOpcode.STBU:   emit_stbu  (ir, opcode, ctx); break;
-        case PrimaryOpcode.STH:    emit_sth   (ir, opcode, ctx); break;
-        case PrimaryOpcode.STW:    emit_stw   (ir, opcode, ctx); break;
-        case PrimaryOpcode.STWU:   emit_stwu  (ir, opcode, ctx); break;
-        case PrimaryOpcode.SUBFIC: emit_subfic(ir, opcode, ctx); break;
-        case PrimaryOpcode.XORI:   emit_xori  (ir, opcode, ctx); break;
-        case PrimaryOpcode.XORIS:  emit_xoris (ir, opcode, ctx); break;
+        case PrimaryOpcode.ADDI:   return emit_addi  (ir, opcode, ctx);
+        case PrimaryOpcode.ADDIC:  return emit_addic (ir, opcode, ctx);
+        case PrimaryOpcode.ADDIC_: return emit_addic_(ir, opcode, ctx);
+        case PrimaryOpcode.ADDIS:  return emit_addis (ir, opcode, ctx);
+        case PrimaryOpcode.ANDI:   return emit_andi  (ir, opcode, ctx);
+        case PrimaryOpcode.ANDIS:  return emit_andis (ir, opcode, ctx);
+        case PrimaryOpcode.B:      return emit_b     (ir, opcode, ctx);
+        case PrimaryOpcode.BC:     return emit_bc    (ir, opcode, ctx);
+        case PrimaryOpcode.CMPLI:  return emit_cmpli (ir, opcode, ctx);
+        case PrimaryOpcode.CMPI:   return emit_cmpi  (ir, opcode, ctx);
+        case PrimaryOpcode.LBZU:   return emit_lbzu  (ir, opcode, ctx);
+        case PrimaryOpcode.LFD:    return emit_lfd   (ir, opcode, ctx);
+        case PrimaryOpcode.LHZ:    return emit_lhz   (ir, opcode, ctx);
+        case PrimaryOpcode.LWZ:    return emit_lwz   (ir, opcode, ctx);
+        case PrimaryOpcode.LWZU:   return emit_lwzu  (ir, opcode, ctx);
+        case PrimaryOpcode.MULLI:  return emit_mulli (ir, opcode, ctx);
+        case PrimaryOpcode.ORI:    return emit_ori   (ir, opcode, ctx);
+        case PrimaryOpcode.ORIS:   return emit_oris  (ir, opcode, ctx);
+        case PrimaryOpcode.PSQ_L:  return emit_psq_l (ir, opcode, ctx);
+        case PrimaryOpcode.RLWIMI: return emit_rlwimi(ir, opcode, ctx);
+        case PrimaryOpcode.RLWINM: return emit_rlwinm(ir, opcode, ctx);
+        case PrimaryOpcode.RLWNM:  return emit_rlwnm (ir, opcode, ctx);
+        case PrimaryOpcode.SC:     return emit_sc    (ir, opcode, ctx);
+        case PrimaryOpcode.STB:    return emit_stb   (ir, opcode, ctx);
+        case PrimaryOpcode.STBU:   return emit_stbu  (ir, opcode, ctx);
+        case PrimaryOpcode.STH:    return emit_sth   (ir, opcode, ctx);
+        case PrimaryOpcode.STW:    return emit_stw   (ir, opcode, ctx);
+        case PrimaryOpcode.STWU:   return emit_stwu  (ir, opcode, ctx);
+        case PrimaryOpcode.SUBFIC: return emit_subfic(ir, opcode, ctx);
+        case PrimaryOpcode.XORI:   return emit_xori  (ir, opcode, ctx);
+        case PrimaryOpcode.XORIS:  return emit_xoris (ir, opcode, ctx);
 
-        case PrimaryOpcode.OP_04:  emit_op_04 (ir, opcode, ctx); break;
-        case PrimaryOpcode.OP_13:  emit_op_13 (ir, opcode, ctx); break;
-        case PrimaryOpcode.OP_1F:  emit_op_1F (ir, opcode, ctx); break;
-        case PrimaryOpcode.OP_3B:  emit_op_3B (ir, opcode, ctx); break;
-        case PrimaryOpcode.OP_3F:  emit_op_3F (ir, opcode, ctx); break;
+        case PrimaryOpcode.OP_04:  return emit_op_04 (ir, opcode, ctx);
+        case PrimaryOpcode.OP_13:  return emit_op_13 (ir, opcode, ctx);
+        case PrimaryOpcode.OP_1F:  return emit_op_1F (ir, opcode, ctx);
+        case PrimaryOpcode.OP_3B:  return emit_op_3B (ir, opcode, ctx);
+        case PrimaryOpcode.OP_3F:  return emit_op_3F (ir, opcode, ctx);
 
-        default: unimplemented_opcode(opcode, ctx);
+        default: unimplemented_opcode(opcode, ctx); return GenerateRecipeAction.STOP;
     }
+}
+
+public size_t generate_recipe(IR* ir, Mem mem, JitContext ctx, u32 address) {
+    size_t num_opcodes_processed = 0;
+    
+    while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
+        GenerateRecipeAction action = disassemble(ir, mem.read_be_u32(address), ctx);
+        address += 4;
+        num_opcodes_processed++;
+        
+        if (action == GenerateRecipeAction.STOP) {
+            break;
+        }
+    }
+
+    return num_opcodes_processed;
 }
 
 private void unimplemented_opcode(u32 opcode, JitContext ctx) {

@@ -4,11 +4,12 @@ import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.jit.passes.generate_recipe.helpers;
+import emu.hw.broadway.jit.passes.generate_recipe.pass;
 import util.bitop;
 import util.log;
 import util.number;
 
-public void emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
     // GuestReg rd  = to_ps (opcode.bits(21, 25));
     // GuestReg ra  = to_gpr(opcode.bits(16, 20));
     // GuestReg gqr = to_gqr(opcode.bits(12, 14));
@@ -35,9 +36,11 @@ public void emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
     // }
 
     // ir.set_reg(rd, paired_single);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_ps_mr(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_ps_mr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg frd = to_ps(opcode.bits(21, 25));
     GuestReg frb = to_ps(opcode.bits(11, 15));
 
@@ -45,6 +48,8 @@ public void emit_ps_mr(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bit(0) == 0);
 
     ir.set_reg(frd, ir.get_reg(frb));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
 private IRVariable dequantize(IR* ir, IRVariable value, IRVariable gqr_type, IRVariable gqr_scale) {

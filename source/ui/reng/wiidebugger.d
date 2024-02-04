@@ -18,7 +18,7 @@ version (linux) {
     import ui.reng.nuklear_style;
     import ui.reng.wiivideo;
 
-    enum UI_FS = 16; // font size
+    enum UI_FS = 17; // font size
 
     class WiiDebuggerUIRoot : Component, Renderable2D, Updatable {
         mixin Reflect;
@@ -44,7 +44,7 @@ version (linux) {
             wii_video_display = entity.scene.get_entity("wii_display").get_component!WiiVideo();
 
             bg = ColorToNuklearF(Colors.RAYWHITE);
-            auto ui_font = raylib.LoadFontEx("./res/SourceSansPro-Regular.ttf", UI_FS, null, 0);
+            auto ui_font = raylib.LoadFontEx("./res/CascadiaMono.ttf", UI_FS, null, 0);
             ctx = InitNuklearEx(ui_font, UI_FS);
             SetNuklearScaling(ctx, cast(int) Core.window.scale_dpi);
             apply_style(ctx);

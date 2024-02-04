@@ -61,6 +61,14 @@ struct IR {
     // is executed, the variable is deleted (in other words, it gets unbound from the host register)
     size_t[MAX_IR_VARIABLES] variable_lifetimes;
 
+    public IRInstruction[] get_instructions() {
+        IRInstruction[] result;
+        for (size_t i = 0; i < current_instruction_index; i++) {
+            result ~= instructions[i];
+        }
+        return result;
+    }
+
     private void emit(I)(I ir_opcode) {
         instructions[current_instruction_index++] = ir_opcode;
     }
@@ -320,16 +328,6 @@ struct IR {
         return overflow;
     }
 
-    void pretty_print() {
-        for (int i = 0; i < this.num_instructions(); i++) {
-            pretty_print_instruction(instructions[i]);
-        }
-
-        for (int i = 0; i < 40; i++) {
-            log_ir("aAAA v%d: %s", i, variable_types[i]);
-        }
-    }
-
     void update_lifetime(int variable_id) {
         variable_lifetimes[variable_id] = current_instruction_index;
     }
@@ -356,127 +354,6 @@ struct IR {
 
     void breakpoint() {
         emit(IRInstructionBreakpoint());
-    }
-
-    public string disassemble() {
-        string result = "";
-        log_ir("%d instructions", num_instructions());
-
-        for (int i = 0; i < num_instructions(); i++) {
-            result ~= format("%s\n", disassemble(instructions[i]));
-        }
-
-        result ~= "\0";
-
-        return result;
-    }
-
-    private string disassemble(IRInstruction instruction) {
-        return instruction.match!(
-            (IRInstructionGetReg i) {
-                return format("ld  v%d, %s", i.dest.get_id(), i.src.to_string());
-            },
-
-            (IRInstructionSetRegVar i) {
-                return format("st  v%d, %s", i.src.get_id(), i.dest.to_string());
-            },
-
-            (IRInstructionSetRegImm i) {
-                return format("st  #0x%x, %s", i.imm, i.dest.to_string());
-            },
-
-            (IRInstructionSetFPSCR i) {
-                return format("st  v%d, FPSCR", i.src.get_id());
-            },
-
-            (IRInstructionBinaryDataOpImm i) {
-                return format("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
-            },
-
-            (IRInstructionBinaryDataOpVar i) {
-                return format("%s v%d, v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2.get_id());
-            },
-
-            (IRInstructionUnaryDataOp i) {
-                return format("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
-            },
-
-            (IRInstructionSetVarImmInt i) {
-                return format("ld  v%d, 0x%x", i.dest.get_id(), i.imm);
-            },
-
-            (IRInstructionSetVarImmFloat i) {
-                return format("ld  v%d, %f", i.dest.get_id(), i.imm);
-            },
-
-            (IRInstructionRead i) {
-                string mnemonic;
-                final switch (i.size) {
-                    case 8: mnemonic = "ldd"; break;
-                    case 4: mnemonic = "ldw"; break;
-                    case 2: mnemonic = "ldh"; break;
-                    case 1: mnemonic = "ldb"; break;
-                }
-                
-                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
-            },
-
-            (IRInstructionWrite i) {
-                string mnemonic;
-                final switch (i.size) {
-                    case 8: mnemonic = "std"; break;
-                    case 4: mnemonic = "stw"; break;
-                    case 2: mnemonic = "sth"; break;
-                    case 1: mnemonic = "stb"; break;
-                }
-                
-                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
-            },
-
-            (IRInstructionConditionalBranch i) {
-                return format("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
-            },
-
-            (IRInstructionBranch i) {
-                return format("b   #%d", i.label.instruction_index);
-            },
-
-            (IRInstructionGetHostCarry i) {
-                return format("getc v%d", i.dest.get_id());
-            },
-
-            (IRInstructionGetHostOverflow i) {
-                return format("getv v%d", i.dest.get_id());
-            },
-
-            (IRInstructionHleFunc i) {
-                return format("hle %d", i.function_id);
-            },
-
-            (IRInstructionPairedSingleMov i) {
-                return format("mov ps%d:%d, ps%d", i.dest.get_id(), i.index, i.src.get_id());
-            },
-
-            (IRInstructionReadSized i) {
-                return format("ld  v%d, [v%d] (size: %d)", i.dest.get_id(), i.address.get_id(), i.size.get_id());
-            },
-
-            (IRInstructionDebugAssert i) {
-                return format("assert v%d", i.cond.get_id());
-            },
-
-            (IRInstructionSext i) {
-                return format("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
-            },
-
-            (IRInstructionBreakpoint i) {
-                return format("bkpt");
-            },
-        );
-    }
-
-    void pretty_print_instruction(IRInstruction instruction) {
-        log_ir(disassemble(instruction));
     }
 }
 

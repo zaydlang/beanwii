@@ -4,6 +4,7 @@ import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.jit.passes.generate_recipe.helpers;
+import emu.hw.broadway.jit.passes.generate_recipe.pass;
 import util.bitop;
 import util.log;
 import util.number;
@@ -12,7 +13,7 @@ public IRVariable emit_get_hid2_pse(IR* ir) {
     return (ir.get_reg(GuestReg.HID2) >> 29) & 1;
 }
 
-public void emit_fabsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fabsx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
@@ -20,9 +21,11 @@ public void emit_fabsx(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(16, 20) == 0);
 
     ir.set_reg(rd, ir.get_reg(rb).abs());
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_faddsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_faddsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_d = opcode.bits(21, 25);
@@ -36,9 +39,11 @@ public void emit_faddsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_faddx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_faddx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -47,9 +52,11 @@ public void emit_faddx(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(6, 10) == 0);
 
     ir.set_reg(rd, ir.get_reg(ra) + ir.get_reg(rb));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fctiwx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fctiwx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
@@ -57,9 +64,11 @@ public void emit_fctiwx(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(16, 20) == 0);
 
     // ir.set_reg(rd, result.to_saturated_int());
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fdivsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fdivsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_d = opcode.bits(21, 25);
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
@@ -72,9 +81,11 @@ public void emit_fdivsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fdivx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fdivx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -83,9 +94,11 @@ public void emit_fdivx(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(6, 10) == 0);
 
     ir.set_reg(rd, ir.get_reg(ra) / ir.get_reg(rb));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmaddsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmaddsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_c = opcode.bits(6, 10);
@@ -98,9 +111,11 @@ public void emit_fmaddsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmaddx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmaddx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -110,9 +125,11 @@ public void emit_fmaddx(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable dest = ir.get_reg(ra) * ir.get_reg(rc) + ir.get_reg(rb);
     ir.set_fpscr(dest);
     ir.set_reg(rd, dest);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmr(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmr(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
@@ -120,9 +137,11 @@ public void emit_fmr(IR* ir, u32 opcode, JitContext ctx) {
     assert(opcode.bits(16, 20) == 0);
 
     ir.set_reg(rd, ir.get_reg(rb));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmsubsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmsubsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_c = opcode.bits(6, 10);
@@ -135,9 +154,11 @@ public void emit_fmsubsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmsubx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmsubx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -147,9 +168,11 @@ public void emit_fmsubx(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable dest = ir.get_reg(ra) * ir.get_reg(rc) - ir.get_reg(rb);
     ir.set_fpscr(dest);
     ir.set_reg(rd, dest);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmulsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmulsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(6,  10);
     int op_d = opcode.bits(21, 25);
@@ -162,26 +185,32 @@ public void emit_fmulsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fmulx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fmulx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rc = to_fpr(opcode.bits(6,  10));
     bool record = opcode.bit(0);
 
     ir.set_reg(rd, ir.get_reg(ra) * ir.get_reg(rc));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnegx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnegx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
     bool record = opcode.bit(0);
 
     ir.set_reg(rd, -ir.get_reg(rb));
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnmaddsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnmaddsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_c = opcode.bits(6, 10);
@@ -194,9 +223,11 @@ public void emit_fnmaddsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnmaddx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnmaddx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -206,9 +237,11 @@ public void emit_fnmaddx(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable dest = -(ir.get_reg(ra) * ir.get_reg(rc) + ir.get_reg(rb));
     ir.set_fpscr(dest);
     ir.set_reg(rd, dest);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnmsubsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnmsubsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_c = opcode.bits(6, 10);
@@ -221,9 +254,11 @@ public void emit_fnmsubsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnmsubx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnmsubx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -233,18 +268,22 @@ public void emit_fnmsubx(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable dest = -(ir.get_reg(ra) * ir.get_reg(rc) - ir.get_reg(rb));
     ir.set_fpscr(dest);
     ir.set_reg(rd, dest);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fnabsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fnabsx(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
 
     assert(opcode.bits(16, 20) == 0b00000);
 
     ir.set_reg(rd, -ir.get_reg(rb).abs());
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fresx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fresx(IR* ir, u32 opcode, JitContext ctx) {
     int op_b = opcode.bits(11, 15);
     int op_d = opcode.bits(21, 25);
     bool record = opcode.bit(0);
@@ -257,9 +296,11 @@ public void emit_fresx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fsel(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fsel(IR* ir, u32 opcode, JitContext ctx) {
     GuestReg rd = to_fpr(opcode.bits(21, 25));
     GuestReg ra = to_fpr(opcode.bits(16, 20));
     GuestReg rb = to_fpr(opcode.bits(11, 15));
@@ -272,9 +313,11 @@ public void emit_fsel(IR* ir, u32 opcode, JitContext ctx) {
     });
 
     ir.set_reg(rd, dest);
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_fsubsx(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_fsubsx(IR* ir, u32 opcode, JitContext ctx) {
     int op_a = opcode.bits(16, 20);
     int op_b = opcode.bits(11, 15);
     int op_d = opcode.bits(21, 25);
@@ -287,9 +330,11 @@ public void emit_fsubsx(IR* ir, u32 opcode, JitContext ctx) {
     if (ctx.pse) {
         ir.set_reg(to_ps1(op_d), result);
     }
+
+    return GenerateRecipeAction.CONTINUE;
 }
 
-public void emit_mftsb1(IR* ir, u32 opcode, JitContext ctx) {
+public GenerateRecipeAction emit_mftsb1(IR* ir, u32 opcode, JitContext ctx) {
     int bit = opcode.bits(21, 25);
     bool record = opcode.bit(0);
 
@@ -300,4 +345,6 @@ public void emit_mftsb1(IR* ir, u32 opcode, JitContext ctx) {
     assert(!record);
 
     ir.set_reg(GuestReg.FPSCR, ir.get_reg(GuestReg.FPSCR) | ir.constant(1 << bit));
+
+    return GenerateRecipeAction.CONTINUE;
 }
