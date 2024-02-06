@@ -16,21 +16,21 @@ alias RecipeAction = SumType!(
 );
 
 struct RecipeActionInsertAfter {
-    IRInstruction instr;
+    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
 struct RecipeActionInsertBefore {
-    IRInstruction instr;
+    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
 struct RecipeActionRemove {
-    IRInstruction instr;
+    IRInstruction* instr;
 }
 
 struct RecipeActionReplace {
-    IRInstruction instr;
+    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
@@ -38,26 +38,28 @@ struct RecipeActionDoNothing {
 }
 
 interface RecipeMap {
-    RecipeAction func(IRInstruction instr);
+    RecipeAction func(IRInstruction* instr);
 }
 
-final class IRInstructionLinkedListElement {
+struct IRInstructionLinkedListElement {
     public IRInstruction instr;
-    public IRInstructionLinkedListElement next;
-    public IRInstructionLinkedListElement prev;
+    public IRInstructionLinkedListElement* next;
+    public IRInstructionLinkedListElement* prev;
 
     this(IRInstruction instr) {
         this.instr = instr;
+        this.next  = null;
+        this.prev  = null;
     }
 }
 
-static IRInstructionLinkedListElement linked_list_element_from_instruction(IRInstruction* instr) {
-    return cast(IRInstructionLinkedListElement) (instr + IRInstruction.sizeof);
+static IRInstructionLinkedListElement* linked_list_element_from_instruction(IRInstruction* instr) {
+    return cast(IRInstructionLinkedListElement*) (cast(void*) instr - IRInstructionLinkedListElement.instr.offsetof);
 }
 
 final class IRInstructionLinkedList {
-    private IRInstructionLinkedListElement head;
-    private IRInstructionLinkedListElement tail;
+    private IRInstructionLinkedListElement* head;
+    private IRInstructionLinkedListElement* tail;
     private size_t length;
 
     this(IRInstruction[] instrs) {
@@ -71,7 +73,7 @@ final class IRInstructionLinkedList {
     }
 
     public void append(IRInstruction instr) {
-        IRInstructionLinkedListElement new_element = new IRInstructionLinkedListElement(instr);
+        IRInstructionLinkedListElement* new_element = new IRInstructionLinkedListElement(instr);
         if (head is null) {
             head = new_element;
             tail = new_element;
@@ -84,11 +86,11 @@ final class IRInstructionLinkedList {
         this.length += 1;
     }
 
-    public void insertAfter(IRInstruction instr, IRInstruction[] new_instrs) {
-        IRInstructionLinkedListElement element = linked_list_element_from_instruction(&instr);
-        IRInstructionLinkedListElement next = element.next;
+    public void insertAfter(IRInstruction* instr, IRInstruction[] new_instrs) {
+        IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
+        IRInstructionLinkedListElement* next = element.next;
         foreach (new_instr; new_instrs) {
-            IRInstructionLinkedListElement new_element = new IRInstructionLinkedListElement(new_instr);
+            IRInstructionLinkedListElement* new_element = new IRInstructionLinkedListElement(new_instr);
             new_element.prev = element;
             new_element.next = next;
             element.next = new_element;
@@ -104,11 +106,11 @@ final class IRInstructionLinkedList {
         this.length += new_instrs.length;
     }
 
-    public void insertBefore(IRInstruction instr, IRInstruction[] new_instrs) {
-        IRInstructionLinkedListElement element = linked_list_element_from_instruction(&instr);
-        IRInstructionLinkedListElement prev = element.prev;
+    public void insertBefore(IRInstruction* instr, IRInstruction[] new_instrs) {
+        IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
+        IRInstructionLinkedListElement* prev = element.prev;
         foreach (new_instr; new_instrs) {
-            IRInstructionLinkedListElement new_element = new IRInstructionLinkedListElement(new_instr);
+            IRInstructionLinkedListElement* new_element = new IRInstructionLinkedListElement(new_instr);
             new_element.prev = prev;
             new_element.next = element;
             element.prev = new_element;
@@ -124,10 +126,10 @@ final class IRInstructionLinkedList {
         this.length += new_instrs.length;
     }
 
-    public void remove(IRInstruction instr) {
-        IRInstructionLinkedListElement element = linked_list_element_from_instruction(&instr);
-        IRInstructionLinkedListElement prev = element.prev;
-        IRInstructionLinkedListElement next = element.next;
+    public void remove(IRInstruction* instr) {
+        IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
+        IRInstructionLinkedListElement* prev = element.prev;
+        IRInstructionLinkedListElement* next = element.next;
         if (prev !is null) {
             prev.next = next;
         }
@@ -144,9 +146,36 @@ final class IRInstructionLinkedList {
         this.length -= 1;
     }
 
-    public void replace(IRInstruction instr, IRInstruction[] new_instrs) {
-        insertAfter(instr, new_instrs);
-        remove(instr);
+    public void replace(IRInstruction* instr, IRInstruction[] new_instrs) {
+        IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
+        IRInstructionLinkedListElement* prev = element.prev;
+        IRInstructionLinkedListElement* next = element.next;
+
+        foreach (new_instr; new_instrs) {
+            IRInstructionLinkedListElement* new_element = new IRInstructionLinkedListElement(new_instr);
+            new_element.prev = prev;
+            new_element.next = next;
+            
+            if (prev !is null) {
+                prev.next = new_element;
+            }
+
+            if (next !is null) {
+                next.prev = new_element;
+            }
+
+            if (head == element) {
+                head = new_element;
+            }
+
+            if (tail == element) {
+                tail = new_element;
+            }
+
+            prev = new_element;
+        }
+
+        this.length += new_instrs.length - 1;
     }
 }
 
@@ -157,27 +186,27 @@ final class Recipe {
         instructions = new IRInstructionLinkedList(instrs);
     }
 
-    public void insert_after(IRInstruction instr, IRInstruction[] new_instrs) {
+    public void insert_after(IRInstruction* instr, IRInstruction[] new_instrs) {
         instructions.insertAfter(instr, new_instrs);
     }
 
-    public void insert_before(IRInstruction instr, IRInstruction[] new_instrs) {
+    public void insert_before(IRInstruction* instr, IRInstruction[] new_instrs) {
         instructions.insertBefore(instr, new_instrs);
     }
 
-    public void remove(IRInstruction instr) {
+    public void remove(IRInstruction* instr) {
         instructions.remove(instr);
     }
 
-    public void replace(IRInstruction instr, IRInstruction[] new_instrs) {
-        instructions.insertAfter(instr, new_instrs);
-        instructions.remove(instr);
+    public void replace(IRInstruction* instr, IRInstruction[] new_instrs) {
+        instructions.replace(instr, new_instrs);
     }
 
     public void map(RecipeMap recipe_map) {
         auto element = instructions.head;
+    
         while (element !is null) {
-            RecipeAction action = recipe_map.func(element.instr);
+            RecipeAction action = recipe_map.func(&element.instr);
             action.match!(
                 (RecipeActionInsertAfter action) {
                     insert_after(action.instr, action.new_instrs);
@@ -220,11 +249,11 @@ final class Recipe {
     private string to_string(IRInstruction instruction) {
         return instruction.match!(
             (IRInstructionGetReg i) {
-                return format("ld  v%d, %s", i.dest.get_id(), i.src.to_string());
+                return format("ld  v%d, %s", i.dest.id, i.src.to_string());
             },
 
             (IRInstructionSetRegVar i) {
-                return format("st  v%d, %s", i.src.get_id(), i.dest.to_string());
+                return format("st  v%d, %s", i.src.id, i.dest.to_string());
             },
 
             (IRInstructionSetRegImm i) {
@@ -232,27 +261,27 @@ final class Recipe {
             },
 
             (IRInstructionSetFPSCR i) {
-                return format("st  v%d, FPSCR", i.src.get_id());
+                return format("st  v%d, FPSCR", i.src.id);
             },
 
             (IRInstructionBinaryDataOpImm i) {
-                return format("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2);
+                return format("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.id, i.src1.id, i.src2);
             },
 
             (IRInstructionBinaryDataOpVar i) {
-                return format("%s v%d, v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src1.get_id(), i.src2.get_id());
+                return format("%s v%d, v%d, v%d", i.op.to_string(), i.dest.id, i.src1.id, i.src2.id);
             },
 
             (IRInstructionUnaryDataOp i) {
-                return format("%s v%d, v%d", i.op.to_string(), i.dest.get_id(), i.src.get_id());
+                return format("%s v%d, v%d", i.op.to_string(), i.dest.id, i.src.id);
             },
 
             (IRInstructionSetVarImmInt i) {
-                return format("ld  v%d, 0x%x", i.dest.get_id(), i.imm);
+                return format("ld  v%d, 0x%x", i.dest.id, i.imm);
             },
 
             (IRInstructionSetVarImmFloat i) {
-                return format("ld  v%d, %f", i.dest.get_id(), i.imm);
+                return format("ld  v%d, %f", i.dest.id, i.imm);
             },
 
             (IRInstructionRead i) {
@@ -264,7 +293,7 @@ final class Recipe {
                     case 1: mnemonic = "ldb"; break;
                 }
                 
-                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                return format("%s  r%d, [v%d]", mnemonic, i.dest.id, i.address.id);
             },
 
             (IRInstructionWrite i) {
@@ -276,11 +305,11 @@ final class Recipe {
                     case 1: mnemonic = "stb"; break;
                 }
                 
-                return format("%s  r%d, [v%d]", mnemonic, i.dest.get_id(), i.address.get_id());
+                return format("%s  r%d, [v%d]", mnemonic, i.dest.id, i.address.id);
             },
 
             (IRInstructionConditionalBranch i) {
-                return format("bne v%d, #%d", i.cond.get_id(), i.after_true_label.instruction_index);
+                return format("bne v%d, #%d", i.cond.id, i.after_true_label.instruction_index);
             },
 
             (IRInstructionBranch i) {
@@ -288,11 +317,11 @@ final class Recipe {
             },
 
             (IRInstructionGetHostCarry i) {
-                return format("getc v%d", i.dest.get_id());
+                return format("getc v%d", i.dest.id);
             },
 
             (IRInstructionGetHostOverflow i) {
-                return format("getv v%d", i.dest.get_id());
+                return format("getv v%d", i.dest.id);
             },
 
             (IRInstructionHleFunc i) {
@@ -300,24 +329,43 @@ final class Recipe {
             },
 
             (IRInstructionPairedSingleMov i) {
-                return format("mov ps%d:%d, ps%d", i.dest.get_id(), i.index, i.src.get_id());
+                return format("mov ps%d:%d, ps%d", i.dest.id, i.index, i.src.id);
             },
 
             (IRInstructionReadSized i) {
-                return format("ld  v%d, [v%d] (size: %d)", i.dest.get_id(), i.address.get_id(), i.size.get_id());
+                return format("ld  v%d, [v%d] (size: %d)", i.dest.id, i.address.id, i.size.id);
             },
 
             (IRInstructionDebugAssert i) {
-                return format("assert v%d", i.cond.get_id());
+                return format("assert v%d", i.cond.id);
             },
 
             (IRInstructionSext i) {
-                return format("sext v%d, v%d, %d", i.dest.get_id(), i.src.get_id(), i.bits);
+                return format("sext v%d, v%d, %d", i.dest.id, i.src.id, i.bits);
             },
 
             (IRInstructionBreakpoint i) {
                 return format("bkpt");
             },
         );
+    }
+
+    public bool opEquals(S)(auto ref const S other) const {
+        if (other.length() != this.length()) {
+            return false;
+        }
+
+        auto element = instructions.head;
+        auto other_element = other.instructions.head;
+        while (element !is null) {
+            if (element.instr != other_element.instr) {
+                return false;
+            }
+
+            element = element.next;
+            other_element = other_element.next;
+        }
+
+        return true;
     }
 }

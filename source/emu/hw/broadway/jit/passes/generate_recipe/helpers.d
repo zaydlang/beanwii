@@ -9,6 +9,8 @@ import util.bitop;
 import util.log;
 import util.number;
 
+alias IRVariable = IRVariableGenerator;
+
 public void emit_add_generic(IR* ir, GuestReg rd, IRVariable op1, IRVariable op2, bool rc, bool affect_ca, bool affect_so_ov) {
     IRVariable result = op1 + op2;
     

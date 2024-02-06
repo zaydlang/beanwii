@@ -9,6 +9,8 @@ import util.bitop;
 import util.log;
 import util.number;
 
+alias IRVariable = IRVariableGenerator;
+
 public IRVariable emit_get_hid2_pse(IR* ir) {
     return (ir.get_reg(GuestReg.HID2) >> 29) & 1;
 }

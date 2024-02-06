@@ -9,6 +9,8 @@ import util.bitop;
 import util.log;
 import util.number;
 
+alias IRVariable = IRVariableGenerator;
+
 public GenerateRecipeAction emit_psq_l(IR* ir, u32 opcode, JitContext ctx) {
     // GuestReg rd  = to_ps (opcode.bits(21, 25));
     // GuestReg ra  = to_gpr(opcode.bits(16, 20));

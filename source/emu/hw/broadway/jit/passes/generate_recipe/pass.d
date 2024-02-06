@@ -13,6 +13,8 @@ import util.bitop;
 import util.log;
 import util.number;
 
+alias IRVariable = IRVariableGenerator;
+
 enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
 
 enum GenerateRecipeAction {

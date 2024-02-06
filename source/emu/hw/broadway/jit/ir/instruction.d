@@ -33,8 +33,8 @@ alias IRInstruction = SumType!(
 
 struct IR {
     struct PhiFunctionTransmuation {
-        IRVariable from;
-        IRVariable to;
+        IRVariableGenerator from;
+        IRVariableGenerator to;
     }
 
     enum MAX_IR_INSTRUCTIONS   = 0x10000;
@@ -51,9 +51,9 @@ struct IR {
     size_t current_transmutation_index;
     PhiFunctionTransmuation[MAX_IR_TRANSMUTATIONS] transmutations;
 
-    // this has to be kept track of locally - not within an IRVariable. two reasons.
-    // 1) i want IRVariables to be small and lightweight
-    // 2) i want IRVariables to be able to be copied around without having to worry about
+    // this has to be kept track of locally - not within an IRVariableGenerator. two reasons.
+    // 1) i want IRVariableGenerators to be small and lightweight
+    // 2) i want IRVariableGenerators to be able to be copied around without having to worry about
     //   updating the type of the variable
     IRVariableType[MAX_IR_VARIABLES] variable_types;
 
@@ -105,121 +105,121 @@ struct IR {
         return current_variable_id++;
     }
     
-    IRVariable generate_new_variable(IRVariableType type) {
+    IRVariableGenerator generate_new_variable(IRVariableType type) {
         int id = generate_new_variable_id();
         variable_types[id] = type;
-        return IRVariable(&this, id);
+        return IRVariableGenerator(&this, id);
     }
 
-    void set_type(IRVariable variable, IRVariableType type) {
+    void set_type(IRVariableGenerator variable, IRVariableType type) {
         variable_types[variable.variable_id] = type;
     }
 
 
-    IRVariableType get_type(IRVariable variable) {
+    IRVariableType get_type(IRVariableGenerator variable) {
         return variable_types[variable.variable_id];
     }
 
-    IRVariable constant(int constant) {
-        IRVariable dest = generate_new_variable(IRVariableType.INTEGER);
-        emit(IRInstructionSetVarImmInt(dest, constant));
+    IRVariableGenerator constant(int constant) {
+        IRVariableGenerator dest = generate_new_variable(IRVariableType.INTEGER);
+        emit(IRInstructionSetVarImmInt(dest.get_variable(), constant));
         
         return dest;
     }
 
-    IRVariable constant(float constant) {
-        IRVariable dest = generate_new_variable(IRVariableType.FLOAT);
-        emit(IRInstructionSetVarImmFloat(dest, constant));
+    IRVariableGenerator constant(float constant) {
+        IRVariableGenerator dest = generate_new_variable(IRVariableType.FLOAT);
+        emit(IRInstructionSetVarImmFloat(dest.get_variable(), constant));
         
         return dest;
     }
 
-    IRVariable constant(double constant) {
-        IRVariable dest = generate_new_variable(IRVariableType.DOUBLE);
-        emit(IRInstructionSetVarImmFloat(dest, constant));
+    IRVariableGenerator constant(double constant) {
+        IRVariableGenerator dest = generate_new_variable(IRVariableType.DOUBLE);
+        emit(IRInstructionSetVarImmFloat(dest.get_variable(), constant));
         
         return dest;
     }
 
-    IRVariable read_sized(IRVariable address, IRVariable size) {
-        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+    IRVariableGenerator read_sized(IRVariableGenerator address, IRVariableGenerator size) {
+        IRVariableGenerator value = generate_new_variable(IRVariableType.INTEGER);
 
         address.update_lifetime();
         size.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionReadSized(value, address, size));
+        emit(IRInstructionReadSized(value.get_variable(), address.get_variable(), size.get_variable()));
 
         return value;
     }
 
-    IRVariable read_u8(IRVariable address) {
-        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+    IRVariableGenerator read_u8(IRVariableGenerator address) {
+        IRVariableGenerator value = generate_new_variable(IRVariableType.INTEGER);
 
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionRead(value, address, u8.sizeof));
+        emit(IRInstructionRead(value.get_variable(), address.get_variable(), u8.sizeof));
 
         return value;
     }
 
-    IRVariable read_u16(IRVariable address) {
-        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+    IRVariableGenerator read_u16(IRVariableGenerator address) {
+        IRVariableGenerator value = generate_new_variable(IRVariableType.INTEGER);
 
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionRead(value, address, u16.sizeof));
+        emit(IRInstructionRead(value.get_variable(), address.get_variable(), u16.sizeof));
 
         return value;
     }
 
-    IRVariable read_u32(IRVariable address) {
-        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+    IRVariableGenerator read_u32(IRVariableGenerator address) {
+        IRVariableGenerator value = generate_new_variable(IRVariableType.INTEGER);
         
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionRead(value, address, u32.sizeof));
+        emit(IRInstructionRead(value.get_variable(), address.get_variable(), u32.sizeof));
 
         return value;
     }
 
-    IRVariable read_u64(IRVariable address) {
-        IRVariable value = generate_new_variable(IRVariableType.INTEGER);
+    IRVariableGenerator read_u64(IRVariableGenerator address) {
+        IRVariableGenerator value = generate_new_variable(IRVariableType.INTEGER);
         
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionRead(value, address, u64.sizeof));
+        emit(IRInstructionRead(value.get_variable(), address.get_variable(), u64.sizeof));
 
         return value;
     }
 
-    void write_u8(IRVariable address, IRVariable value) {
+    void write_u8(IRVariableGenerator address, IRVariableGenerator value) {
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionWrite(value, address, u8.sizeof));
+        emit(IRInstructionWrite(value.get_variable(), address.get_variable(), u8.sizeof));
     }
 
-    void write_u16(IRVariable address, IRVariable value) {
+    void write_u16(IRVariableGenerator address, IRVariableGenerator value) {
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionWrite(value, address, u16.sizeof));
+        emit(IRInstructionWrite(value.get_variable(), address.get_variable(), u16.sizeof));
     }
 
-    void write_u32(IRVariable address, IRVariable value) {
+    void write_u32(IRVariableGenerator address, IRVariableGenerator value) {
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionWrite(value, address, u32.sizeof));
+        emit(IRInstructionWrite(value.get_variable(), address.get_variable(), u32.sizeof));
     }
 
-    void write_u64(IRVariable address, IRVariable value) {
+    void write_u64(IRVariableGenerator address, IRVariableGenerator value) {
         address.update_lifetime();
         value.update_lifetime();
-        emit(IRInstructionWrite(value, address, u64.sizeof));
+        emit(IRInstructionWrite(value.get_variable(), address.get_variable(), u64.sizeof));
     }
 
-    IRVariable get_reg(GuestReg reg) {
+    IRVariableGenerator get_reg(GuestReg reg) {
         IRVariableType type = get_variable_type_from_guest_reg(reg);
-        IRVariable variable = generate_new_variable(type);
-        emit(IRInstructionGetReg(variable, reg));
+        IRVariableGenerator variable = generate_new_variable(type);
+        emit(IRInstructionGetReg(variable.get_variable(), reg));
 
         if (reg == GuestReg.PC) {
             variable = variable - 4;
@@ -228,18 +228,18 @@ struct IR {
         return variable;
     }
 
-    void set_reg(GuestReg reg, IRVariable variable) {
+    void set_reg(GuestReg reg, IRVariableGenerator variable) {
         variable.update_lifetime();
-        emit(IRInstructionSetRegVar(reg, variable));
+        emit(IRInstructionSetRegVar(reg, variable.get_variable()));
     }
 
     void set_reg(GuestReg reg, u32 imm) {
         emit(IRInstructionSetRegImm(reg, imm));
     }
 
-    void set_fpscr(IRVariable dest) {
+    void set_fpscr(IRVariableGenerator dest) {
         dest.update_lifetime();
-        emit(IRInstructionSetFPSCR(dest));
+        emit(IRInstructionSetFPSCR(dest.get_variable()));
     }
 
     IRLabel* generate_new_label() {
@@ -250,10 +250,10 @@ struct IR {
         return label;
     }
 
-    void _if_no_phi(IRVariable cond, void delegate() true_case) {
+    void _if_no_phi(IRVariableGenerator cond, void delegate() true_case) {
         IRLabel* after_true_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
+        this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
 
         this.update_lifetime(cond.variable_id);
 
@@ -262,11 +262,11 @@ struct IR {
     }
     
 
-    void _if_no_phi(IRVariable cond, void delegate() true_case, void delegate() false_case) {
+    void _if_no_phi(IRVariableGenerator cond, void delegate() true_case, void delegate() false_case) {
         IRLabel* after_true_label = generate_new_label();
         IRLabel* after_false_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond, after_true_label));
+        this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
 
         this.update_lifetime(cond.variable_id);
 
@@ -277,11 +277,11 @@ struct IR {
         this.bind_label(after_false_label); 
     }
 
-    void _if(IRVariable cond, void delegate() true_case) {
+    void _if(IRVariableGenerator cond, void delegate() true_case) {
         IRLabel* after_true_label   = generate_new_label();
         IRLabel* phi_function_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond, phi_function_label));
+        this.emit(IRInstructionConditionalBranch(cond.get_variable(), phi_function_label));
 
         this.update_lifetime(cond.variable_id);
 
@@ -300,8 +300,8 @@ struct IR {
             
             this.emit(IRInstructionUnaryDataOp(
                 IRUnaryDataOp.MOV, 
-                IRVariable(&this, transmutation.to.variable_id, ),
-                IRVariable(&this, transmutation.from.variable_id)
+                IRVariableGenerator(&this, transmutation.to.variable_id, ).get_variable(),
+                IRVariableGenerator(&this, transmutation.from.variable_id).get_variable()
             ));
         }
 
@@ -316,15 +316,15 @@ struct IR {
         this.emit(IRInstructionHleFunc(function_id));
     }
 
-    IRVariable get_carry() {
-        IRVariable carry = generate_new_variable(IRVariableType.INTEGER);
-        this.emit(IRInstructionGetHostCarry(carry));
+    IRVariableGenerator get_carry() {
+        IRVariableGenerator carry = generate_new_variable(IRVariableType.INTEGER);
+        this.emit(IRInstructionGetHostCarry(carry.get_variable()));
         return carry;
     }
 
-    IRVariable get_overflow() {
-        IRVariable overflow = generate_new_variable(IRVariableType.INTEGER);
-        this.emit(IRInstructionGetHostOverflow(overflow));
+    IRVariableGenerator get_overflow() {
+        IRVariableGenerator overflow = generate_new_variable(IRVariableType.INTEGER);
+        this.emit(IRInstructionGetHostOverflow(overflow.get_variable()));
         return overflow;
     }
 
@@ -336,14 +336,14 @@ struct IR {
         return variable_lifetimes[variable_id];
     }
 
-    void debug_assert(IRVariable condition) {
+    void debug_assert(IRVariableGenerator condition) {
         condition.update_lifetime();
-        emit(IRInstructionDebugAssert(condition));
+        emit(IRInstructionDebugAssert(condition.get_variable()));
     }
 
-    // used to notify the IR that an IRVariable's ID has changed. necessary for implementing
+    // used to notify the IR that an IRVariableGenerator's ID has changed. necessary for implementing
     // phi functions for SSA (used for ir._if)
-    void log_transmuation(IRVariable from, IRVariable to) {
+    void log_transmuation(IRVariableGenerator from, IRVariableGenerator to) {
         transmutations[current_transmutation_index].from.variable_id = from.variable_id;
         transmutations[current_transmutation_index].to.variable_id   = to.variable_id;
         variable_types[from.variable_id] = get_type(from);
@@ -375,8 +375,12 @@ private IRVariableType get_variable_type_from_guest_reg(GuestReg guest_reg) {
 }
 
 struct IRVariable {
+    public int id;
+}
+
+struct IRVariableGenerator {
     // Note that these are static single assignment variables, which means that
-    // they can only be assigned to once. Any attempt to mutate an IRVariable
+    // they can only be assigned to once. Any attempt to mutate an IRVariableGenerator
     // after it has been assigned to will result in a new variable being created
     // and returned. 
 
@@ -388,25 +392,25 @@ struct IRVariable {
         this.ir          = ir;
     }
 
-    IRVariable opBinary(string s)(IRVariable other) {
+    IRVariableGenerator opBinary(string s)(IRVariableGenerator other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
         // assert(this.get_type() == other.get_type());
         IRVariableType type = this.get_type();
 
-        IRVariable dest = ir.generate_new_variable(type);
+        IRVariableGenerator dest = ir.generate_new_variable(type);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(op, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(op, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    IRVariable opBinary(string s)(int other) {
+    IRVariableGenerator opBinary(string s)(int other) {
         IRBinaryDataOp op = get_binary_data_op!s;
 
         IRVariableType type = IRVariableType.INTEGER;
@@ -414,23 +418,23 @@ struct IRVariable {
             type = IRVariableType.DOUBLE;
         }
 
-        IRVariable dest = ir.generate_new_variable(type);
+        IRVariableGenerator dest = ir.generate_new_variable(type);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpImm(op, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpImm(op, dest.get_variable(), this.get_variable(), other));
 
         return dest;
     }
 
-    void opIndexAssign(IRVariable other, size_t index) {
+    void opIndexAssign(IRVariableGenerator other, size_t index) {
         assert(ir.get_type(this)  == IRVariableType.PAIRED_SINGLE);
         assert(ir.get_type(other) == IRVariableType.DOUBLE);
         assert(index < 2);
 
-        IRVariable old = this;
+        IRVariableGenerator old = this;
         this.variable_id = ir.generate_new_variable_id();
         ir.set_type(this, IRVariableType.PAIRED_SINGLE);
         ir.log_transmuation(old, this);
@@ -438,92 +442,92 @@ struct IRVariable {
         this.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionPairedSingleMov(this, other, cast(int) index));
+        ir.emit(IRInstructionPairedSingleMov(this.get_variable(), other.get_variable(), cast(int) index));
     }
 
     // TODO: refactor to clean up
     // as it stands i don't care enough to do it
 
-    public IRVariable greater_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator greater_unsigned(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTU, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTU, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    public IRVariable lesser_unsigned(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator lesser_unsigned(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTU, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTU, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    public IRVariable greater_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator greater_signed(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTS, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTS, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    public IRVariable lesser_signed(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator lesser_signed(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTS, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTS, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    public IRVariable equals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator equals(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.EQ, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.EQ, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    public IRVariable notequals(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+    public IRVariableGenerator notequals(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.NE, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.NE, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
     
-    void opAssign(IRVariable rhs) {
-        IRVariable old = this;
+    void opAssign(IRVariableGenerator rhs) {
+        IRVariableGenerator old = this;
         this.variable_id = ir.generate_new_variable_id();
         ir.set_type(this, ir.get_type(rhs));
         ir.log_transmuation(old, this);
@@ -531,11 +535,11 @@ struct IRVariable {
         this.update_lifetime();
         rhs.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, this, rhs));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, this.get_variable(), rhs.get_variable()));
     }
 
-    IRVariable opUnary(string s)() {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator opUnary(string s)() {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         IRUnaryDataOp op = get_unary_data_op!s;
@@ -543,191 +547,191 @@ struct IRVariable {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(op, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(op, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable rol(int amount) {
+    IRVariableGenerator rol(int amount) {
         assert(0 <= amount && amount <= 31);
 
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
         
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest, this, amount));
+        ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), amount));
 
         return dest;
     }
 
-    IRVariable rol(IRVariable amount) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
-        ir.log_transmuation(this, dest);
-        
-        this.update_lifetime();
-        amount.update_lifetime();
-        dest.update_lifetime();
-
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.ROL, dest, this, amount));
-
-        return dest;
-    }
-
-    IRVariable multiply_high(IRVariable amount) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator rol(IRVariableGenerator amount) {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
         
         this.update_lifetime();
         amount.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHI, dest, this, amount));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), amount.get_variable()));
 
         return dest;
     }
 
-    IRVariable abs() {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
-        ir.log_transmuation(this, dest);
-        
-        this.update_lifetime();
-        dest.update_lifetime();
-
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.ABS, dest, this));
-
-        return dest;
-    }
-
-    IRVariable multiply_high_signed(IRVariable amount) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator multiply_high(IRVariableGenerator amount) {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
         
         this.update_lifetime();
         amount.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHS, dest, this, amount));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHI, dest.get_variable(), this.get_variable(), amount.get_variable()));
 
         return dest;
     }
 
-    IRVariable ctz() {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator abs() {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.ABS, dest.get_variable(), this.get_variable()));
+
+        return dest;
+    }
+
+    IRVariableGenerator multiply_high_signed(IRVariableGenerator amount) {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
+        ir.log_transmuation(this, dest);
+        
+        this.update_lifetime();
+        amount.update_lifetime();
+        dest.update_lifetime();
+
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHS, dest.get_variable(), this.get_variable(), amount.get_variable()));
+
+        return dest;
+    }
+
+    IRVariableGenerator ctz() {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CTZ, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CTZ, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable clz() {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator clz() {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable popcnt() {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator popcnt() {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.POPCNT, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.POPCNT, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable unsigned_div(IRVariable other) {
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+    IRVariableGenerator unsigned_div(IRVariableGenerator other) {
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.UDIV, dest, this, other));
+        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.UDIV, dest.get_variable(), this.get_variable(), other.get_variable()));
 
         return dest;
     }
 
-    IRVariable to_float() {
+    IRVariableGenerator to_float() {
         assert(ir.get_type(this) == IRVariableType.INTEGER);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.DOUBLE);
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.DOUBLE);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_CAST, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable to_int() {
+    IRVariableGenerator to_int() {
         assert(ir.get_type(this) == IRVariableType.DOUBLE);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.INT_CAST, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.INT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable to_saturated_int() {
+    IRVariableGenerator to_saturated_int() {
         assert(ir.get_type(this) == IRVariableType.DOUBLE);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.INTEGER);
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.INTEGER);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.SATURATED_INT_CAST, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.SATURATED_INT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable interpret_as_float() {
+    IRVariableGenerator interpret_as_float() {
         assert(ir.get_type(this) == IRVariableType.INTEGER);
 
-        IRVariable dest = ir.generate_new_variable(IRVariableType.DOUBLE);
+        IRVariableGenerator dest = ir.generate_new_variable(IRVariableType.DOUBLE);
         ir.log_transmuation(this, dest);
 
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_INTERP, dest, this));
+        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_INTERP, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
 
-    IRVariable sext(int bits) {
+    IRVariableGenerator sext(int bits) {
         assert(bits == 8 || bits == 16);
 
-        IRVariable dest = ir.generate_new_variable(ir.get_type(this));
+        IRVariableGenerator dest = ir.generate_new_variable(ir.get_type(this));
         ir.log_transmuation(this, dest);
         
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionSext(dest, this, bits));
+        ir.emit(IRInstructionSext(dest.get_variable(), this.get_variable(), bits));
 
         return dest;
     }
@@ -768,6 +772,10 @@ struct IRVariable {
 
     IRVariableType get_type() {
         return ir.get_type(this);
+    }
+
+    IRVariable get_variable() {
+        return IRVariable(this.get_id());
     }
 }
 
