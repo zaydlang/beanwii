@@ -12,12 +12,14 @@ final class OptimizeGetReg : RecipeMap {
     override public RecipeAction func(IRInstruction* instr) {
         return (*instr).match!(
             (IRInstructionGetReg i) {
-                import std.stdio;
                 if (!i.src.is_read_volatile()) {
                     if (i.src in reg_map) {
-                        writefln("OptimizeGetReg: Replacing %s with %s", i.src, reg_map[i.src]);
-                        return cast(RecipeAction) RecipeActionReplace(instr,
-                            cast(IRInstruction[]) [cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, i.dest, reg_map[i.src])]);
+                        auto replaced_src = reg_map[i.src];
+                        reg_map[i.src] = i.dest;
+
+                        return cast(RecipeAction) 
+                            RecipeActionReplace(instr,
+                                [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
                     }
 
                     reg_map[i.src] = i.dest;
@@ -32,6 +34,6 @@ final class OptimizeGetReg : RecipeMap {
             },
 
             _ => cast(RecipeAction) RecipeActionDoNothing()
-    );        
+        );        
     }
 }

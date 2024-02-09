@@ -31,6 +31,92 @@ alias IRInstruction = SumType!(
     IRInstructionBreakpoint
 );
 
+final class Instruction {
+    static IRInstruction GetReg(IRVariable variable, GuestReg guest_reg) {
+        return cast(IRInstruction) IRInstructionGetReg(variable, guest_reg);
+    }
+
+    static IRInstruction SetRegVar(GuestReg guest_reg, IRVariable variable) {
+        return cast(IRInstruction) IRInstructionSetRegVar(guest_reg, variable);
+    }
+
+    static IRInstruction SetRegImm(GuestReg guest_reg, int imm) {
+        return cast(IRInstruction) IRInstructionSetRegImm(guest_reg, imm);
+    }
+
+    static IRInstruction SetFPSCR(IRVariable variable) {
+        return cast(IRInstruction) IRInstructionSetFPSCR(variable);
+    }
+
+    static IRInstruction BinaryDataOpImm(IRBinaryDataOp op, IRVariable dest, IRVariable src, int imm) {
+        return cast(IRInstruction) IRInstructionBinaryDataOpImm(op, dest, src, imm);
+    }
+
+    static IRInstruction BinaryDataOpVar(IRBinaryDataOp op, IRVariable dest, IRVariable src1, IRVariable src2) {
+        return cast(IRInstruction) IRInstructionBinaryDataOpVar(op, dest, src1, src2);
+    }
+
+    static IRInstruction UnaryDataOp(IRUnaryDataOp op, IRVariable dest, IRVariable src) {
+        return cast(IRInstruction) IRInstructionUnaryDataOp(op, dest, src);
+    }
+
+    static IRInstruction SetVarImmInt(IRVariable dest, int imm) {
+        return cast(IRInstruction) IRInstructionSetVarImmInt(dest, imm);
+    }
+
+    static IRInstruction SetVarImmFloat(IRVariable dest, float imm) {
+        return cast(IRInstruction) IRInstructionSetVarImmFloat(dest, imm);
+    }
+
+    static IRInstruction Read(IRVariable dest, IRVariable src, int size) {
+        return cast(IRInstruction) IRInstructionRead(dest, src, size);
+    }
+
+    static IRInstruction Write(IRVariable dest, IRVariable src, int size) {
+        return cast(IRInstruction) IRInstructionWrite(dest, src, size);
+    }
+
+    static IRInstruction ReadSized(IRVariable dest, IRVariable src, IRVariable size) {
+        return cast(IRInstruction) IRInstructionReadSized(dest, src, size);
+    }
+
+    static IRInstruction ConditionalBranch(IRVariable cond, IRLabel* after_true_label) {
+        return cast(IRInstruction) IRInstructionConditionalBranch(cond, after_true_label);
+    }
+
+    static IRInstruction Branch(IRLabel* label) {
+        return cast(IRInstruction) IRInstructionBranch(label);
+    }
+
+    static IRInstruction GetHostCarry(IRVariable dest) {
+        return cast(IRInstruction) IRInstructionGetHostCarry(dest);
+    }
+
+    static IRInstruction GetHostOverflow(IRVariable dest) {
+        return cast(IRInstruction) IRInstructionGetHostOverflow(dest);
+    }
+
+    static IRInstruction HleFunc(int function_id) {
+        return cast(IRInstruction) IRInstructionHleFunc(function_id);
+    }
+
+    static IRInstruction PairedSingleMov(IRVariable dest, IRVariable src) {
+        return cast(IRInstruction) IRInstructionPairedSingleMov(dest, src);
+    }
+
+    static IRInstruction DebugAssert(IRVariable cond) {
+        return cast(IRInstruction) IRInstructionDebugAssert(cond);
+    }
+
+    static IRInstruction Sext(IRVariable dest, IRVariable src, int size) {
+        return cast(IRInstruction) IRInstructionSext(dest, src, size);
+    }
+
+    static IRInstruction Breakpoint() {
+        return cast(IRInstruction) IRInstructionBreakpoint();
+    }
+}
+
 struct IR {
     struct PhiFunctionTransmuation {
         IRVariableGenerator from;

@@ -28,79 +28,79 @@ unittest {
 
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R0),
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R0),
         ]),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v1, v0)
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v1, v0)
         ])
     );
 
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R1),
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R1),
+            Instruction.GetReg(v0, GuestReg.R0),
         ]),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R1),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v0, v0)
-        ])
-    );
-
-    // double move
-    test_pass(new OptimizeGetReg(),
-        new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v2, GuestReg.R0),
-        ]),
-        new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v1, v0),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v2, v0),
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R1),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v0, v0)
         ])
     );
 
     // no opt
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R1),
-            cast(IRInstruction) IRInstructionGetReg(v2, GuestReg.R2),
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R1),
+            Instruction.GetReg(v2, GuestReg.R2),
         ]),
         new Recipe([
-            cast(IRInstruction) IRInstructionGetReg(v0, GuestReg.R0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R1),
-            cast(IRInstruction) IRInstructionGetReg(v2, GuestReg.R2),
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R1),
+            Instruction.GetReg(v2, GuestReg.R2),
         ])
     );
 
     // set reg influces movement
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R0, v0),
-            cast(IRInstruction) IRInstructionGetReg(v1, GuestReg.R0),
+            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.GetReg(v1, GuestReg.R0),
         ]),
         new Recipe([
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R0, v0),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v1, v0),
+            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v1, v0),
         ])
     );
 
     // more complex set reg
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R0, v0),
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R1, v1),
-            cast(IRInstruction) IRInstructionGetReg(v2, GuestReg.R0),
+            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.SetRegVar(GuestReg.R1, v1),
+            Instruction.GetReg(v2, GuestReg.R0),
         ]),
         new Recipe([
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R0, v0),
-            cast(IRInstruction) IRInstructionSetRegVar(GuestReg.R1, v1),
-            cast(IRInstruction) IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, v2, v0),
+            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.SetRegVar(GuestReg.R1, v1),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v2, v0),
+        ])
+    );
+   
+   // even more complex get reg
+    test_pass(new OptimizeGetReg(),
+        new Recipe([
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.GetReg(v1, GuestReg.R0),
+            Instruction.GetReg(v2, GuestReg.R0),
+        ]),
+        new Recipe([
+            Instruction.GetReg(v0, GuestReg.R0),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v1, v0),
+            Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v2, v1),
         ])
     );
 }

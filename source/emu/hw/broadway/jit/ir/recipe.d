@@ -350,13 +350,15 @@ final class Recipe {
         );
     }
 
-    public bool opEquals(S)(auto ref const S other) const {
-        if (other.length() != this.length()) {
+    override public bool opEquals(Object other) {
+        Recipe other_recipe = cast(Recipe) other;
+
+        if (other_recipe.length() != this.length()) {
             return false;
         }
 
         auto element = instructions.head;
-        auto other_element = other.instructions.head;
+        auto other_element = other_recipe.instructions.head;
         while (element !is null) {
             if (element.instr != other_element.instr) {
                 return false;
