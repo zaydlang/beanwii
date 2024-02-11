@@ -42,8 +42,8 @@ final class Instruction {
         return cast(IRInstruction) IRInstructionSetFPSCR(variable);
     }
 
-    static IRInstruction BinaryDataOp(IRBinaryDataOp op, IRVariable dest, IRVariable src1, IROperand src2) {
-        return cast(IRInstruction) IRInstructionBinaryDataOp(op, dest, src1, src2);
+    static IRInstruction BinaryDataOp(T)(IRBinaryDataOp op, IRVariable dest, IRVariable src1, T src2) {
+        return cast(IRInstruction) IRInstructionBinaryDataOp(op, dest, src1, cast(IROperand) src2);
     }
 
     static IRInstruction UnaryDataOp(T)(IRUnaryDataOp op, IRVariable dest, T src) {

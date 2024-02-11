@@ -9,7 +9,7 @@ import std.sumtype;
 final class OptimizeGetReg : RecipeMap {
     IROperand[GuestReg] reg_map;
 
-    override public RecipeAction func(IRInstruction* instr) {
+    override public RecipeAction func(Recipe recipe, IRInstruction* instr) {
         return (*instr).match!(
             (IRInstructionGetReg i) {
                 if (!i.src.is_read_volatile()) {
@@ -17,7 +17,7 @@ final class OptimizeGetReg : RecipeMap {
                         auto replaced_src = reg_map[i.src];
                         reg_map[i.src] = i.dest;
 
-                        return RecipeAction.Replace(instr,
+                        return RecipeAction.Replace(
                             [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
                     }
 

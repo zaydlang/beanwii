@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.ir.recipe;
 import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.instruction;
 import emu.hw.broadway.jit.ir.types;
+import emu.hw.broadway.jit.x86;
 import std.container.dlist;
 import std.format;
 import std.sumtype;
@@ -19,20 +20,20 @@ struct RecipeAction {
     Inner inner;
     alias inner this;
 
-    static RecipeAction InsertAfter(IRInstruction* instr, IRInstruction[] new_instrs) {
-        return RecipeAction(Inner(RecipeActionInsertAfter(instr, new_instrs)));
+    static RecipeAction InsertAfter(IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionInsertAfter(new_instrs)));
     }
 
-    static RecipeAction InsertBefore(IRInstruction* instr, IRInstruction[] new_instrs) {
-        return RecipeAction(Inner(RecipeActionInsertBefore(instr, new_instrs)));
+    static RecipeAction InsertBefore(IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionInsertBefore(new_instrs)));
     }
 
-    static RecipeAction Remove(IRInstruction* instr) {
-        return RecipeAction(Inner(RecipeActionRemove(instr)));
+    static RecipeAction Remove() {
+        return RecipeAction(Inner(RecipeActionRemove()));
     }
 
-    static RecipeAction Replace(IRInstruction* instr, IRInstruction[] new_instrs) {
-        return RecipeAction(Inner(RecipeActionReplace(instr, new_instrs)));
+    static RecipeAction Replace(IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionReplace(new_instrs)));
     }
 
     static RecipeAction DoNothing() {
@@ -41,21 +42,17 @@ struct RecipeAction {
 }
 
 struct RecipeActionInsertAfter {
-    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
 struct RecipeActionInsertBefore {
-    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
 struct RecipeActionRemove {
-    IRInstruction* instr;
 }
 
 struct RecipeActionReplace {
-    IRInstruction* instr;
     IRInstruction[] new_instrs;
 }
 
@@ -63,7 +60,7 @@ struct RecipeActionDoNothing {
 }
 
 interface RecipeMap {
-    RecipeAction func(IRInstruction* instr);
+    RecipeAction func(Recipe recipe, IRInstruction* instr);
 }
 
 struct IRInstructionLinkedListElement {
@@ -210,9 +207,15 @@ final class IRInstructionLinkedList {
 
 final class Recipe {
     private IRInstructionLinkedList instructions;
+    private HostReg[IRVariable] reg_allocations;
+    private int internal_variable_id;
 
     this(IRInstruction[] instrs) {
         instructions = new IRInstructionLinkedList(instrs);
+
+        // maybe this shoudl be an assert to make sure there are no conflicts
+        // but if theres already 10k internal variables, then we have bigger problems
+        internal_variable_id = 10000;
     }
 
     public void insert_after(IRInstruction* instr, IRInstruction[] new_instrs) {
@@ -235,21 +238,22 @@ final class Recipe {
         auto element = instructions.tail;
     
         while (element !is null) {
-            RecipeAction action = recipe_map.func(&element.instr);
+            RecipeAction action = recipe_map.func(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {
-                    insert_after(action.instr, action.new_instrs);
+                    insert_after(&element.instr, action.new_instrs);
                 },
                 (RecipeActionInsertBefore action) {
-                    insert_before(action.instr, action.new_instrs);
+                    insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
+                    auto next_element = element.next;
+                    remove(&element.instr);
                     element = element.next;
-                    remove(action.instr);
                 },
                 (RecipeActionReplace action) {
-                    replace(action.instr, action.new_instrs);
+                    replace(&element.instr, action.new_instrs);
                 },
                 (RecipeActionDoNothing action) {
                 }
@@ -263,21 +267,22 @@ final class Recipe {
         auto element = instructions.head;
     
         while (element !is null) {
-            RecipeAction action = recipe_map.func(&element.instr);
+            RecipeAction action = recipe_map.func(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {
-                    insert_after(action.instr, action.new_instrs);
+                    insert_after(&element.instr, action.new_instrs);
                 },
                 (RecipeActionInsertBefore action) {
-                    insert_before(action.instr, action.new_instrs);
+                    insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
+                    auto next_element = element.prev;
+                    remove(&element.instr);
                     element = element.prev;
-                    remove(action.instr);
                 },
                 (RecipeActionReplace action) {
-                    replace(action.instr, action.new_instrs);
+                    replace(&element.instr, action.new_instrs);
                 },
                 (RecipeActionDoNothing action) {
                 }
@@ -285,6 +290,18 @@ final class Recipe {
 
             element = element.next;
         }
+    }
+
+    public void assign_register(IRVariable variable, HostReg reg) {
+        reg_allocations[variable] = reg;
+    }
+
+    public HostReg get_register_assignment(IRVariable variable) {
+        return reg_allocations[variable];
+    }
+
+    public bool has_register_assignment(IRVariable variable) {
+        return (variable in reg_allocations) != null;
     }
 
     public size_t length() {
@@ -300,9 +317,17 @@ final class Recipe {
             element = element.next;
         }
 
+        foreach (key, value; reg_allocations) {
+            result ~= format("%s -> %s\n", key.to_string(), value);
+        }
+
         result ~= "\0";
 
         return result;
+    }
+
+    public IRVariable fresh_variable() {
+        return IRVariable(internal_variable_id++);
     }
 
     private string to_string(IRInstruction instruction) {
@@ -417,6 +442,16 @@ final class Recipe {
 
             element = element.next;
             other_element = other_element.next;
+        }
+
+        foreach (key, value; reg_allocations) {
+            if (!other_recipe.has_register_assignment(key)) {
+                return false;
+            }
+            
+            if (value != other_recipe.reg_allocations[key]) {
+                return false;
+            }
         }
 
         return true;

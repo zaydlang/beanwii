@@ -9,11 +9,11 @@ import std.sumtype;
 final class OptimizeSetReg : RecipeMap {
     bool[GuestReg] seen_regs;
 
-    override public RecipeAction func(IRInstruction* instr) {
+    override public RecipeAction func(Recipe recipe, IRInstruction* instr) {
         return (*instr).match!(
             (IRInstructionSetReg i) {
                 if (i.dest in seen_regs) {
-                    return RecipeAction.Remove(instr);
+                    return RecipeAction.Remove();
                 }
 
                 seen_regs[i.dest] = true;
