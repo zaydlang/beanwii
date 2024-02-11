@@ -67,11 +67,11 @@ unittest {
     // set reg influces movement
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.SetReg(GuestReg.R0, v0),
             Instruction.GetReg(v1, GuestReg.R0),
         ]),
         new Recipe([
-            Instruction.SetRegVar(GuestReg.R0, v0),
+            Instruction.SetReg(GuestReg.R0, v0),
             Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v1, v0),
         ])
     );
@@ -79,13 +79,13 @@ unittest {
     // more complex set reg
     test_pass(new OptimizeGetReg(),
         new Recipe([
-            Instruction.SetRegVar(GuestReg.R0, v0),
-            Instruction.SetRegVar(GuestReg.R1, v1),
+            Instruction.SetReg(GuestReg.R0, v0),
+            Instruction.SetReg(GuestReg.R1, v1),
             Instruction.GetReg(v2, GuestReg.R0),
         ]),
         new Recipe([
-            Instruction.SetRegVar(GuestReg.R0, v0),
-            Instruction.SetRegVar(GuestReg.R1, v1),
+            Instruction.SetReg(GuestReg.R0, v0),
+            Instruction.SetReg(GuestReg.R1, v1),
             Instruction.UnaryDataOp(IRUnaryDataOp.MOV, v2, v0),
         ])
     );

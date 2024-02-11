@@ -7,7 +7,7 @@ import emu.hw.broadway.jit.ir.types;
 import std.sumtype;
 
 final class OptimizeGetReg : RecipeMap {
-    IRVariable[GuestReg] reg_map;
+    IROperand[GuestReg] reg_map;
 
     override public RecipeAction func(IRInstruction* instr) {
         return (*instr).match!(
@@ -17,23 +17,22 @@ final class OptimizeGetReg : RecipeMap {
                         auto replaced_src = reg_map[i.src];
                         reg_map[i.src] = i.dest;
 
-                        return cast(RecipeAction) 
-                            RecipeActionReplace(instr,
-                                [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
+                        return RecipeAction.Replace(instr,
+                            [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
                     }
 
                     reg_map[i.src] = i.dest;
                 }
 
-                return cast(RecipeAction) RecipeActionDoNothing();
+                return RecipeAction.DoNothing();
             },
 
-            (IRInstructionSetRegVar i) {
+            (IRInstructionSetReg i) {
                 reg_map[i.dest] = i.src;
-                return cast(RecipeAction) RecipeActionDoNothing();
+                return RecipeAction.DoNothing();
             },
 
-            _ => cast(RecipeAction) RecipeActionDoNothing()
+            _ => RecipeAction.DoNothing()
         );        
     }
 }

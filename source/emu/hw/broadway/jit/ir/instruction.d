@@ -9,11 +9,9 @@ import util.number;
 
 alias IRInstruction = SumType!(
     IRInstructionGetReg,
-    IRInstructionSetRegVar,
-    IRInstructionSetRegImm,
+    IRInstructionSetReg,
     IRInstructionSetFPSCR,
-    IRInstructionBinaryDataOpImm,
-    IRInstructionBinaryDataOpVar,
+    IRInstructionBinaryDataOp,
     IRInstructionUnaryDataOp,
     IRInstructionSetVarImmInt,
     IRInstructionSetVarImmFloat,
@@ -36,28 +34,20 @@ final class Instruction {
         return cast(IRInstruction) IRInstructionGetReg(variable, guest_reg);
     }
 
-    static IRInstruction SetRegVar(GuestReg guest_reg, IRVariable variable) {
-        return cast(IRInstruction) IRInstructionSetRegVar(guest_reg, variable);
-    }
-
-    static IRInstruction SetRegImm(GuestReg guest_reg, int imm) {
-        return cast(IRInstruction) IRInstructionSetRegImm(guest_reg, imm);
+    static IRInstruction SetReg(T)(GuestReg guest_reg, T operand) {
+        return cast(IRInstruction) IRInstructionSetReg(guest_reg, cast(IROperand) operand);
     }
 
     static IRInstruction SetFPSCR(IRVariable variable) {
         return cast(IRInstruction) IRInstructionSetFPSCR(variable);
     }
 
-    static IRInstruction BinaryDataOpImm(IRBinaryDataOp op, IRVariable dest, IRVariable src, int imm) {
-        return cast(IRInstruction) IRInstructionBinaryDataOpImm(op, dest, src, imm);
+    static IRInstruction BinaryDataOp(IRBinaryDataOp op, IRVariable dest, IRVariable src1, IROperand src2) {
+        return cast(IRInstruction) IRInstructionBinaryDataOp(op, dest, src1, src2);
     }
 
-    static IRInstruction BinaryDataOpVar(IRBinaryDataOp op, IRVariable dest, IRVariable src1, IRVariable src2) {
-        return cast(IRInstruction) IRInstructionBinaryDataOpVar(op, dest, src1, src2);
-    }
-
-    static IRInstruction UnaryDataOp(IRUnaryDataOp op, IRVariable dest, IRVariable src) {
-        return cast(IRInstruction) IRInstructionUnaryDataOp(op, dest, src);
+    static IRInstruction UnaryDataOp(T)(IRUnaryDataOp op, IRVariable dest, T src) {
+        return cast(IRInstruction) IRInstructionUnaryDataOp(op, dest, cast(IROperand) src);
     }
 
     static IRInstruction SetVarImmInt(IRVariable dest, int imm) {
@@ -115,6 +105,43 @@ final class Instruction {
     static IRInstruction Breakpoint() {
         return cast(IRInstruction) IRInstructionBreakpoint();
     }
+}
+
+
+alias IROperand = SumType!(
+    IRVariable,
+    int,
+    float,
+);
+
+final class Operand {
+    static IROperand Variable(int id) {
+        return cast(IROperand) IRVariable(id);
+    }
+
+    static IROperand Imm(int value) {
+        return cast(IROperand) value;
+    }
+
+    static IROperand Imm(float value) {
+        return cast(IROperand) value;
+    }
+}
+
+static string to_string(IROperand operand) {
+    import std.format;
+
+    return operand.match!(
+        (IRVariable var) => to_string(var),
+        (int imm) => format("%d", imm),
+        (float imm) => format("%f", imm)
+    );
+}
+
+static string to_string(IRVariable var) {
+    import std.format;
+
+    return format("v%d", var.id);
 }
 
 struct IR {
@@ -316,11 +343,11 @@ struct IR {
 
     void set_reg(GuestReg reg, IRVariableGenerator variable) {
         variable.update_lifetime();
-        emit(IRInstructionSetRegVar(reg, variable.get_variable()));
+        emit(IRInstructionSetReg(reg, cast(IROperand) variable.get_variable()));
     }
 
     void set_reg(GuestReg reg, u32 imm) {
-        emit(IRInstructionSetRegImm(reg, imm));
+        emit(IRInstructionSetReg(reg, cast(IROperand) imm));
     }
 
     void set_fpscr(IRVariableGenerator dest) {
@@ -384,7 +411,7 @@ struct IR {
             this.update_lifetime(transmutation.to.variable_id);
             this.update_lifetime(transmutation.from.variable_id);
             
-            this.emit(IRInstructionUnaryDataOp(
+            this.emit(Instruction.UnaryDataOp(
                 IRUnaryDataOp.MOV, 
                 IRVariableGenerator(&this, transmutation.to.variable_id, ).get_variable(),
                 IRVariableGenerator(&this, transmutation.from.variable_id).get_variable()
@@ -491,7 +518,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(op, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(op, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -510,7 +537,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpImm(op, dest.get_variable(), this.get_variable(), other));
+        ir.emit(IRInstructionBinaryDataOp(op, dest.get_variable(), this.get_variable(), cast(IROperand) other));
 
         return dest;
     }
@@ -542,7 +569,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTU, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.GTU, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -555,7 +582,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTU, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.LTU, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -568,7 +595,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.GTS, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.GTS, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -581,7 +608,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.LTS, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.LTS, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -594,7 +621,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.EQ, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.EQ, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -607,7 +634,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.NE, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.NE, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -621,7 +648,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         rhs.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.MOV, this.get_variable(), rhs.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.MOV, this.get_variable(), rhs.get_variable()));
     }
 
     IRVariableGenerator opUnary(string s)() {
@@ -633,7 +660,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(op, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(op, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -647,7 +674,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpImm(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), amount));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), cast(IROperand) amount));
 
         return dest;
     }
@@ -660,7 +687,7 @@ struct IRVariableGenerator {
         amount.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), amount.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.ROL, dest.get_variable(), this.get_variable(), cast(IROperand) amount.get_variable()));
 
         return dest;
     }
@@ -673,7 +700,7 @@ struct IRVariableGenerator {
         amount.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHI, dest.get_variable(), this.get_variable(), amount.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.MULHI, dest.get_variable(), this.get_variable(), cast(IROperand) amount.get_variable()));
 
         return dest;
     }
@@ -685,7 +712,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.ABS, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.ABS, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -698,7 +725,7 @@ struct IRVariableGenerator {
         amount.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.MULHS, dest.get_variable(), this.get_variable(), amount.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.MULHS, dest.get_variable(), this.get_variable(), cast(IROperand) amount.get_variable()));
 
         return dest;
     }
@@ -710,7 +737,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CTZ, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.CTZ, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -722,7 +749,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.CLZ, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.CLZ, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -734,7 +761,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.POPCNT, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.POPCNT, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -747,7 +774,7 @@ struct IRVariableGenerator {
         dest.update_lifetime();
         other.update_lifetime();
 
-        ir.emit(IRInstructionBinaryDataOpVar(IRBinaryDataOp.UDIV, dest.get_variable(), this.get_variable(), other.get_variable()));
+        ir.emit(IRInstructionBinaryDataOp(IRBinaryDataOp.UDIV, dest.get_variable(), this.get_variable(), cast(IROperand) other.get_variable()));
 
         return dest;
     }
@@ -761,7 +788,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_CAST, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.FLT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -775,7 +802,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.INT_CAST, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.INT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -789,7 +816,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.SATURATED_INT_CAST, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.SATURATED_INT_CAST, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -803,7 +830,7 @@ struct IRVariableGenerator {
         this.update_lifetime();
         dest.update_lifetime();
 
-        ir.emit(IRInstructionUnaryDataOp(IRUnaryDataOp.FLT_INTERP, dest.get_variable(), this.get_variable()));
+        ir.emit(Instruction.UnaryDataOp(IRUnaryDataOp.FLT_INTERP, dest.get_variable(), this.get_variable()));
 
         return dest;
     }
@@ -878,27 +905,19 @@ struct IRGuestReg {
     GuestReg guest_reg;
 }
 
-struct IRInstructionBinaryDataOpImm {
+struct IRInstructionBinaryDataOp {
     IRBinaryDataOp op;
 
     IRVariable dest;
     IRVariable src1;
-    uint src2;
-}
-
-struct IRInstructionBinaryDataOpVar {
-    IRBinaryDataOp op;
-
-    IRVariable dest;
-    IRVariable src1;
-    IRVariable src2;
+    IROperand  src2;
 }
 
 struct IRInstructionUnaryDataOp {
     IRUnaryDataOp op;
 
     IRVariable dest;
-    IRVariable src;
+    IROperand src;
 }
 
 struct IRInstructionGetReg {
@@ -906,14 +925,9 @@ struct IRInstructionGetReg {
     GuestReg src;
 }
 
-struct IRInstructionSetRegVar {
+struct IRInstructionSetReg {
     GuestReg dest;
-    IRVariable src;
-}
-
-struct IRInstructionSetRegImm {
-    GuestReg dest;
-    u32 imm;
+    IROperand src;
 }
 
 struct IRInstructionSetFPSCR {

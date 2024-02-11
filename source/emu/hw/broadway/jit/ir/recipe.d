@@ -7,13 +7,38 @@ import std.container.dlist;
 import std.format;
 import std.sumtype;
 
-alias RecipeAction = SumType!(
-    RecipeActionInsertAfter,
-    RecipeActionInsertBefore,
-    RecipeActionRemove,
-    RecipeActionReplace,
-    RecipeActionDoNothing
-);
+struct RecipeAction {
+    alias Inner = SumType!(
+        RecipeActionInsertAfter,
+        RecipeActionInsertBefore,
+        RecipeActionRemove,
+        RecipeActionReplace,
+        RecipeActionDoNothing
+    );
+
+    Inner inner;
+    alias inner this;
+
+    static RecipeAction InsertAfter(IRInstruction* instr, IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionInsertAfter(instr, new_instrs)));
+    }
+
+    static RecipeAction InsertBefore(IRInstruction* instr, IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionInsertBefore(instr, new_instrs)));
+    }
+
+    static RecipeAction Remove(IRInstruction* instr) {
+        return RecipeAction(Inner(RecipeActionRemove(instr)));
+    }
+
+    static RecipeAction Replace(IRInstruction* instr, IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActionReplace(instr, new_instrs)));
+    }
+
+    static RecipeAction DoNothing() {
+        return RecipeAction(Inner(RecipeActionDoNothing()));
+    }
+}
 
 struct RecipeActionInsertAfter {
     IRInstruction* instr;
@@ -130,15 +155,19 @@ final class IRInstructionLinkedList {
         IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
         IRInstructionLinkedListElement* prev = element.prev;
         IRInstructionLinkedListElement* next = element.next;
+        
         if (prev !is null) {
             prev.next = next;
         }
+
         if (next !is null) {
             next.prev = prev;
         }
+        
         if (head == element) {
             head = next;
         }
+        
         if (tail == element) {
             tail = prev;
         }
@@ -202,11 +231,12 @@ final class Recipe {
         instructions.replace(instr, new_instrs);
     }
 
-    public void map(RecipeMap recipe_map) {
-        auto element = instructions.head;
+    public void reverse_map(RecipeMap recipe_map) {
+        auto element = instructions.tail;
     
         while (element !is null) {
             RecipeAction action = recipe_map.func(&element.instr);
+
             action.match!(
                 (RecipeActionInsertAfter action) {
                     insert_after(action.instr, action.new_instrs);
@@ -215,6 +245,35 @@ final class Recipe {
                     insert_before(action.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
+                    element = element.next;
+                    remove(action.instr);
+                },
+                (RecipeActionReplace action) {
+                    replace(action.instr, action.new_instrs);
+                },
+                (RecipeActionDoNothing action) {
+                }
+            );
+
+            element = element.prev;
+        }
+    }
+
+    public void map(RecipeMap recipe_map) {
+        auto element = instructions.head;
+    
+        while (element !is null) {
+            RecipeAction action = recipe_map.func(&element.instr);
+
+            action.match!(
+                (RecipeActionInsertAfter action) {
+                    insert_after(action.instr, action.new_instrs);
+                },
+                (RecipeActionInsertBefore action) {
+                    insert_before(action.instr, action.new_instrs);
+                },
+                (RecipeActionRemove action) {
+                    element = element.prev;
                     remove(action.instr);
                 },
                 (RecipeActionReplace action) {
@@ -249,39 +308,31 @@ final class Recipe {
     private string to_string(IRInstruction instruction) {
         return instruction.match!(
             (IRInstructionGetReg i) {
-                return format("ld  v%d, %s", i.dest.id, i.src.to_string());
+                return format("ld  %s, %s", i.dest.to_string(), i.src.to_string());
             },
 
-            (IRInstructionSetRegVar i) {
-                return format("st  v%d, %s", i.src.id, i.dest.to_string());
-            },
-
-            (IRInstructionSetRegImm i) {
-                return format("st  #0x%x, %s", i.imm, i.dest.to_string());
+            (IRInstructionSetReg i) {
+                return format("st  %s, %s", i.src.to_string(), i.dest.to_string());
             },
 
             (IRInstructionSetFPSCR i) {
-                return format("st  v%d, FPSCR", i.src.id);
+                return format("st  %s, FPSCR", i.src.to_string());
             },
 
-            (IRInstructionBinaryDataOpImm i) {
-                return format("%s v%d, v%d, 0x%x", i.op.to_string(), i.dest.id, i.src1.id, i.src2);
-            },
-
-            (IRInstructionBinaryDataOpVar i) {
-                return format("%s v%d, v%d, v%d", i.op.to_string(), i.dest.id, i.src1.id, i.src2.id);
+            (IRInstructionBinaryDataOp i) {
+                return format("%s %s, %s, %s", i.op.to_string(), i.dest.to_string(), i.src1.to_string(), i.src2.to_string());
             },
 
             (IRInstructionUnaryDataOp i) {
-                return format("%s v%d, v%d", i.op.to_string(), i.dest.id, i.src.id);
+                return format("%s %s, %s", i.op.to_string(), i.dest.to_string(), i.src.to_string());
             },
 
             (IRInstructionSetVarImmInt i) {
-                return format("ld  v%d, 0x%x", i.dest.id, i.imm);
+                return format("ld  %s, 0x%x", i.dest.to_string(), i.imm);
             },
 
             (IRInstructionSetVarImmFloat i) {
-                return format("ld  v%d, %f", i.dest.id, i.imm);
+                return format("ld  %s, %f", i.dest.to_string(), i.imm);
             },
 
             (IRInstructionRead i) {
