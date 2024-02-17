@@ -70,13 +70,13 @@ final class AllocateRegisters : RecipePass {
         override public RecipeAction map(Recipe recipe, IRInstruction* instr) {
             foreach (variable; (*instr).get_variables()) {
                 if (variable_birth[variable] == index) {
+                    if (free_registers.empty()) {
+                        error_jit("fuck.");
+                    }
+
                     HostReg assigned_reg = free_registers[0];
                     free_registers = free_registers[1..$];
                     recipe.assign_register(variable, assigned_reg);
-                }
-
-                if (free_registers.empty()) {
-                    error_jit("fuck.");
                 }
 
                 if (variable_death[variable] == index) {
