@@ -238,6 +238,18 @@ final class Recipe {
         instructions.replace(instr, new_instrs);
     }
 
+    public IRVariable[] get_variables() {
+        IRVariable[] result;
+
+        auto element = instructions.head;
+        while (element !is null) {
+            result ~= element.instr.get_variables();
+            element = element.next;
+        }
+
+        return result;
+    }
+
     public void pass(RecipePass pass) {
         pass.pass(this);
     }
@@ -306,6 +318,16 @@ final class Recipe {
 
     public HostReg get_register_assignment(IRVariable variable) {
         return reg_allocations[variable];
+    }
+
+    public HostReg[] get_all_assigned_registers() {
+        HostReg[] result;
+
+        foreach (key, value; reg_allocations) {
+            result ~= value;
+        }
+
+        return result;
     }
 
     public bool has_register_assignment(IRVariable variable) {

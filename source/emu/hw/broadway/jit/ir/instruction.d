@@ -29,6 +29,42 @@ alias IRInstruction = SumType!(
     IRInstructionBreakpoint
 );
 
+IRVariable[] get_variables(IRInstruction instruction) {
+    return cast(IRVariable[]) instruction.match!(
+        (IRInstructionGetReg instr) => [instr.dest],
+        (IRInstructionSetReg instr) => 
+            // check if operand is a variable
+            instr.src.match!(
+                (IRVariable var) => [var],
+                _ => []
+            ),
+        (IRInstructionSetFPSCR instr) => [instr.src],
+        (IRInstructionBinaryDataOp instr) => 
+            instr.src2.match!(
+                (IRVariable var) => [instr.dest, instr.src1, var],
+                _ => [instr.dest, instr.src1]
+            ),
+        (IRInstructionUnaryDataOp instr) => 
+            instr.src.match!(
+                (IRVariable var) => [instr.dest, var],
+                _ => [instr.dest]
+            ),
+        (IRInstructionSetVarImmInt instr) => [instr.dest],
+        (IRInstructionSetVarImmFloat instr) => [instr.dest],
+        (IRInstructionRead instr) => [instr.dest, instr.address],
+        (IRInstructionWrite instr) => [instr.dest, instr.address],
+        (IRInstructionReadSized instr) => [instr.dest, instr.address, instr.size],
+        (IRInstructionConditionalBranch instr) => [instr.cond],
+        (IRInstructionBranch instr) => [],
+        (IRInstructionGetHostCarry instr) => [instr.dest],
+        (IRInstructionGetHostOverflow instr) => [instr.dest],
+        (IRInstructionHleFunc instr) => [],
+        (IRInstructionPairedSingleMov instr) => [instr.dest, instr.src],
+        (IRInstructionDebugAssert instr) => [instr.cond],
+        (IRInstructionSext instr) => [instr.dest, instr.src],
+        (IRInstructionBreakpoint instr) => [],
+    );
+}
 final class Instruction {
     static IRInstruction GetReg(IRVariable variable, GuestReg guest_reg) {
         return cast(IRInstruction) IRInstructionGetReg(variable, guest_reg);
