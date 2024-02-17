@@ -59,8 +59,12 @@ struct RecipeActionReplace {
 struct RecipeActionDoNothing {
 }
 
+interface RecipePass {
+    void pass(Recipe recipe);
+}
+
 interface RecipeMap {
-    RecipeAction func(Recipe recipe, IRInstruction* instr);
+    RecipeAction map(Recipe recipe, IRInstruction* instr);
 }
 
 struct IRInstructionLinkedListElement {
@@ -234,11 +238,15 @@ final class Recipe {
         instructions.replace(instr, new_instrs);
     }
 
+    public void pass(RecipePass pass) {
+        pass.pass(this);
+    }
+
     public void reverse_map(RecipeMap recipe_map) {
         auto element = instructions.tail;
     
         while (element !is null) {
-            RecipeAction action = recipe_map.func(this, &element.instr);
+            RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {
@@ -267,7 +275,7 @@ final class Recipe {
         auto element = instructions.head;
     
         while (element !is null) {
-            RecipeAction action = recipe_map.func(this, &element.instr);
+            RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {

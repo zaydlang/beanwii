@@ -11,8 +11,8 @@ import std.typecons;
 
 alias RegAssignment = Tuple!(IRVariable, HostReg);
 
-void test_pass(RecipeMap recipe_map, Recipe input, Recipe expected_output, RegAssignment[] expected_reg_assignments) {
-    input.map(recipe_map);
+void test_pass(RecipePass recipe_pass, Recipe input, Recipe expected_output, RegAssignment[] expected_reg_assignments) {
+    input.pass(recipe_pass);
     auto actual_output = input;
 
     foreach (assignment; expected_reg_assignments) {

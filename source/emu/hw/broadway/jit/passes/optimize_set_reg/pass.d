@@ -6,21 +6,27 @@ import emu.hw.broadway.jit.ir.recipe;
 import emu.hw.broadway.jit.ir.types;
 import std.sumtype;
 
-final class OptimizeSetReg : RecipeMap {
-    bool[GuestReg] seen_regs;
+final class OptimizeSetReg : RecipePass {
+    final class Map : RecipeMap {
+        bool[GuestReg] seen_regs;
 
-    override public RecipeAction func(Recipe recipe, IRInstruction* instr) {
-        return (*instr).match!(
-            (IRInstructionSetReg i) {
-                if (i.dest in seen_regs) {
-                    return RecipeAction.Remove();
-                }
+        override public RecipeAction map(Recipe recipe, IRInstruction* instr) {
+            return (*instr).match!(
+                (IRInstructionSetReg i) {
+                    if (i.dest in seen_regs) {
+                        return RecipeAction.Remove();
+                    }
 
-                seen_regs[i.dest] = true;
-                return RecipeAction.DoNothing();
-            },
+                    seen_regs[i.dest] = true;
+                    return RecipeAction.DoNothing();
+                },
 
-            _ => RecipeAction.DoNothing()
-        );        
+                _ => RecipeAction.DoNothing()
+            );        
+        }
+    }
+
+    override public void pass(Recipe recipe) {
+        recipe.reverse_map(new Map());
     }
 }

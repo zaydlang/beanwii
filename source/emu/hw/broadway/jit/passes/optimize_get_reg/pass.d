@@ -6,33 +6,39 @@ import emu.hw.broadway.jit.ir.recipe;
 import emu.hw.broadway.jit.ir.types;
 import std.sumtype;
 
-final class OptimizeGetReg : RecipeMap {
-    IROperand[GuestReg] reg_map;
+final class OptimizeGetReg : RecipePass {
+    final class Map : RecipeMap {
+        IROperand[GuestReg] reg_map;
 
-    override public RecipeAction func(Recipe recipe, IRInstruction* instr) {
-        return (*instr).match!(
-            (IRInstructionGetReg i) {
-                if (!i.src.is_read_volatile()) {
-                    if (i.src in reg_map) {
-                        auto replaced_src = reg_map[i.src];
+        override public RecipeAction map(Recipe recipe, IRInstruction* instr) {
+            return (*instr).match!(
+                (IRInstructionGetReg i) {
+                    if (!i.src.is_read_volatile()) {
+                        if (i.src in reg_map) {
+                            auto replaced_src = reg_map[i.src];
+                            reg_map[i.src] = i.dest;
+
+                            return RecipeAction.Replace(
+                                [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
+                        }
+
                         reg_map[i.src] = i.dest;
-
-                        return RecipeAction.Replace(
-                            [Instruction.UnaryDataOp(IRUnaryDataOp.MOV, i.dest, replaced_src)]);
                     }
 
-                    reg_map[i.src] = i.dest;
-                }
+                    return RecipeAction.DoNothing();
+                },
 
-                return RecipeAction.DoNothing();
-            },
+                (IRInstructionSetReg i) {
+                    reg_map[i.dest] = i.src;
+                    return RecipeAction.DoNothing();
+                },
 
-            (IRInstructionSetReg i) {
-                reg_map[i.dest] = i.src;
-                return RecipeAction.DoNothing();
-            },
+                _ => RecipeAction.DoNothing()
+            );        
+        }
+    }
 
-            _ => RecipeAction.DoNothing()
-        );        
+    override public void pass(Recipe recipe) {
+        recipe.map(new Map());
     }
 }

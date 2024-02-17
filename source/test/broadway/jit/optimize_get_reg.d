@@ -6,8 +6,8 @@ import emu.hw.broadway.jit.ir.recipe;
 import emu.hw.broadway.jit.ir.types;
 import emu.hw.broadway.jit.passes.optimize_get_reg.pass;
 
-void test_pass(RecipeMap recipe_map, Recipe input, Recipe expected_output) {
-    input.map(recipe_map);
+void test_pass(RecipePass recipe_pass, Recipe input, Recipe expected_output) {
+    input.pass(recipe_pass);
     auto actual_output = input;
 
     if (actual_output != expected_output) {
