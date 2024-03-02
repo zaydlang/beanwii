@@ -41,7 +41,7 @@ final class SlowMem : MemStrategy {
 
         T result;
 
-        // log_slowmem("Read from address 0x%08x", address);
+        log_slowmem("Read from address 0x%08x", address);
 
         switch (region) {
             case 0xC:
@@ -80,7 +80,7 @@ final class SlowMem : MemStrategy {
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
         
-        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
+        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         switch (region) {
             case 0xC:

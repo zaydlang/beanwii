@@ -246,7 +246,7 @@ private GenerateRecipeAction emit_b(IR* ir, u32 opcode, JitContext ctx) {
 
     if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
 
-    if (branch_address == ctx.pc) error_broadway("branch to self");
+    // if (branch_address == ctx.pc) error_broadway("branch to self");
 
     ir.set_reg(GuestReg.PC, branch_address);
 
@@ -263,6 +263,8 @@ private GenerateRecipeAction emit_bc(IR* ir, u32 opcode, JitContext ctx) {
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
 
     if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
+
+    ir.set_reg(GuestReg.PC, ctx.pc + 4);
 
     ir._if(cond_ok, () {
         if (lk) {
@@ -305,6 +307,7 @@ private GenerateRecipeAction emit_bclr(IR* ir, u32 opcode, JitContext ctx) {
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
+    ir.set_reg(GuestReg.PC, ctx.pc + 4);
     ir._if(cond_ok, () { 
         if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
 
@@ -1498,11 +1501,16 @@ public size_t generate_recipe(IR* ir, Mem mem, JitContext ctx, u32 address) {
     
     while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
         GenerateRecipeAction action = disassemble(ir, mem.read_be_u32(address), ctx);
+        ctx.pc += 4;
         address += 4;
         num_opcodes_processed++;
         
         if (action == GenerateRecipeAction.STOP) {
             break;
+        }
+
+        if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE) {
+            ir.set_reg(GuestReg.PC, ctx.pc);
         }
     }
 

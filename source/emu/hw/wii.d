@@ -51,12 +51,7 @@ final class Wii {
     }
 
     public void cycle(int num_cycles) {
-        int cycles_elapsed = 0;
-
-        while (cycles_elapsed < num_cycles) {
-            cycles_elapsed += this.broadway.run() * 2;
-        }
-
+        this.broadway.cycle(num_cycles);
         this.video_interface.scanout();
     }
 

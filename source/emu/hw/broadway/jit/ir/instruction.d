@@ -26,7 +26,8 @@ alias IRInstruction = SumType!(
     IRInstructionPairedSingleMov,
     IRInstructionDebugAssert,
     IRInstructionSext,
-    IRInstructionBreakpoint
+    IRInstructionBreakpoint,
+    IRInstructionHaltCpu,
 );
 
 IRVariable[] get_variables(IRInstruction instruction) {
@@ -63,6 +64,7 @@ IRVariable[] get_variables(IRInstruction instruction) {
         (IRInstructionDebugAssert instr) => [instr.cond],
         (IRInstructionSext instr) => [instr.dest, instr.src],
         (IRInstructionBreakpoint instr) => [],
+        (IRInstructionHaltCpu instr) => []
     );
 }
 final class Instruction {
@@ -140,6 +142,10 @@ final class Instruction {
 
     static IRInstruction Breakpoint() {
         return cast(IRInstruction) IRInstructionBreakpoint();
+    }
+
+    static IRInstruction HaltCpu() {
+        return cast(IRInstruction) IRInstructionHaltCpu();
     }
 }
 
@@ -894,25 +900,21 @@ struct IRVariableGenerator {
     }
 
     IRBinaryDataOp get_binary_data_op(string s)() {
-        final switch (s) {
-            case "+":   return IRBinaryDataOp.ADD;
-            case "-":   return IRBinaryDataOp.SUB;
-            case "*":   return IRBinaryDataOp.MUL;
-            case "/":   return IRBinaryDataOp.DIV;
-            case "<<":  return IRBinaryDataOp.LSL;
-            case ">>>": return IRBinaryDataOp.LSR;
-            case ">>":  return IRBinaryDataOp.ASR;
-            case "|":   return IRBinaryDataOp.ORR;
-            case "&":   return IRBinaryDataOp.AND;
-            case "^":   return IRBinaryDataOp.XOR;
-        }
+        static if (s == "+")   return IRBinaryDataOp.ADD;
+        static if (s == "-")   return IRBinaryDataOp.SUB;
+        static if (s == "*")   return IRBinaryDataOp.MUL;
+        static if (s == "/")   return IRBinaryDataOp.DIV;
+        static if (s == "<<")  return IRBinaryDataOp.LSL;
+        static if (s == ">>>") return IRBinaryDataOp.LSR;
+        static if (s == ">>")  return IRBinaryDataOp.ASR;
+        static if (s == "|")   return IRBinaryDataOp.ORR;
+        static if (s == "&")   return IRBinaryDataOp.AND;
+        static if (s == "^")   return IRBinaryDataOp.XOR;
     }
 
     IRUnaryDataOp get_unary_data_op(string s)() {
-        final switch (s) {
-            case "-": return IRUnaryDataOp.NEG;
-            case "~": return IRUnaryDataOp.NOT;
-        }
+        static if (s == "-") return IRUnaryDataOp.NEG;
+        static if (s == "~") return IRUnaryDataOp.NOT;
     }
 
     int get_id() {
@@ -1037,4 +1039,8 @@ struct IRInstructionSext {
     IRVariable dest;
     IRVariable src;
     int bits;
+}
+
+struct IRInstructionHaltCpu {
+    
 }

@@ -86,7 +86,13 @@ final class ImposeX86Conventions : RecipePass {
         }
     }
 
+    private Map map;
+
+    this() {
+        this.map = new Map();
+    }
+
     override public void pass(Recipe recipe) {
-        recipe.map(new Map());
+        recipe.map(this.map);
     }
 }

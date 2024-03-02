@@ -46,34 +46,41 @@ final class Broadway {
             state.gprs[i] = 0;
         }
 
-        state.cr    = 0;
-        state.xer   = 0;
-        state.ctr   = 0;
-        state.msr   = 0x00002032;
-        state.hid0  = 0;
-        state.hid2  = 0xE0000000;
-        state.hid4  = 0;
-        state.srr0  = 0;
-        state.fpsr  = 0;
-        state.fpscr = 0;
-        state.l2cr  = 0;
-        state.mmcr0 = 0;
-        state.mmcr1 = 0;
-        state.pmc1  = 0;
-        state.pmc2  = 0;
-        state.pmc3  = 0;
-        state.pmc4  = 0;
-        state.tbu   = 0;
-        state.tbl   = 0;
+        state.cr     = 0;
+        state.xer    = 0;
+        state.ctr    = 0;
+        state.msr    = 0x00002032;
+        state.hid0   = 0;
+        state.hid2   = 0xE0000000;
+        state.hid4   = 0;
+        state.srr0   = 0;
+        state.fpsr   = 0;
+        state.fpscr  = 0;
+        state.l2cr   = 0;
+        state.mmcr0  = 0;
+        state.mmcr1  = 0;
+        state.pmc1   = 0;
+        state.pmc2   = 0;
+        state.pmc3   = 0;
+        state.pmc4   = 0;
+        state.tbu    = 0;
+        state.tbl    = 0;
 
-        state.pc    = 0;
-        state.lr    = 0;
+        state.pc     = 0;
+        state.lr     = 0;
+
+        state.halted = false;
     }
 
-    // returns the number of instructions executed
-    public u32 run() {
-        // log_state(&state);
-        return jit.run(&state);
+    public void cycle(u32 num_cycles) {
+        if (state.halted) {
+            log_jit("CPU is halted, not running\n");
+        }
+        
+        u32 elapsed = 0;
+        while (elapsed < num_cycles && !state.halted) {
+            elapsed += jit.run(&state);
+        }
     }
 
     public void run_until_return() {
@@ -82,7 +89,7 @@ final class Broadway {
         this.state.lr = 0xDEADBEEF;
 
         while (this.state.pc != 0xDEADBEEF) {
-            run();
+            cycle(100);
         }
     }
 

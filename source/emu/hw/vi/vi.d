@@ -456,8 +456,8 @@ final class VideoInterface {
     public void scanout() {
         for (int field = 0; field < 2; field++) {
             u32 base_address = (this.top_field_fbb_address << 9) + 0x8000_0000 + (field * XBFR_WIDTH * 2);
-            for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
             for (int y = field; y < XBFR_HEIGHT; y += 2) {
+            for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
                 u32 ycbycr = mem.read_be_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
 
                 float cr = ycbycr.get_byte(0);
@@ -470,6 +470,8 @@ final class VideoInterface {
             }
             }
         }
+
+        log_vi("Presenting VideoBuffer");
 
         this.present_videobuffer_callback(video_buffer);
     }

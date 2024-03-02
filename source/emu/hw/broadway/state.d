@@ -33,6 +33,8 @@ struct BroadwayState {
     
     u32     lr;
     u32     pc;
+    
+    bool    halted;
 }
 
 struct PairedSingle {

@@ -56,8 +56,8 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
             g_on_error_callback();
         }
 
-        writef(prefix);
-        writefln(written_string);
+        // writef(prefix);
+        // writefln(written_string);
 
         if (fatal) {
             version (unittest) {
