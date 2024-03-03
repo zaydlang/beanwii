@@ -2,6 +2,7 @@ module emu.hw.broadway.jit.ir.instruction;
 
 import emu.hw.broadway.jit.common.guest_reg;
 import emu.hw.broadway.jit.ir.types;
+import emu.hw.broadway.jit.x86;
 import std.format;
 import std.sumtype;
 import util.log;
@@ -29,6 +30,8 @@ alias IRInstruction = SumType!(
     IRInstructionSext,
     IRInstructionBreakpoint,
     IRInstructionHaltCpu,
+    IRInstructionPush,
+    IRInstructionPop,
 );
 
 IRVariable[] get_variables(IRInstruction instruction) {
@@ -66,7 +69,9 @@ IRVariable[] get_variables(IRInstruction instruction) {
         (IRInstructionDebugAssert instr) => [instr.cond],
         (IRInstructionSext instr) => [instr.dest, instr.src],
         (IRInstructionBreakpoint instr) => [],
-        (IRInstructionHaltCpu instr) => []
+        (IRInstructionHaltCpu instr) => [],
+        (IRInstructionPush instr) => [],
+        (IRInstructionPop instr) => [],
     );
 }
 
@@ -104,7 +109,9 @@ IRInstruction map_across_variables(IRInstruction instruction, IRVariable delegat
         (IRInstructionDebugAssert instr) => Instruction.DebugAssert(fn(instr.cond)),
         (IRInstructionSext instr) => Instruction.Sext(fn(instr.dest), fn(instr.src), instr.bits),
         (IRInstructionBreakpoint instr) => Instruction.Breakpoint(),
-        (IRInstructionHaltCpu instr) => Instruction.HaltCpu()
+        (IRInstructionHaltCpu instr) => Instruction.HaltCpu(),
+        (IRInstructionPush instr) => Instruction.Push(instr.src),
+        (IRInstructionPop instr) => Instruction.Pop(instr.dest),
     );
 }
 
@@ -191,6 +198,14 @@ final class Instruction {
 
     static IRInstruction HaltCpu() {
         return cast(IRInstruction) IRInstructionHaltCpu();
+    }
+
+    static IRInstruction Push(HostReg src) {
+        return cast(IRInstruction) IRInstructionPush(src);
+    }
+
+    static IRInstruction Pop(HostReg dest) {
+        return cast(IRInstruction) IRInstructionPop(dest);
     }
 }
 
@@ -1104,4 +1119,12 @@ struct IRInstructionSext {
 
 struct IRInstructionHaltCpu {
     
+}
+
+struct IRInstructionPush {
+    HostReg src;
+}
+
+struct IRInstructionPop {
+    HostReg dest;
 }

@@ -11,8 +11,8 @@ import util.log;
 
 struct RecipeAction {
     alias Inner = SumType!(
-        RecipeActionInsertAfter,
-        RecipeActionInsertBefore,
+        RecipeActioninsert_after,
+        RecipeActioninsert_before,
         RecipeActionRemove,
         RecipeActionReplace,
         RecipeActionDoNothing
@@ -21,12 +21,12 @@ struct RecipeAction {
     Inner inner;
     alias inner this;
 
-    static RecipeAction InsertAfter(IRInstruction[] new_instrs) {
-        return RecipeAction(Inner(RecipeActionInsertAfter(new_instrs)));
+    static RecipeAction insert_after(IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActioninsert_after(new_instrs)));
     }
 
-    static RecipeAction InsertBefore(IRInstruction[] new_instrs) {
-        return RecipeAction(Inner(RecipeActionInsertBefore(new_instrs)));
+    static RecipeAction insert_before(IRInstruction[] new_instrs) {
+        return RecipeAction(Inner(RecipeActioninsert_before(new_instrs)));
     }
 
     static RecipeAction Remove() {
@@ -42,11 +42,11 @@ struct RecipeAction {
     }
 }
 
-struct RecipeActionInsertAfter {
+struct RecipeActioninsert_after {
     IRInstruction[] new_instrs;
 }
 
-struct RecipeActionInsertBefore {
+struct RecipeActioninsert_before {
     IRInstruction[] new_instrs;
 }
 
@@ -100,20 +100,30 @@ final class IRInstructionLinkedList {
     }
 
     public void append(IRInstruction instr) {
-        IRInstructionLinkedListElement* new_element = new IRInstructionLinkedListElement(instr);
+        IRInstructionLinkedListElement* element = new IRInstructionLinkedListElement(instr);
         if (head is null) {
-            head = new_element;
-            tail = new_element;
+            head = element;
+            tail = element;
         } else {
-            tail.next = new_element;
-            new_element.prev = tail;
-            tail = new_element;
+            tail.next = element;
+            element.prev = tail;
+            tail = element;
         }
-
-        this.length += 1;
     }
 
-    public void insertAfter(IRInstruction* instr, IRInstruction[] new_instrs) {
+    public void prepend(IRInstruction instr) {
+        IRInstructionLinkedListElement* element = new IRInstructionLinkedListElement(instr);
+        if (head is null) {
+            head = element;
+            tail = element;
+        } else {
+            head.prev = element;
+            element.next = head;
+            head = element;
+        }
+    }
+
+    public void insert_after(IRInstruction* instr, IRInstruction[] new_instrs) {
         IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
         IRInstructionLinkedListElement* next = element.next;
         foreach (new_instr; new_instrs) {
@@ -133,7 +143,7 @@ final class IRInstructionLinkedList {
         this.length += new_instrs.length;
     }
 
-    public void insertBefore(IRInstruction* instr, IRInstruction[] new_instrs) {
+    public void insert_before(IRInstruction* instr, IRInstruction[] new_instrs) {
         IRInstructionLinkedListElement* element = linked_list_element_from_instruction(instr);
         IRInstructionLinkedListElement* prev = element.prev;
         foreach (new_instr; new_instrs) {
@@ -233,11 +243,11 @@ final class Recipe {
     }
 
     public void insert_after(IRInstruction* instr, IRInstruction[] new_instrs) {
-        instructions.insertAfter(instr, new_instrs);
+        instructions.insert_after(instr, new_instrs);
     }
 
     public void insert_before(IRInstruction* instr, IRInstruction[] new_instrs) {
-        instructions.insertBefore(instr, new_instrs);
+        instructions.insert_before(instr, new_instrs);
     }
 
     public void remove(IRInstruction* instr) {
@@ -246,6 +256,14 @@ final class Recipe {
 
     public void replace(IRInstruction* instr, IRInstruction[] new_instrs) {
         instructions.replace(instr, new_instrs);
+    }
+
+    public void prepend(IRInstruction instr) {
+        instructions.prepend(instr);
+    }
+
+    public void append(IRInstruction instr) {
+        instructions.append(instr);
     }
 
     public IRVariable[] get_variables() {
@@ -271,10 +289,10 @@ final class Recipe {
             RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
-                (RecipeActionInsertAfter action) {
+                (RecipeActioninsert_after action) {
                     insert_after(&element.instr, action.new_instrs);
                 },
-                (RecipeActionInsertBefore action) {
+                (RecipeActioninsert_before action) {
                     insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
@@ -301,10 +319,10 @@ final class Recipe {
             RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
-                (RecipeActionInsertAfter action) {
+                (RecipeActioninsert_after action) {
                     insert_after(&element.instr, action.new_instrs);
                 },
-                (RecipeActionInsertBefore action) {
+                (RecipeActioninsert_before action) {
                     insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
@@ -472,6 +490,14 @@ final class Recipe {
 
             (IRInstructionHaltCpu i) {
                 return format("halt");
+            },
+
+            (IRInstructionPush i) {
+                return format("push %s", i.src);
+            },
+
+            (IRInstructionPop i) {
+                return format("pop %s", i.dest);
             },
         );
     }

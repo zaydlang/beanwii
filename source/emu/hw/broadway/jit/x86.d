@@ -27,6 +27,33 @@ public Reg64 to_xbyak_reg(HostReg host_reg) {
     }
 }
 
+public bool is_caller_save(HostReg reg) {
+    final switch (reg) {
+        case HostReg.RAX:
+        case HostReg.RCX:
+        case HostReg.RDX:
+        case HostReg.RSI:
+        case HostReg.RDI:
+        case HostReg.R8:
+        case HostReg.R9:
+        case HostReg.R10:
+        case HostReg.R11:
+            return true;
+        case HostReg.RBX:
+        case HostReg.RBP:
+        case HostReg.R12:
+        case HostReg.R13:
+        case HostReg.R14:
+        case HostReg.R15:
+        case HostReg.RSP:
+            return false;
+    }
+}
+
+public bool is_callee_save(HostReg reg) {
+    return !is_caller_save(reg);
+}
+
 // i need to unify HostReg and Reg64 sometime...
 alias cpu_state_reg = rdi;
 alias tmp_reg       = r15;

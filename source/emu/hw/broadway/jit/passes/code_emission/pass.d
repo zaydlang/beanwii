@@ -30,6 +30,8 @@ final class CodeEmission : RecipePass {
     }
 
     final class Map : RecipeMap {
+        enum STACK_SIZE = 8 * 64;
+
         private CodeGenerator code;
         private JitConfig jit_config;
 
@@ -39,16 +41,16 @@ final class CodeEmission : RecipePass {
         }
 
         public void reset() {
+            current_stack_offset = 0;
+            label_counter = 0;
+
             code.reset();
             code.mov(rbp, rsp);
-            code.and(rsp, ~15);
-
-            push_callee_saved_registers();
+            code.and(rsp, -16);
+            code.sub(rsp, STACK_SIZE);
         }
 
         public JitFunction get_function() {
-            pop_callee_saved_registers();
-
             code.mov(rsp, rbp);
             code.ret();
 
@@ -70,6 +72,21 @@ final class CodeEmission : RecipePass {
         private string generate_new_label() {
             import std.format;
             return format("L%d", label_counter++);
+        }
+        
+        size_t current_stack_offset = 0;
+        private void push_onto_stack(Reg64 r) {
+            code.mov(qword [rsp + cast(int) current_stack_offset], r);
+            current_stack_offset += 8;
+
+            assert(current_stack_offset <= STACK_SIZE);
+        }
+
+        private void pop_from_stack(Reg64 r) {
+            current_stack_offset -= 8;
+            code.mov(r, qword [rsp + cast(int) current_stack_offset]);
+
+            assert(current_stack_offset >= 0);
         }
 
         private void apply_binary_data_op(T)(Recipe recipe, IRInstructionBinaryDataOp instr, T src2) {
@@ -150,27 +167,6 @@ final class CodeEmission : RecipePass {
             }
         }
 
-        private void push_callee_saved_registers() {
-            code.push(rbx);
-            code.push(rbp);
-            code.push(r12);
-            code.push(r13);
-            code.push(r14);
-            code.push(r15);
-        }
-
-        private void push_caller_saved_registers() {
-            code.push(rax);
-            code.push(rcx);
-            code.push(rdx);
-            code.push(rsi);
-            code.push(rdi);
-            code.push(r8);
-            code.push(r9);
-            code.push(r10);
-            code.push(r11);
-        }
-
         private void pop_callee_saved_registers() {
             code.pop(r15);
             code.pop(r14);
@@ -235,7 +231,6 @@ final class CodeEmission : RecipePass {
                     error_jit("not yet");
                 },
                 (IRInstructionRead instr) {
-                    push_caller_saved_registers();
                     
                     final switch (instr.size) {
                         case 1: code.mov(tmp_reg, cast(u64) jit_config.read_handler8); break;
@@ -244,17 +239,15 @@ final class CodeEmission : RecipePass {
                         case 8: code.mov(tmp_reg, cast(u64) jit_config.read_handler64); break;
                     }
 
-                    code.push(rdi);
+                    push_onto_stack(rdi);
                     code.mov(rdi, cast(u64) jit_config.mem_handler_context);
                     code.call(tmp_reg);
                     code.mov(tmp_reg, rax);
-                    code.pop(rdi);
+                    pop_from_stack(rdi);
 
-                    pop_caller_saved_registers();
                     code.mov(rax, tmp_reg);
                 },
                 (IRInstructionWrite instr) {
-                    push_caller_saved_registers();
                     
                     final switch (instr.size) {
                         case 1: code.mov(tmp_reg, cast(u64) jit_config.write_handler8); break;
@@ -263,12 +256,10 @@ final class CodeEmission : RecipePass {
                         case 8: code.mov(tmp_reg, cast(u64) jit_config.write_handler64); break;
                     }
 
-                    code.push(rdi);
+                    push_onto_stack(rdi);
                     code.mov(rdi, cast(u64) jit_config.mem_handler_context);
                     code.call(tmp_reg);
-                    code.pop(rdi);
-                    
-                    pop_caller_saved_registers();
+                    pop_from_stack(rdi);
                 },
                 (IRInstructionReadSized instr) {
                     error_jit("not yet");
@@ -324,6 +315,12 @@ final class CodeEmission : RecipePass {
                 // (IRInstructionBreakpoint instr) => [],
                 (IRInstructionHaltCpu instr) {
                     code.mov(dword [cpu_state_reg + cast(int) BroadwayState.halted.offsetof], 1);
+                },
+                (IRInstructionPush instr) {
+                    push_onto_stack(instr.src.to_xbyak_reg());
+                },
+                (IRInstructionPop instr) {
+                    pop_from_stack(instr.dest.to_xbyak_reg());
                 },
                 
                 _ => error_jit("not yet")
