@@ -118,3 +118,14 @@ public bool is_read_volatile(GuestReg reg) {
         default: return true;
     }
 }
+
+public bool is_write_volatile(GuestReg reg) {
+    switch (reg) {
+        case GuestReg.R0:    .. case GuestReg.R31:    return false;
+        case GuestReg.F0:    .. case GuestReg.F31:    return false;
+        case GuestReg.GQR0:  .. case GuestReg.GQR7:   return false;
+        case GuestReg.PS0_0: .. case GuestReg.PS31_1: return false;
+
+        default: return true;
+    }
+}

@@ -266,164 +266,62 @@ final class Recipe {
 
     public void reverse_map(RecipeMap recipe_map) {
         auto element = instructions.tail;
-        int curr = 0;
-        size_t ofs = 0;
 
         while (element !is null) {
             RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {
-                    ofs += action.new_instrs.length;
                     insert_after(&element.instr, action.new_instrs);
                 },
                 (RecipeActionInsertBefore action) {
-                    ofs += action.new_instrs.length;
                     insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
-                    ofs -= 1;
-                    auto next_element = element.next;
+                    auto prev = element.prev;
                     remove(&element.instr);
-                    element = element.next;
+                    element = prev;
                 },
                 (RecipeActionReplace action) {
-                    ofs += action.new_instrs.length - 1;
+                    auto prev = element.prev;
                     replace(&element.instr, action.new_instrs);
+                    element = element.prev;
                 },
                 (RecipeActionDoNothing action) {
+                    element = element.prev;
                 }
             );
-
-            // adjust all labels to point to the new instruction index
-            auto adjust = instructions.head;
-            while (adjust !is null) {
-                
-                adjust.instr.match!(
-                    (IRInstructionBranch i) {
-                        log_jit("maybe adjusting branch %d %d", i.label.instruction_index, curr);
-                        if (i.label.instruction_index == curr) {
-                            log_jit("adjusting branch %d %d", i.label.instruction_index, curr);
-                            i.label.instruction_index += ofs;
-                        }
-                    },
-                    (IRInstructionConditionalBranch i) {
-                        if (i.after_true_label.instruction_index == curr) {
-                            i.after_true_label.instruction_index += ofs;
-                        }
-                    },
-                    (_) {}
-                );
-
-                adjust = adjust.next;
-            }
-
-            curr += 1;
-
-            element = element.prev;
         }
-            auto adjust = instructions.head;
-            while (adjust !is null) {
-                
-                adjust.instr.match!(
-                    (IRInstructionBranch i) {
-                        log_jit("maybe adjusting branch %d %d", i.label.instruction_index, curr);
-                        if (i.label.instruction_index == curr) {
-                            log_jit("adjusting branch %d %d", i.label.instruction_index, curr);
-                            i.label.instruction_index += ofs;
-                        }
-                    },
-                    (IRInstructionConditionalBranch i) {
-                        if (i.after_true_label.instruction_index == curr) {
-                            i.after_true_label.instruction_index += ofs;
-                        }
-                    },
-                    (_) {}
-                );
-
-                adjust = adjust.next;
-            }
     }
 
     public void map(RecipeMap recipe_map) {
         auto element = instructions.head;
-        int curr = 0;
-        size_t ofs = 0;
 
         while (element !is null) {
             RecipeAction action = recipe_map.map(this, &element.instr);
 
             action.match!(
                 (RecipeActionInsertAfter action) {
-                    ofs += action.new_instrs.length;
                     insert_after(&element.instr, action.new_instrs);
                 },
                 (RecipeActionInsertBefore action) {
-                    ofs += action.new_instrs.length;
                     insert_before(&element.instr, action.new_instrs);
                 },
                 (RecipeActionRemove action) {
-                    ofs -= 1;
-                    auto next_element = element.prev;
+                    auto next = element.next;
                     remove(&element.instr);
-                    element = element.prev;
+                    element = next;
                 },
                 (RecipeActionReplace action) {
-                    ofs += action.new_instrs.length - 1;
+                    auto next = element.next;
                     replace(&element.instr, action.new_instrs);
+                    element = next;
                 },
                 (RecipeActionDoNothing action) {
+                    element = element.next;
                 }
             );
-
-            // adjust all labels to point to the new instruction index
-            auto adjust = instructions.head;
-            while (adjust !is null) {
-                adjust.instr.match!(
-                    (IRInstructionBranch i) {
-                        log_jit("maybe adjusting branch %d %d", i.label.instruction_index, curr);
-                        if (i.label.instruction_index == curr) {
-                            log_jit("adjusting branch %d %d %d", i.label.instruction_index, curr, ofs);
-                            i.label.instruction_index += ofs;
-                        }
-                    },
-                    (IRInstructionConditionalBranch i) {
-                        if (i.after_true_label.instruction_index == curr) {
-                            i.after_true_label.instruction_index += ofs;
-                        }
-                    },
-                    (_) {}
-                );
-
-                adjust = adjust.next;
-            }
-
-            curr += 1;
-
-            element = element.next;
         }
-
-            // adjust all labels to point to the new instruction index
-            auto adjust = instructions.head;
-            while (adjust !is null) {
-                adjust.instr.match!(
-                    (IRInstructionBranch i) {
-                        log_jit("maybe adjusting branch %d %d", i.label.instruction_index, curr);
-                        if (i.label.instruction_index == curr) {
-                            log_jit("adjusting branch %d %d %d", i.label.instruction_index, curr, ofs);
-                            i.label.instruction_index += ofs;
-                        }
-                    },
-                    (IRInstructionConditionalBranch i) {
-                        if (i.after_true_label.instruction_index == curr) {
-                            i.after_true_label.instruction_index += ofs;
-                        }
-                    },
-                    (_) {}
-                );
-
-                adjust = adjust.next;
-            }
     }
 
     public void assign_register(IRVariable variable, HostReg reg) {
@@ -529,7 +427,11 @@ final class Recipe {
             },
 
             (IRInstructionConditionalBranch i) {
-                return format("bne v%d, #%d", i.cond.id, i.after_true_label.instruction_index);
+                return format("b v%d if v%d else v%d", i.address_if_true.id, i.cond.id, i.address_if_false.id);
+            },
+
+            (IRInstructionConditionalBranchWithLink i) {
+                return format("bl v%d if v%d else v%d", i.address_if_true.id, i.cond.id, i.address_if_false.id);
             },
 
             (IRInstructionBranch i) {

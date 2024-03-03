@@ -19,6 +19,7 @@ alias IRInstruction = SumType!(
     IRInstructionWrite,
     IRInstructionReadSized,
     IRInstructionConditionalBranch,
+    IRInstructionConditionalBranchWithLink,
     IRInstructionBranch,
     IRInstructionGetHostCarry,
     IRInstructionGetHostOverflow,
@@ -55,7 +56,8 @@ IRVariable[] get_variables(IRInstruction instruction) {
         (IRInstructionRead instr) => [instr.dest, instr.address],
         (IRInstructionWrite instr) => [instr.dest, instr.address],
         (IRInstructionReadSized instr) => [instr.dest, instr.address, instr.size],
-        (IRInstructionConditionalBranch instr) => [instr.cond],
+        (IRInstructionConditionalBranch instr) => [instr.cond, instr.address_if_true, instr.address_if_false],
+        (IRInstructionConditionalBranchWithLink instr) => [instr.cond, instr.address_if_true, instr.address_if_false],        
         (IRInstructionBranch instr) => [],
         (IRInstructionGetHostCarry instr) => [instr.dest],
         (IRInstructionGetHostOverflow instr) => [instr.dest],
@@ -67,6 +69,45 @@ IRVariable[] get_variables(IRInstruction instruction) {
         (IRInstructionHaltCpu instr) => []
     );
 }
+
+IRInstruction map_across_variables(IRInstruction instruction, IRVariable delegate(IRVariable) fn) {
+    return instruction.match!(
+        (IRInstructionGetReg instr) => Instruction.GetReg(fn(instr.dest), instr.src),
+        (IRInstructionSetReg instr) => 
+            instr.src.match!(
+                (IRVariable var) => Instruction.SetReg(instr.dest, fn(var)),
+                _ => Instruction.SetReg(instr.dest, instr.src)
+            ),
+        (IRInstructionSetFPSCR instr) => Instruction.SetFPSCR(fn(instr.src)),
+        (IRInstructionBinaryDataOp instr) => 
+            instr.src2.match!(
+                (IRVariable var) => Instruction.BinaryDataOp(instr.op, fn(instr.dest), fn(instr.src1), fn(var)),
+                _ => Instruction.BinaryDataOp(instr.op, fn(instr.dest), fn(instr.src1), instr.src2)
+            ),
+        (IRInstructionUnaryDataOp instr) =>
+            instr.src.match!(
+                (IRVariable var) => Instruction.UnaryDataOp(instr.op, fn(instr.dest), fn(var)),
+                _ => Instruction.UnaryDataOp(instr.op, fn(instr.dest), instr.src)
+            ),
+        (IRInstructionSetVarImmInt instr) => Instruction.SetVarImmInt(fn(instr.dest), instr.imm),
+        (IRInstructionSetVarImmFloat instr) => Instruction.SetVarImmFloat(fn(instr.dest), instr.imm),
+        (IRInstructionRead instr) => Instruction.Read(fn(instr.dest), fn(instr.address), instr.size),
+        (IRInstructionWrite instr) => Instruction.Write(fn(instr.dest), fn(instr.address), instr.size),
+        (IRInstructionReadSized instr) => Instruction.ReadSized(fn(instr.dest), fn(instr.address), fn(instr.size)),
+        (IRInstructionConditionalBranch instr) => Instruction.ConditionalBranch(fn(instr.cond), fn(instr.address_if_true), fn(instr.address_if_false)),
+        (IRInstructionConditionalBranchWithLink instr) => Instruction.ConditionalBranchWithLink(fn(instr.cond), instr.link, fn(instr.address_if_true), fn(instr.address_if_false)),
+        (IRInstructionBranch instr) => Instruction.Branch(instr.label),
+        (IRInstructionGetHostCarry instr) => Instruction.GetHostCarry(fn(instr.dest)),
+        (IRInstructionGetHostOverflow instr) => Instruction.GetHostOverflow(fn(instr.dest)),
+        (IRInstructionHleFunc instr) => Instruction.HleFunc(instr.function_id),
+        (IRInstructionPairedSingleMov instr) => Instruction.PairedSingleMov(fn(instr.dest), fn(instr.src)),
+        (IRInstructionDebugAssert instr) => Instruction.DebugAssert(fn(instr.cond)),
+        (IRInstructionSext instr) => Instruction.Sext(fn(instr.dest), fn(instr.src), instr.bits),
+        (IRInstructionBreakpoint instr) => Instruction.Breakpoint(),
+        (IRInstructionHaltCpu instr) => Instruction.HaltCpu()
+    );
+}
+
 final class Instruction {
     static IRInstruction GetReg(IRVariable variable, GuestReg guest_reg) {
         return cast(IRInstruction) IRInstructionGetReg(variable, guest_reg);
@@ -108,8 +149,12 @@ final class Instruction {
         return cast(IRInstruction) IRInstructionReadSized(dest, src, size);
     }
 
-    static IRInstruction ConditionalBranch(IRVariable cond, IRLabel* after_true_label) {
-        return cast(IRInstruction) IRInstructionConditionalBranch(cond, after_true_label);
+    static IRInstruction ConditionalBranch(IRVariable cond, IRVariable address_if_true, IRVariable address_if_false) {
+        return cast(IRInstruction) IRInstructionConditionalBranch(cond, address_if_true, address_if_false);
+    }
+
+    static IRInstruction ConditionalBranchWithLink(IRVariable cond, u32 link, IRVariable address_if_true, IRVariable address_if_false) {
+        return cast(IRInstruction) IRInstructionConditionalBranchWithLink(cond, link, address_if_true, address_if_false);
     }
 
     static IRInstruction Branch(IRLabel* label) {
@@ -406,61 +451,61 @@ struct IR {
     }
 
     void _if_no_phi(IRVariableGenerator cond, void delegate() true_case) {
-        IRLabel* after_true_label = generate_new_label();
+        // IRLabel* after_true_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
+        // this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
 
-        this.update_lifetime(cond.variable_id);
+        // this.update_lifetime(cond.variable_id);
 
-        true_case();
-        this.bind_label(after_true_label);
+        // true_case();
+        // this.bind_label(after_true_label);
     }
     
 
     void _if_no_phi(IRVariableGenerator cond, void delegate() true_case, void delegate() false_case) {
-        IRLabel* after_true_label = generate_new_label();
-        IRLabel* after_false_label = generate_new_label();
+        // IRLabel* after_true_label = generate_new_label();
+        // IRLabel* after_false_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
+        // this.emit(IRInstructionConditionalBranch(cond.get_variable(), after_true_label));
 
-        this.update_lifetime(cond.variable_id);
+        // this.update_lifetime(cond.variable_id);
 
-        true_case();
-        this.emit(IRInstructionBranch(after_false_label));
-        this.bind_label(after_true_label);
-        false_case();
-        this.bind_label(after_false_label); 
+        // true_case();
+        // this.emit(IRInstructionBranch(after_false_label));
+        // this.bind_label(after_true_label);
+        // false_case();
+        // this.bind_label(after_false_label); 
     }
 
     void _if(IRVariableGenerator cond, void delegate() true_case) {
-        IRLabel* after_true_label   = generate_new_label();
-        IRLabel* phi_function_label = generate_new_label();
+        // IRLabel* after_true_label   = generate_new_label();
+        // IRLabel* phi_function_label = generate_new_label();
 
-        this.emit(IRInstructionConditionalBranch(cond.get_variable(), phi_function_label));
+        // this.emit(IRInstructionConditionalBranch(cond.get_variable(), phi_function_label));
 
-        this.update_lifetime(cond.variable_id);
+        // this.update_lifetime(cond.variable_id);
 
-        current_transmutation_index = 0;
-        true_case();
-        this.emit(IRInstructionBranch(after_true_label));
+        // current_transmutation_index = 0;
+        // true_case();
+        // this.emit(IRInstructionBranch(after_true_label));
 
-        this.bind_label(phi_function_label);
+        // this.bind_label(phi_function_label);
 
-        // phi function
-        for (int i = 0; i < current_transmutation_index; i++) {
-            auto transmutation = transmutations[i];
+        // // phi function
+        // for (int i = 0; i < current_transmutation_index; i++) {
+        //     auto transmutation = transmutations[i];
             
-            this.update_lifetime(transmutation.to.variable_id);
-            this.update_lifetime(transmutation.from.variable_id);
+        //     this.update_lifetime(transmutation.to.variable_id);
+        //     this.update_lifetime(transmutation.from.variable_id);
             
-            this.emit(Instruction.UnaryDataOp(
-                IRUnaryDataOp.MOV, 
-                IRVariableGenerator(&this, transmutation.to.variable_id, ).get_variable(),
-                IRVariableGenerator(&this, transmutation.from.variable_id).get_variable()
-            ));
-        }
+        //     this.emit(Instruction.UnaryDataOp(
+        //         IRUnaryDataOp.MOV, 
+        //         IRVariableGenerator(&this, transmutation.to.variable_id, ).get_variable(),
+        //         IRVariableGenerator(&this, transmutation.from.variable_id).get_variable()
+        //     ));
+        // }
 
-        this.bind_label(after_true_label);
+        // this.bind_label(after_true_label);
     }
 
     void bind_label(IRLabel* label) {
@@ -509,6 +554,14 @@ struct IR {
 
     void breakpoint() {
         emit(IRInstructionBreakpoint());
+    }
+
+    void branch(IRVariableGenerator cond, IRVariableGenerator address_if_true, IRVariableGenerator address_if_false) {
+        emit(IRInstructionConditionalBranch(cond.get_variable(), address_if_true.get_variable(), address_if_false.get_variable()));
+    }
+
+    void branch_with_link(IRVariableGenerator cond, u32 link, IRVariableGenerator address_if_true, IRVariableGenerator address_if_false) {
+        emit(IRInstructionConditionalBranchWithLink(cond.get_variable(), link, address_if_true.get_variable(), address_if_false.get_variable()));
     }
 }
 
@@ -1002,7 +1055,15 @@ struct IRInstructionReadSized {
 
 struct IRInstructionConditionalBranch {
     IRVariable cond;
-    IRLabel* after_true_label;
+    IRVariable address_if_true;
+    IRVariable address_if_false;
+}
+
+struct IRInstructionConditionalBranchWithLink {
+    IRVariable cond;
+    u32 link;
+    IRVariable address_if_true;
+    IRVariable address_if_false;
 }
 
 struct IRInstructionBranch {

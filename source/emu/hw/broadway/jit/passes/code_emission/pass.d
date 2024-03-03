@@ -32,7 +32,6 @@ final class CodeEmission : RecipePass {
     final class Map : RecipeMap {
         private CodeGenerator code;
         private JitConfig jit_config;
-        private size_t current_instruction_index = 0;
 
         this(JitConfig jit_config) {
             this.jit_config = jit_config;
@@ -40,8 +39,6 @@ final class CodeEmission : RecipePass {
         }
 
         public void reset() {
-            this.current_instruction_index = 0;
-
             code.reset();
             code.mov(rbp, rsp);
             code.and(rsp, ~15);
@@ -50,8 +47,6 @@ final class CodeEmission : RecipePass {
         }
 
         public JitFunction get_function() {
-            import std.format;
-            code.L(format("L%d", current_instruction_index));
             pop_callee_saved_registers();
 
             code.mov(rsp, rbp);
@@ -69,6 +64,12 @@ final class CodeEmission : RecipePass {
             import std.format;
             log_jit("label: %s", label.instruction_index);
             return format("L%d", label.instruction_index);
+        }
+
+        size_t label_counter = 0;
+        private string generate_new_label() {
+            import std.format;
+            return format("L%d", label_counter++);
         }
 
         private void apply_binary_data_op(T)(Recipe recipe, IRInstructionBinaryDataOp instr, T src2) {
@@ -192,7 +193,6 @@ final class CodeEmission : RecipePass {
         }
 
         override public RecipeAction map(Recipe recipe, IRInstruction* instr) {
-
             (*instr).match!(
                 (IRInstructionGetReg instr) {
                     auto dest_reg = recipe.get_register_assignment(instr.dest).to_xbyak_reg();
@@ -275,11 +275,39 @@ final class CodeEmission : RecipePass {
                 },
                 (IRInstructionConditionalBranch instr) {
                     auto cond_reg = recipe.get_register_assignment(instr.cond).to_xbyak_reg();
+                    auto true_address_reg = recipe.get_register_assignment(instr.address_if_true).to_xbyak_reg();
+                    auto false_address_reg = recipe.get_register_assignment(instr.address_if_false).to_xbyak_reg();
                     code.test(cond_reg.cvt32(), cond_reg.cvt32());
-                    code.je(to_xbyak_label(*instr.after_true_label));
+                    
+                    auto label1 = generate_new_label();
+                    auto label2 = generate_new_label();
+
+                    code.jz(label1);
+                    code.mov(dword [rdi + cast(int) BroadwayState.pc.offsetof], true_address_reg.cvt32());
+                    code.jmp(label2);
+                    code.L(label1);
+                    code.mov(dword [rdi + cast(int) BroadwayState.pc.offsetof], false_address_reg.cvt32());
+                    code.L(label2);
+                },
+                (IRInstructionConditionalBranchWithLink instr) {
+                    auto cond_reg = recipe.get_register_assignment(instr.cond).to_xbyak_reg();
+                    auto true_address_reg = recipe.get_register_assignment(instr.address_if_true).to_xbyak_reg();
+                    auto false_address_reg = recipe.get_register_assignment(instr.address_if_false).to_xbyak_reg();
+                    code.test(cond_reg.cvt32(), cond_reg.cvt32());
+
+                    auto label1 = generate_new_label();
+                    auto label2 = generate_new_label();
+
+                    code.jz(label1);
+                    code.mov(dword [rdi + cast(int) BroadwayState.pc.offsetof], true_address_reg.cvt32());
+                    code.jmp(label2);
+                    code.L(label1);
+                    code.mov(dword [rdi + cast(int) BroadwayState.pc.offsetof], false_address_reg.cvt32());
+                    code.L(label2);
+                    code.mov(dword [rdi + cast(int) BroadwayState.lr.offsetof], cast(int) instr.link);
                 },
                 (IRInstructionBranch instr) {
-                    code.jmp(to_xbyak_label(*instr.label));
+                    // code.jmp(to_xbyak_label(*instr.label));
                 },
                 (IRInstructionGetHostCarry instr) {
                     auto dest_reg = recipe.get_register_assignment(instr.dest).to_xbyak_reg();
@@ -300,11 +328,7 @@ final class CodeEmission : RecipePass {
                 
                 _ => error_jit("not yet")
             );
-            import std.format;
-            log_jit("labela: %s", current_instruction_index);
-            code.L(format("L%d", current_instruction_index));
 
-            current_instruction_index++;
             return RecipeAction.DoNothing();
         }
     }

@@ -260,23 +260,14 @@ private GenerateRecipeAction emit_bc(IR* ir, u32 opcode, JitContext ctx) {
     int  bi = opcode.bits(16, 20);
     int  bd = opcode.bits(2, 15);
 
-    IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi);
+    IRVariable cond = emit_evaluate_condition(ir, bo, bi);
 
-    if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
-
-    ir.set_reg(GuestReg.PC, ctx.pc + 4);
-
-    ir._if(cond_ok, () {
-        if (lk) {
-            ir.set_reg(GuestReg.LR, ctx.pc + 4);
-        }
-
-        if (aa) {
-            ir.set_reg(GuestReg.PC, ir.constant(sext_32(bd, 14) << 2));
-        } else {
-            ir.set_reg(GuestReg.PC, ctx.pc + (sext_32(bd, 14) << 2));
-        }
-    });
+    if (lk) {
+        u32 address = aa ? ctx.pc + 4 + (sext_32(bd, 14) << 2) : sext_32(bd, 14) << 2;
+        ir.branch_with_link(cond, ctx.pc + 4, ir.constant(address), ir.constant(ctx.pc) + 4);
+    } else {
+        ir.branch(cond, ir.constant(ctx.pc + (sext_32(bd, 14) << 2)), ir.constant(ctx.pc) + 4);
+    }
 
     return GenerateRecipeAction.STOP;
 }
@@ -290,12 +281,11 @@ private GenerateRecipeAction emit_bcctr(IR* ir, u32 opcode, JitContext ctx) {
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
-    ir._if(cond_ok, () { 
-        if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
-
-        // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
-        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.CTR));
-    });
+    if (lk) {
+        ir.branch_with_link(cond_ok, ctx.pc + 4, ir.get_reg(GuestReg.CTR), ir.constant(ctx.pc) + 4);
+    } else {
+        ir.branch(cond_ok, ir.get_reg(GuestReg.CTR), ir.constant(ctx.pc));
+    }
 
     return GenerateRecipeAction.STOP;
 }
@@ -307,13 +297,11 @@ private GenerateRecipeAction emit_bclr(IR* ir, u32 opcode, JitContext ctx) {
 
     IRVariable cond_ok = emit_evaluate_condition(ir, bo, bi); 
     
-    ir.set_reg(GuestReg.PC, ctx.pc + 4);
-    ir._if(cond_ok, () { 
-        if (lk) ir.set_reg(GuestReg.LR, ctx.pc + 4);
-
-        // TODO: insert an assert into the JIT'ted code that checks that LR is never un-aligned
-        ir.set_reg(GuestReg.PC, ir.get_reg(GuestReg.LR));
-    });
+    if (lk) {
+        ir.branch_with_link(cond_ok, ctx.pc + 4, ir.get_reg(GuestReg.LR), ir.constant(ctx.pc) + 4);
+    } else {
+        ir.branch(cond_ok, ir.get_reg(GuestReg.LR), ir.constant(ctx.pc) + 4);
+    }
 
     return GenerateRecipeAction.STOP;
 }

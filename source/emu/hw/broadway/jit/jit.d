@@ -12,6 +12,7 @@ import emu.hw.broadway.jit.passes.generate_recipe.pass;
 import emu.hw.broadway.jit.passes.idle_loop_detection.pass;
 import emu.hw.broadway.jit.passes.impose_x86_conventions.pass;
 import emu.hw.broadway.jit.passes.optimize_get_reg.pass;
+import emu.hw.broadway.jit.passes.mov_simplification.pass;
 import emu.hw.broadway.jit.passes.optimize_set_reg.pass;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
@@ -136,8 +137,11 @@ final class Jit {
             IdleLoopDetection idle_loop_detection = new IdleLoopDetection();
             idle_loop_detection.init(ctx);
             recipe.pass(idle_loop_detection);
-            // recipe.pass(new OptimizeGetReg());
-            // recipe.pass(new OptimizeSetReg());
+            recipe.pass(new OptimizeGetReg());
+            recipe.pass(new OptimizeSetReg());
+            log_jit(recipe.to_string());
+            recipe.pass(new MovSimplification());
+            log_jit(recipe.to_string());
             recipe.pass(new ImposeX86Conventions());
             recipe.pass(new AllocateRegisters());
 

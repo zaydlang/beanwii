@@ -13,6 +13,10 @@ final class OptimizeSetReg : RecipePass {
         override public RecipeAction map(Recipe recipe, IRInstruction* instr) {
             return (*instr).match!(
                 (IRInstructionSetReg i) {
+                    if (i.dest.is_write_volatile()) {
+                        return RecipeAction.DoNothing();
+                    }
+
                     if (i.dest in seen_regs) {
                         return RecipeAction.Remove();
                     }
