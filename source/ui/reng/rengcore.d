@@ -42,11 +42,11 @@ class RengCore : Core {
 
         screen_scale *= cast(int) window.scale_dpi;
 
-        if (start_debugger) {
-            load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);
-        } else {
+        // if (start_debugger) {
+            // load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);
+        // } else {
             load_scenes([new EmuScene(screen_scale)]);
-        }
+        // }
     }
 
     pragma(inline, true) {

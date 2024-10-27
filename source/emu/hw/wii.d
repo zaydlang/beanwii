@@ -5,7 +5,6 @@ import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
-import emu.hw.broadway.jit.ir.recipe;
 import emu.hw.cp.cp;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
@@ -213,115 +212,5 @@ final class Wii {
 
     public void on_error() {
         broadway.on_error();
-    }
-
-    public WiiDebugger get_debugger() {
-        return new WiiDebugger(this);
-    }
-}
-
-final class WiiDebugger {
-    import capstone;
-    import emu.hw.broadway.jit.passes.generate_recipe.pass;
-    import emu.hw.broadway.jit.ir.instruction;
-    import emu.hw.broadway.jit.jit;
-    import std.format;
-    import util.bitop;
-
-    public Wii wii;
-    private Capstone disassembler;
-
-    this(Wii wii) {
-        this.wii          = wii;
-        this.disassembler = capstone.create(Arch.ppc, ModeFlags(Mode.bit32));
-    }
-
-    public u32 get_pc() {
-        return wii.broadway.get_pc();
-    }
-
-    public void write_be_u64(u32 addr, u64 value) {
-        wii.mem.write_be_u64(addr, value);
-    }
-
-    public void write_be_u32(u32 addr, u32 value) {
-        wii.mem.write_be_u32(addr, value);
-    }
-
-    public void write_be_u16(u32 addr, u16 value) {
-        wii.mem.write_be_u16(addr, value);
-    }
-
-    public void write_be_u8(u32 addr, u8 value) {
-        wii.mem.write_be_u8(addr, value);
-    }
-
-    public u64 read_be_u64(u32 addr) {
-        return wii.mem.read_be_u64(addr);
-    }
-
-    public u32 read_be_u32(u32 addr) {
-        return wii.mem.read_be_u32(addr);
-    }
-
-    public u16 read_be_u16(u32 addr) {
-        return wii.mem.read_be_u16(addr);
-    }
-
-    public u8 read_be_u8(u32 addr) {
-        return wii.mem.read_be_u8(addr);
-    }
-
-    public string disassemble_basic_block_at(u32 address) {
-        // The only way to know how many instructions this basic block will contain is to
-        // run generate_recipe, and then count the number of instructions in the recipe
-
-        IR* ir = new IR();
-        ir.setup();
-        ir.reset();
-
-        JitContext ctx = JitContext(
-            address,
-            wii.broadway.get_hid2().bit(30) // HID2[PSE]
-        );
-
-        auto num_guest_instructions_processed = emu.hw.broadway.jit.passes.generate_recipe.pass.generate_recipe(ir, wii.mem, ctx, address);
-
-        string disassembly = "";
-        u32 current_address = address;
-        for (int i = 0; i < num_guest_instructions_processed; i++) {
-            u32 instruction = wii.mem.read_be_u32(current_address);
-            auto res = this.disassembler.disasm((cast(ubyte*) &instruction)[0 .. 4], current_address);
-
-            foreach (instr; res) {
-                disassembly ~= format("0x%08x | %s\t\t%s", current_address, instr.mnemonic, instr.opStr);
-            }
-
-            if (i != num_guest_instructions_processed - 1) {
-                disassembly ~= "\n";
-            }
-
-            current_address += 4;
-        }
-
-        disassembly ~= '\0';
-
-        return disassembly;
-    }
-
-    public string generate_recipe(u32 address) {
-        IR* ir = new IR();
-        ir.setup();
-        ir.reset();
-
-        JitContext ctx = JitContext(
-            address,
-            wii.broadway.get_hid2().bit(30) // HID2[PSE]
-        );
-
-        auto num_guest_instructions_processed = emu.hw.broadway.jit.passes.generate_recipe.pass.generate_recipe(ir, wii.mem, ctx, address);
-        Recipe recipe = new Recipe(ir.get_instructions());
-
-        return recipe.to_string();
     }
 }

@@ -23,13 +23,10 @@ version (linux) {
     class WiiDebuggerUIRoot : Component, Renderable2D, Updatable {
         mixin Reflect;
 
-        private WiiDebugger wii_debugger;
-        private JitDebugger jit_debugger;
         private WiiVideo wii_video_display;
 
-        this(WiiDebugger wii_debugger) {
-            this.wii_debugger = wii_debugger;
-            jit_debugger = new JitDebugger(wii_debugger);
+        this() {
+
         }
 
         @property public Rectangle bounds() {
@@ -191,7 +188,7 @@ version (linux) {
 
                 nk_layout_row_dynamic(ctx, 30, 1);
 
-                jit_debugger.update(ctx);
+                // jit_debugger.update(ctx);
 
                 // menu bar
             //     nk_menubar_begin(ctx);
