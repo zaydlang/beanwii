@@ -2,12 +2,11 @@ module emu.hw.broadway.jit.jit;
 
 import capstone;
 import dklib.khash;
-
+import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
-
 import std.meta;
-
 import util.bitop;
 import util.log;
 import util.number;
@@ -59,14 +58,24 @@ final class Jit {
         this.debug_ring = new DebugRing(ringbuffer_size);
     }
 
-    private u32 fetch(BroadwayState* state) {
-        u32 instruction = cast(u32) mem.read_be_u32(state.pc);
-        return instruction;
-    }
-
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        return 0;
+        Code code = new Code();
+        code.init();
+        emit(code, mem, state.pc);
+        
+        
+        auto func = code.get_function!JitFunction();
+                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
+                foreach (instr; res) {
+                    log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                }
+
+        func(state);
+        
+        state.pc += 4;
+        return 1;
     }
 
     private void log_instruction(u32 instruction, u32 pc) {

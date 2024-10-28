@@ -14,6 +14,41 @@ final class Code : CodeGenerator {
         free_all_registers();
     }
 
+    void init() {
+        this.reset();
+        this.free_all_registers();
+        this.reserve_register(rdi);
+        
+        this.emit_prologue();
+    }
+
+    void emit_prologue() {
+        this.push(rbp);
+        this.mov(rbp, rsp);
+        this.and(rsp, -16);
+
+        foreach (reg; [rbx, r12, r13, r14, r15]) {
+            this.push(reg);
+        }
+    }
+
+    void emit_epilogue() {
+        foreach (reg; [r15, r14, r13, r12, rbx]) {
+            this.pop(reg);
+        }
+
+        this.mov(rsp, rbp);
+        this.pop(rbp);
+        this.ret();
+    }
+    
+    T get_function(T)() {
+        this.emit_epilogue();
+
+        assert(!this.hasUndefinedLabel());
+        return cast(T) this.getCode();
+    }
+
     Reg64 get_reg(GuestReg reg) {
         auto offset = get_reg_offset(reg);
         auto host_reg = allocate_register();
@@ -44,7 +79,7 @@ final class Code : CodeGenerator {
             error_jit("No free registers available");
         }
 
-        int reg = core.bitop.bsf(allocated_regs);
+        int reg = core.bitop.bsf(~allocated_regs);
         allocated_regs |= 1 << reg;
         return u16_to_reg64(cast(u16) reg);
     }

@@ -2,6 +2,7 @@ module test.broadway.state.test;
 
 import emu.hw.broadway.state;
 import emu.hw.disk.readers.filereader;
+import emu.hw.memory.strategy.slowmem.slowmem;
 import emu.hw.wii;
 import std.array;
 import std.conv;
@@ -32,7 +33,7 @@ TestState get_golden_test_state(string line) {
 
     state.xer = (parts[19].parse!u32(16)) << 29 | (parts[22].parse!u32(16)) << 30;
     state.fpscr = parts[24].parse!u32(16);
-    state.lr = parts[26].parse!u32(16);
+    state.lr = parts[28].parse!u32(16);
 
     for (int i = 0; i < 32; i++) {
         state.gprs[i] = parts[30 + i * 2].parse!u32(16);
@@ -65,7 +66,7 @@ enum tests = [
 ];
 
 static foreach (test; tests) {
-    @("test.broadway.state.dols." ~ test)
+    @(test)
     unittest {
         Wii wii = new Wii(0);
 
@@ -74,7 +75,6 @@ static foreach (test; tests) {
 
         auto golden_data = File("source/test/broadway/goldens/" ~ test ~ ".golden").byLine();
         golden_data.dropOne(); // Skip the header
-
         foreach (line; golden_data) {
             auto golden_state = get_golden_test_state(cast(string) line);
             auto actual_state = get_actual_test_state(wii);
@@ -90,6 +90,8 @@ static foreach (test; tests) {
             for (int j = 0; j < 32; j++) {
                 assert_eq(golden_state.gprs[j], actual_state.gprs[j]);
             }
+
+            wii.single_step();
         }
     }
 }

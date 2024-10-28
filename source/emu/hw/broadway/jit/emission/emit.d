@@ -1,4 +1,4 @@
-module source.emu.hw.broadway.jit.emission.emit;
+module emu.hw.broadway.jit.emission.emit;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
@@ -9,7 +9,7 @@ import util.log;
 import util.number;
 import xbyak;
 
-enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
+enum MAX_GUEST_OPCODES_PER_RECIPE = 1;
 
 enum EmissionAction {
     STOP,
@@ -1479,7 +1479,7 @@ private EmissionAction emit_xor(Code code, u32 opcode) {/*
     ir.set_reg(ra, ir.get_reg(rs) ^ ir.get_reg(rb));
     IRVariable overflow = ir.get_overflow();
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, ir.get_reg(ra));
+    if (rc) generate_recipeemit_set_cr_flags_generic(ir, 0, ir.get_reg(ra));
 
     return EmissionAction.CONTINUE;
 */
@@ -1695,25 +1695,25 @@ public EmissionAction disassemble(Code code, u32 opcode) {
     }
 }
 
-public size_t generate_recipe(Code code, Mem mem, u32 address) {
+public size_t emit(Code code, Mem mem, u32 address) {
     size_t num_opcodes_processed = 0;
     
-    while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
+    // while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
         EmissionAction action = disassemble(code, mem.read_be_u32(address));
         // ctx.pc += 4;
         // address += 4;
         // num_opcodes_processed++;
         
-        if (action == EmissionAction.STOP) {
-            break;
-        }
+        // if (action == EmissionAction.STOP) {
+            // break;
+        // }
 
-        if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE) {
+        // if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE) {
             // ir.set_reg(GuestReg.PC, ctx.pc);
-        }
-    }
+        // }
+    // }
 
-    return num_opcodes_processed;
+    return 1;
 }
 
 private void unimplemented_opcode(u32 opcode) {
