@@ -10,8 +10,8 @@ import util.log;
 import util.number;
 
 final class Broadway {
+    public  BroadwayState       state;
     private Mem                 mem;
-    private BroadwayState       state;
     private Jit                 jit;
     private HleContext          hle_context;
     private InterruptController interrupt_controller;
@@ -81,6 +81,11 @@ final class Broadway {
         while (elapsed < num_cycles && !state.halted) {
             elapsed += jit.run(&state);
         }
+    }
+
+    // TODO: do single stepping properly
+    public void single_step() {
+        cycle(1);
     }
 
     public void run_until_return() {

@@ -22,7 +22,7 @@ import util.log;
 import util.number;
 
 final class Wii {
-    private Broadway         broadway;
+    public  Broadway         broadway;
     private Hollywood        hollywood;
     private Mem              mem;
 
@@ -52,6 +52,10 @@ final class Wii {
     public void cycle(int num_cycles) {
         this.broadway.cycle(num_cycles);
         this.video_interface.scanout();
+    }
+
+    public void single_step() {
+        this.broadway.single_step();
     }
 
     public void load_disk(u8[] wii_disk_data) {
