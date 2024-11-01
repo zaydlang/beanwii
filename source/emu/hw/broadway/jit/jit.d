@@ -50,29 +50,31 @@ final class Jit {
     private Mem        mem;
     private JitHashMap jit_hash_map;
     private DebugRing  debug_ring;
+    private Code       code;
 
     this(JitConfig config, Mem mem, size_t ringbuffer_size) {
         this.config = config;
         this.mem = mem;
         this.jit_hash_map = JitHashMap();
         this.debug_ring = new DebugRing(ringbuffer_size);
+        this.code = new Code();
     }
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        Code code = new Code();
-        code.init();
-        emit(code, mem, state.pc);
+        // code.init();
+        // emit(code, mem, state.pc);
         
         
-        auto func = code.get_function!JitFunction();
-                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
-                foreach (instr; res) {
-                    log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                }
+        // auto func = code.get_function!JitFunction();
+        //         auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+        //         auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
+        //         foreach (instr; res) {
+        //             log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+        //         }
 
-        func(state);
+        // log_jit("ASS %x", cast(u8*)func);
+        // func(state);
         
         state.pc += 4;
         return 1;

@@ -25,7 +25,6 @@ final class Code : CodeGenerator {
     void emit_prologue() {
         this.push(rbp);
         this.mov(rbp, rsp);
-        this.and(rsp, -16);
 
         foreach (reg; [rbx, r12, r13, r14, r15]) {
             this.push(reg);
@@ -37,7 +36,6 @@ final class Code : CodeGenerator {
             this.pop(reg);
         }
 
-        this.mov(rsp, rbp);
         this.pop(rbp);
         this.ret();
     }
