@@ -62,19 +62,18 @@ final class Jit {
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        // code.init();
-        // emit(code, mem, state.pc);
+        code.init();
+        emit(code, mem, state.pc);
         
         
-        // auto func = code.get_function!JitFunction();
+        auto func = code.get_function!JitFunction();
         //         auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
         //         auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
         //         foreach (instr; res) {
         //             log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
         //         }
 
-        // log_jit("ASS %x", cast(u8*)func);
-        // func(state);
+        func(state);
         
         state.pc += 4;
         return 1;
