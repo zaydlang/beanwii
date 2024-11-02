@@ -64,21 +64,7 @@ private EmissionAction emit_addex(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
-private EmissionAction emit_addi(Code code, u32 opcode) {/*
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    int simm = sext_32(opcode.bits(0, 15), 16);
-
-    if (ra == 0) {
-        ir.set_reg(rd, simm);
-    } else {
-        IRVariable src = ir.get_reg(ra);
-        ir.set_reg(rd, src + simm);
-    }
-
-    return EmissionAction.CONTINUE;
-*/
-
+private EmissionAction emit_addi(Code code, u32 opcode) {
     GuestReg rd_guest = opcode.bits(21, 25).to_gpr;
     GuestReg ra_guest = opcode.bits(16, 20).to_gpr;
     int simm = sext_32(opcode.bits(0, 15), 16);
