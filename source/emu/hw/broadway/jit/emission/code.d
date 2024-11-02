@@ -51,13 +51,13 @@ final class Code : CodeGenerator {
         auto offset = get_reg_offset(reg);
         auto host_reg = allocate_register();
 
-        this.mov(host_reg, dword [rdi + cast(int) offset]);
+        this.mov(host_reg.cvt32(), dword [rdi + cast(int) offset]);
         return host_reg;
     }
 
     void set_reg(GuestReg reg, Reg64 host_reg) {
         auto offset = get_reg_offset(reg);
-        this.mov(dword [rdi + cast(int) offset], host_reg);
+        this.mov(dword [rdi + cast(int) offset], host_reg.cvt32());
     }
 
     void set_reg(GuestReg reg, int value) {
