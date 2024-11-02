@@ -35,8 +35,8 @@ void set_flags(Code code, bool rc, bool oe, Reg64 tmp1, Reg64 tmp2, Reg64 tmp3) 
         code.shr(tmp1, cl);
         code.and(tmp1, 0xffff);
 
-        code.seto(tmp2);
-        code.or(tmp1, tmp2);
+        code.seto(cl);
+        code.or(tmp1, rcx);
 
         code.and(code.get_address(GuestReg.CR), 0xffff_fff0);
         code.or(code.get_address(GuestReg.CR), tmp1);

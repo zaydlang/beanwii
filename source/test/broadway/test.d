@@ -41,6 +41,12 @@ struct DiffRepresentation {
     Diff fpscr;
 }
 
+u32 instruction_for_golden_line(string line) {
+    auto parts = line.split(" ");
+    parts[1] = parts[1][2..$];
+    return parts[1].parse!u32(16);
+}
+
 string disassembly_for_golden_line(string line) {
     auto parts = line.split(" ");
     return parts[94..$].join(" ");
@@ -260,6 +266,7 @@ static foreach (test; tests) {
         auto golden_data = File("source/test/broadway/goldens/" ~ test ~ ".golden").byLine();
         golden_data.dropOne(); // Skip the header
 
+        u32 previous_instruction = 0;
         string previous_disassembly = "";
         TestState previous_state = get_actual_test_state(wii);
 
@@ -272,7 +279,7 @@ static foreach (test; tests) {
             
             if (is_failure(diff)) {
                 writefln("===== Test %s Failed! =====", test);
-                writefln("Instruction: %s", previous_disassembly);
+                writefln("Instruction: %s (%08x)", previous_disassembly, previous_instruction);
 
                 writefln("Previous state:");
                 pretty_print_state(previous_state, diff);
@@ -284,6 +291,7 @@ static foreach (test; tests) {
             }
 
             previous_state = actual_state;
+            previous_instruction = instruction_for_golden_line(cast(string) line);
             previous_disassembly = disassembly_for_golden_line(cast(string) line);
             wii.single_step();
         }
