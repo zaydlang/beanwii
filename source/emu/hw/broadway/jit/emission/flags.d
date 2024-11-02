@@ -5,7 +5,7 @@ import emu.hw.broadway.jit.emission.guest_reg;
 import xbyak;
 
 void set_flags(Code code, bool rc, bool oe, Reg64 tmp1, Reg64 tmp2, Reg64 tmp3) {
-    code.setc(tmp2);
+    code.setc(tmp2.cvt8());
 
     if (oe) {
         code.seto(tmp3);
