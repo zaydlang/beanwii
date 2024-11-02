@@ -1,6 +1,7 @@
 module emu.hw.broadway.jit.emission.emit;
 
 import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.opcode;
 import emu.hw.memory.strategy.memstrategy;
@@ -22,61 +23,17 @@ private EmissionAction emit_addcx(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
-    bool     oe = opcode.bit(10);
-    bool     rc = opcode.bit(0);
-    auto rd = code.get_reg(guest_rd);
-    auto ra = code.get_reg(guest_ra);
-    auto rb = code.get_reg(guest_rb);
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto rd       = code.get_reg(guest_rd);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
 
-    // could use lea, but i'd rather get the carry and overflow flags for free
     code.mov(rd, ra);
     code.add(rd, rb);
     code.set_reg(guest_rd, rd);
     
-    code.setc(rd);
-
-    // Thanks MerryMage for the following trick:
-    //               x64 flags    
-    //               ZF  PF  CF     My Flags
-    // Greater than   0   0   0       100
-    // Less than      0   0   1       010
-    // Equal          1   0   0       001
-    // Unordered      1   1   1       000
-    //
-    // Thus we can take use ZF:CF as an index into an array like so:
-    //  x64      My Flags
-    // ZF:CF     
-    //   0       1000'0000'0000'0000 = 0x8000
-    //   1       0100'0000'0000'0000 = 0x4000
-    //   2       0010'0000'0000'0000 = 0x2000
-    //   3       0000'0000'0000'0000 = 0x0000
-
-    code.sete(cl);
-    code.rcl(cl, 5); // cl = ZF:CF:0000
-
-    code.mov(ra, 0x0000_0002_0004_0008);
-    code.shr(ra, cl);
-    code.and(ra, 0xffff);
-
-    if (rc) {
-        code.seto(rb);
-        code.or(ra, rb);
-    }
-
-    code.and(code.get_address(GuestReg.CR), 0xffff_fff0);
-    code.or(code.get_address(GuestReg.CR), ra);
-
-    if (oe) {
-        code.seto(rb);
-        code.lea(rb, dword [rb + rb * 2]);
-        code.shl(rb, 30);
-        code.and(code.get_address(GuestReg.XER), 0x7fff_ffff);
-        code.or(code.get_address(GuestReg.XER), rb);
-    }
-
-    code.shl(rd, 29);
-    code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
-    code.or(code.get_address(GuestReg.XER), rd);
+    set_flags(code, oe, rc, ra, rb, rd);
 
     return EmissionAction.CONTINUE;
 }
