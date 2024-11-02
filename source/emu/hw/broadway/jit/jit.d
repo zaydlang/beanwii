@@ -67,12 +67,15 @@ final class Jit {
         
         
         auto func = code.get_function!JitFunction();
-        //         auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-        //         auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
-        //         foreach (instr; res) {
-        //             log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-        //         }
+                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
+                foreach (instr; res) {
+                    // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                }
 
+        if (mem.read_be_u32(state.pc) == 0x7cde6c14) {
+            int x = 2;
+        }
         func(state);
         
         state.pc += 4;

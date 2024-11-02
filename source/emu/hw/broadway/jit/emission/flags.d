@@ -4,11 +4,11 @@ import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
 import xbyak;
 
-void set_flags(Code code, bool rc, bool oe, Reg64 tmp1, Reg64 tmp2, Reg64 tmp3) {
+void set_flags(Code code, bool rc, bool oe, Reg32 tmp1, Reg32 tmp2, Reg32 tmp3) {
     code.setc(tmp2.cvt8());
 
     if (oe) {
-        code.seto(tmp3);
+        code.seto(tmp3.cvt8());
     }
 
     if (rc) {
@@ -45,7 +45,7 @@ void set_flags(Code code, bool rc, bool oe, Reg64 tmp1, Reg64 tmp2, Reg64 tmp3) 
     if (oe) {
         code.lea(tmp3, dword [tmp3 + tmp3 * 2]);
         code.shl(tmp3, 30);
-        code.and(code.get_address(GuestReg.XER), 0x7fff_ffff);
+        code.and(code.get_address(GuestReg.XER), 0xbfff_ffff);
         code.or(code.get_address(GuestReg.XER), tmp3);
     }
 

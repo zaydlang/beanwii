@@ -18,7 +18,7 @@ enum EmissionAction {
 }
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
-    code.reserve_register(rcx);
+    code.reserve_register(ecx);
 
     auto guest_rd = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
@@ -33,7 +33,7 @@ private EmissionAction emit_addcx(Code code, u32 opcode) {
     code.add(rd, rb);
     code.set_reg(guest_rd, rd);
     
-    set_flags(code, oe, rc, ra, rb, rd);
+    set_flags(code, rc, oe, ra, rb, rd);
 
     return EmissionAction.CONTINUE;
 }
@@ -1496,7 +1496,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
     switch (secondary_opcode) {
         // case PrimaryOp1FSecondaryOpcode.ADD:     return emit_addx   (ir, opcode);
         case PrimaryOp1FSecondaryOpcode.ADDC:    return emit_addcx  (code, opcode);
-        // case PrimaryOp1FSecondaryOpcode.ADDCO:   return emit_addcx  (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.ADDCO:   return emit_addcx  (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.ADDE:    return emit_addex  (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.ADDEO:   return emit_addex  (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.ADDO:    return emit_addx   (ir, opcode);
