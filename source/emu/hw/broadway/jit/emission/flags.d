@@ -45,6 +45,39 @@ void do_cmp(T)(Code code, CmpType cmp_type, Reg32 lhs, T rhs, int cr) {
     code.or(code.get_address(GuestReg.CR), lhs);
 }
 
+void set_division_flags(Code code, bool rc, bool oe, Reg32 tmp1, Reg32 tmp3, bool bad_division) {
+    if (oe) {
+        if (bad_division) {
+            code.or(code.get_address(GuestReg.XER), 0xc000_0000);
+        } else {
+            code.and(code.get_address(GuestReg.XER), 0xbfff_ffff);
+        }
+    }
+
+    if (rc) {
+        if (bad_division) {
+            code.cmp(eax, 0);
+            code.mov(tmp3, 8);
+            code.cmovl(tmp1, tmp3);
+            code.mov(tmp3, 4);
+            code.cmovg(tmp1, tmp3);
+            code.mov(tmp3, 2);
+            code.cmove(tmp1, tmp3);
+        } else {
+            code.cmp(eax, 0);
+            code.mov(tmp3, 8 | 16);
+            code.cmovl(tmp1, tmp3);
+            code.mov(tmp3, 4 | 16);
+            code.cmovg(tmp1, tmp3);
+            code.mov(tmp3, 2 | 16);
+            code.cmove(tmp1, tmp3);
+        }
+
+        code.and(code.get_address(GuestReg.CR), 0xffff_fff0);
+        code.or(code.get_address(GuestReg.CR), tmp1);
+    }
+}
+
 // result could equal tmp1 if needed
 void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, Reg32 result, Reg32 tmp1, Reg32 tmp2, Reg32 tmp3, int cr) {
     if (set_xer_carry) {

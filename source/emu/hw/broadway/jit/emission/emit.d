@@ -195,6 +195,8 @@ private EmissionAction emit_addzex(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_and(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -211,6 +213,8 @@ private EmissionAction emit_and(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_andc(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -228,6 +232,8 @@ private EmissionAction emit_andc(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_andi(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int uimm      = opcode.bits(0, 15);
@@ -242,6 +248,8 @@ private EmissionAction emit_andi(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_andis(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int uimm      = opcode.bits(0, 15) << 16;
@@ -334,6 +342,8 @@ return EmissionAction.STOP;
 }
 
 private EmissionAction emit_cntlzw(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     bool rc       = opcode.bit(0);
@@ -344,12 +354,14 @@ private EmissionAction emit_cntlzw(Code code, u32 opcode) {
     code.lzcnt(rs, rs);
     code.set_reg(guest_ra, rs);
 
-    if (rc) set_flags(code, false, false, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
+    set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
 }
 
 private EmissionAction emit_cmp(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     auto crf_d    = opcode.bits(23, 25);
@@ -366,6 +378,8 @@ private EmissionAction emit_cmp(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_cmpl(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     auto crf_d    = opcode.bits(23, 25);
@@ -382,6 +396,8 @@ private EmissionAction emit_cmpl(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_cmpli(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int  uimm     = opcode.bits(0, 15);
     auto crf_d    = opcode.bits(23, 25);
@@ -396,6 +412,8 @@ private EmissionAction emit_cmpli(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_cmpi(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int  imm      = sext_32(opcode.bits(0, 15), 16);
     auto crf_d    = opcode.bits(23, 25);
@@ -452,81 +470,107 @@ private EmissionAction emit_dcbst(Code code, u32 opcode) {/*
 return EmissionAction.STOP;
 }
 
-private EmissionAction emit_divwx(Code code, u32 opcode) {/*
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
-    bool     oe = opcode.bit(10);
+private EmissionAction emit_divwx(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(ecx);
+    code.reserve_register(edx);
 
-    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
-        IRVariable result = ir.get_reg(ra) >> 31;
-        ir.set_reg(rd, result);
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
+    
+    auto good_division = code.fresh_label();
+    auto bad_division  = code.fresh_label();
+    auto end           = code.fresh_label();
 
-        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
-        if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    }, () {
-        IRVariable result   = ir.get_reg(ra) / ir.get_reg(rb);
-        IRVariable overflow = ir.get_overflow();
-        ir.set_reg(rd, result);
+    code.cmp(rb, 0);
+    code.je(bad_division);
+    code.cmp(ra, 0x80000000);
+    code.jne(good_division);
+    code.cmp(ra, 0xFFFFFFFF);
+    code.jne(good_division);
 
-        if (oe) emit_set_xer_so_ov(ir, overflow);
-        if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    });
+code.L(good_division);    
+    code.mov(eax, ra);
+    code.cdq();
+    code.idiv(rb);
+    code.mov(ra, eax);
+    code.set_reg(guest_rd, ra);
+    set_division_flags(code, rc, oe, ra, rb, false);
+    code.jmp(end);
 
-    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0xFFFF_FFFF)) & ir.get_reg(ra).equals(ir.constant(0x8000_0000)), () {
-        ir.set_reg(rd, 0xFFFF_FFFF);
+code.L(bad_division);
+    code.sar(ra, 31);
+    code.set_reg(guest_rd, ra);
+    set_division_flags(code, rc, oe, ra, rb, true);
 
-        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
-        if (rc) emit_set_cr_flags_generic(ir, 0, ir.constant(0xFFFF_FFFF));
-    });
+code.L(end);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_divwux(Code code, u32 opcode) {/*
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
-    bool     oe = opcode.bit(10);
+private EmissionAction emit_divwux(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(ecx);
+    code.reserve_register(edx);
 
-    ir._if_no_phi(ir.get_reg(rb).equals(ir.constant(0)), () {
-        IRVariable result = ir.constant(0);
-        ir.set_reg(rd, result);
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
+    
+    auto good_division = code.fresh_label();
+    auto bad_division  = code.fresh_label();
+    auto end           = code.fresh_label();
 
-        if (oe) emit_set_xer_so_ov(ir, ir.constant(1));
-        if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    }, () {
-        IRVariable result   = ir.get_reg(ra).unsigned_div(ir.get_reg(rb));
-        IRVariable overflow = ir.get_overflow();
-        ir.set_reg(rd, result);
+    code.cmp(rb, 0);
+    code.je(bad_division);
+    code.cmp(ra, 0x80000000);
+    code.jne(good_division);
+    code.cmp(ra, 0xFFFFFFFF);
+    code.jne(good_division);
 
-        if (oe) emit_set_xer_so_ov(ir, overflow);
-        if (rc) emit_set_cr_flags_generic(ir, 0, result);
-    });
+code.L(good_division);    
+    code.mov(rax, ra.cvt64());
+    code.cqo();
+    code.div(rb.cvt64());
+    code.mov(ra, eax);
+    code.set_reg(guest_rd, ra);
+    set_division_flags(code, rc, oe, ra, rb, false);
+    code.jmp(end);
+
+code.L(bad_division);
+    code.xor(ra, ra);
+    code.set_reg(guest_rd, ra);
+    set_division_flags(code, rc, oe, ra, rb, true);
+
+code.L(end);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_eqv(Code code, u32 opcode) {/*
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
+private EmissionAction emit_eqv(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
+    auto rb       = code.get_reg(guest_rb);
 
-    IRVariable result = ~(ir.get_reg(rs) ^ ir.get_reg(rb));
-    ir.set_reg(ra, result);
+    code.xor(rs, rb);
+    code.not(rs);
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_extsb(Code code, u32 opcode) {/*
@@ -1466,11 +1510,11 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         // case PrimaryOp1FSecondaryOpcode.DCBF:    return emit_dcbf   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.DCBI:    return emit_dcbi   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.DCBST:   return emit_dcbst  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.DIVW:    return emit_divwx  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.DIVWO:   return emit_divwx  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.DIVWU:   return emit_divwux (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.DIVWUO:  return emit_divwux (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.EQV:     return emit_eqv    (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.DIVW:    return emit_divwx  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.DIVWO:   return emit_divwx  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.DIVWU:   return emit_divwux (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.DIVWUO:  return emit_divwux (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.EQV:     return emit_eqv    (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.EXTSB:   return emit_extsb  (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.EXTSH:   return emit_extsh  (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.HLE:     return emit_hle    (ir, opcode);

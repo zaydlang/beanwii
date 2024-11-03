@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.emission.code;
 import core.bitop;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.x86;
+import std.conv;
 import util.log;
 import util.number;
 import xbyak;
@@ -92,5 +93,10 @@ final class Code : CodeGenerator {
 
     void free_all_registers() {
         allocated_regs = 0;
+    }
+
+    int label_counter = 0;
+    string fresh_label() {
+        return "label_" ~ to!string(label_counter++);
     }
 }
