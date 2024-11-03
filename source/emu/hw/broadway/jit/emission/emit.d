@@ -194,66 +194,65 @@ private EmissionAction emit_addzex(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
-private EmissionAction emit_and(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
+private EmissionAction emit_and(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
+    auto rb       = code.get_reg(guest_rb);
 
-    IRVariable result = ir.get_reg(rs) & ir.get_reg(rb);
-    ir.set_reg(ra, result);
+    code.and(rs, rb);
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
-
-    return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
-}
-
-private EmissionAction emit_andc(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
-
-    IRVariable result = ir.get_reg(rs) & ~ir.get_reg(rb);
-    ir.set_reg(ra, result);
-
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register());
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_andi(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    int uimm = opcode.bits(0, 15);
+private EmissionAction emit_andc(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
+    auto rb       = code.get_reg(guest_rb);
 
-    IRVariable result = ir.get_reg(rs) & uimm;
-    ir.set_reg(ra, result);
+    code.not(rb);
+    code.and(rs, rb);
+    code.set_reg(guest_ra, rs);
 
-    emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register());
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_andis(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    int uimm = opcode.bits(0, 15);
+private EmissionAction emit_andi(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    int uimm      = opcode.bits(0, 15);
 
-    IRVariable result = ir.get_reg(rs) & (uimm << 16);
-    ir.set_reg(ra, result);
+    auto rs = code.get_reg(guest_rs);
+    code.and(rs, uimm);
+    code.set_reg(guest_ra, rs);
+    
+    set_flags(code, false, true, false, rs, rs, code.allocate_register(), code.allocate_register());
 
-    emit_set_cr_flags_generic(ir, 0, result);
+    return EmissionAction.CONTINUE;
+}
 
-    return EmissionAction.STOP;
-*/
-return EmissionAction.STOP;
+private EmissionAction emit_andis(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    int uimm      = opcode.bits(0, 15) << 16;
+
+    auto rs = code.get_reg(guest_rs);
+    code.and(rs, uimm);
+    code.set_reg(guest_ra, rs);
+    
+    set_flags(code, false, true, false, rs, rs, code.allocate_register(), code.allocate_register());
+
+    return EmissionAction.CONTINUE;
 }
 
 private EmissionAction emit_b(Code code, u32 opcode) {/*
@@ -1492,8 +1491,8 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.ADDMEO:  return emit_addmex (code, opcode);
         case PrimaryOp1FSecondaryOpcode.ADDZE:   return emit_addzex (code, opcode);
         case PrimaryOp1FSecondaryOpcode.ADDZEO:  return emit_addzex (code, opcode);
-        // case PrimaryOp1FSecondaryOpcode.AND:     return emit_and    (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.ANDC:    return emit_andc   (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.AND:     return emit_and    (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.ANDC:    return emit_andc   (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.CNTLZW:  return emit_cntlzw (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.CMP:     return emit_cmp    (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.CMPL:    return emit_cmpl   (ir, opcode);
@@ -1602,8 +1601,8 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.ADDIC:  return emit_addic (code, opcode);
         case PrimaryOpcode.ADDIC_: return emit_addic_(code, opcode);
         case PrimaryOpcode.ADDIS:  return emit_addis (code, opcode);
-        // case PrimaryOpcode.ANDI:   return emit_andi  (ir, opcode);
-        // case PrimaryOpcode.ANDIS:  return emit_andis (ir, opcode);
+        case PrimaryOpcode.ANDI:   return emit_andi  (code, opcode);
+        case PrimaryOpcode.ANDIS:  return emit_andis (code, opcode);
         // case PrimaryOpcode.B:      return emit_b     (ir, opcode);
         // case PrimaryOpcode.BC:     return emit_bc    (ir, opcode);
         // case PrimaryOpcode.CMPLI:  return emit_cmpli (ir, opcode);
