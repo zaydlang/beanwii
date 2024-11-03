@@ -557,6 +557,8 @@ code.L(end);
 }
 
 private EmissionAction emit_eqv(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -574,6 +576,8 @@ private EmissionAction emit_eqv(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_extsb(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     bool rc       = opcode.bit(0);
@@ -590,6 +594,8 @@ private EmissionAction emit_extsb(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_extsh(Code code, u32 opcode) {
+    code.reserve_register(ecx);
+
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     bool rc       = opcode.bit(0);
@@ -812,20 +818,42 @@ private EmissionAction emit_mtspr(Code code, u32 opcode) {/*
 return EmissionAction.STOP;
 }
 
-private EmissionAction emit_mulli(Code code, u32 opcode) {/*
-    GuestReg rd   = to_gpr(opcode.bits(21, 25));
-    GuestReg ra   = to_gpr(opcode.bits(16, 20));
-    int      simm = sext_32(opcode.bits(0, 15), 16);
+private EmissionAction emit_mulli(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(edx);
 
-    IRVariable result = ir.get_reg(ra) * simm;
-    ir.set_reg(rd, result);
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    int  simm     = sext_32(opcode.bits(0, 15), 16);
+    auto ra       = code.get_reg(guest_ra);
+
+    code.mov(eax, ra);
+    code.mov(edx, simm);
+    code.imul(edx);
+    code.set_reg(guest_rd, eax);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_mullwx(Code code, u32 opcode) {/*
+private EmissionAction emit_mullwx(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(edx);
+    code.reserve_register(ecx);
+
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
+
+    code.mov(eax, ra);
+    code.imul(eax, rb);
+    code.set_reg(guest_rd, eax);
+
+    set_flags(code, false, rc, oe, eax, eax, ra, rb, 0);
+    /*
     GuestReg rd = to_gpr(opcode.bits(21, 25));
     GuestReg ra = to_gpr(opcode.bits(16, 20));
     GuestReg rb = to_gpr(opcode.bits(11, 15));
@@ -844,52 +872,48 @@ private EmissionAction emit_mullwx(Code code, u32 opcode) {/*
 return EmissionAction.STOP;
 }
 
-private EmissionAction emit_mulhw(Code code, u32 opcode) {/*
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
-    bool     oe = opcode.bit(10);
+private EmissionAction emit_mulhw(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(edx);
+    code.reserve_register(ecx);
 
-    // the broadway manual seems to indicate that this bit is 0,
-    // but knowing this manual, i wouldn't be surprised if it can be
-    // a 1. so i'll leave in the infrastructure for dealing with oe.
-    assert(!oe);
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
 
-    IRVariable result = ir.get_reg(ra).multiply_high_signed(ir.get_reg(rb));
-    IRVariable overflow = ir.get_overflow();
-    ir.set_reg(rd, result);
+    code.mov(eax, ra);
+    code.imul(rb);
+    code.set_reg(guest_rd, edx);
 
-    if (oe) emit_set_xer_so_ov(ir, overflow);
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, oe, edx, edx, ra, rb, 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_mulhwu(Code code, u32 opcode) {/*
-    GuestReg rd = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
-    bool     oe = opcode.bit(10);
+private EmissionAction emit_mulhwu(Code code, u32 opcode) {
+    code.reserve_register(eax);
+    code.reserve_register(edx);
+    code.reserve_register(ecx);
 
-    // the broadway manual seems to indicate that this bit is 0,
-    // but knowing this manual, i wouldn't be surprised if it can be
-    // a 1. so i'll leave in the infrastructure for dealing with oe.
-    assert(!oe);
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool oe       = opcode.bit(10);
+    bool rc       = opcode.bit(0);
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
 
-    IRVariable result = ir.get_reg(ra).multiply_high(ir.get_reg(rb));
-    IRVariable overflow = ir.get_overflow();
-    ir.set_reg(rd, result);
+    code.mov(eax, ra);
+    code.mul(rb);
+    code.set_reg(guest_rd, edx);
 
-    if (oe) emit_set_xer_so_ov(ir, overflow);
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, oe, edx, edx, ra, rb, 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_nand(Code code, u32 opcode) {/*
@@ -1523,10 +1547,10 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         // case PrimaryOp1FSecondaryOpcode.MFTB:    return emit_mftb   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.MTMSR:   return emit_mtmsr  (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.MTSPR:   return emit_mtspr  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.MULLW:   return emit_mullwx (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.MULLWO:  return emit_mullwx (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.MULHW:   return emit_mulhw  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.MULHWU:  return emit_mulhwu (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.MULLW:   return emit_mullwx (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.MULLWO:  return emit_mullwx (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.MULHW:   return emit_mulhw  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.MULHWU:  return emit_mulhwu (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.NAND:    return emit_nand   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.NEG:     return emit_negx   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.NEGO:    return emit_negx   (ir, opcode);
@@ -1621,7 +1645,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         // case PrimaryOpcode.LHZ:    return emit_lhz   (ir, opcode);
         // case PrimaryOpcode.LWZ:    return emit_lwz   (ir, opcode);
         // case PrimaryOpcode.LWZU:   return emit_lwzu  (ir, opcode);
-        // case PrimaryOpcode.MULLI:  return emit_mulli (ir, opcode);
+        case PrimaryOpcode.MULLI:  return emit_mulli (code, opcode);
         // case PrimaryOpcode.ORI:    return emit_ori   (ir, opcode);
         // case PrimaryOpcode.ORIS:   return emit_oris  (ir, opcode);
         // case PrimaryOpcode.PSQ_L:  return emit_psq_l (ir, opcode);
