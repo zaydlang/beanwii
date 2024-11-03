@@ -333,21 +333,20 @@ private EmissionAction emit_bclr(Code code, u32 opcode) {/*
 return EmissionAction.STOP;
 }
 
-private EmissionAction emit_cntlzw(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    bool     rc = opcode.bit(0);
+private EmissionAction emit_cntlzw(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
 
     assert(opcode.bits(11, 15) == 0);
 
-    IRVariable result = ir.get_reg(rs).clz();
-    ir.set_reg(ra, result);
+    code.lzcnt(rs, rs);
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    if (rc) set_flags(code, false, false, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_cmp(Code code, u32 opcode) {
@@ -1461,7 +1460,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.ADDZEO:  return emit_addzex (code, opcode);
         case PrimaryOp1FSecondaryOpcode.AND:     return emit_and    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.ANDC:    return emit_andc   (code, opcode);
-        // case PrimaryOp1FSecondaryOpcode.CNTLZW:  return emit_cntlzw (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.CNTLZW:  return emit_cntlzw (code, opcode);
         case PrimaryOp1FSecondaryOpcode.CMP:     return emit_cmp    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.CMPL:    return emit_cmpl   (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.DCBF:    return emit_dcbf   (ir, opcode);
