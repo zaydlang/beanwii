@@ -573,38 +573,36 @@ private EmissionAction emit_eqv(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
-private EmissionAction emit_extsb(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    bool rc = opcode.bit(0);
+private EmissionAction emit_extsb(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
 
     assert(opcode.bits(11, 15) == 0);
 
-    IRVariable result = ir.get_reg(rs).sext(8);
-    ir.set_reg(ra, result);
+    code.movsx(rs, rs.cvt8());
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
-private EmissionAction emit_extsh(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    bool rc = opcode.bit(0);
+private EmissionAction emit_extsh(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
 
     assert(opcode.bits(11, 15) == 0);
 
-    IRVariable result = ir.get_reg(rs).sext(16);
-    ir.set_reg(ra, result);
+    code.movsx(rs, rs.cvt16());
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_hle(Code code, u32 opcode) {/*
@@ -1515,8 +1513,8 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.DIVWU:   return emit_divwux (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DIVWUO:  return emit_divwux (code, opcode);
         case PrimaryOp1FSecondaryOpcode.EQV:     return emit_eqv    (code, opcode);
-        // case PrimaryOp1FSecondaryOpcode.EXTSB:   return emit_extsb  (ir, opcode);
-        // case PrimaryOp1FSecondaryOpcode.EXTSH:   return emit_extsh  (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.EXTSB:   return emit_extsb  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.EXTSH:   return emit_extsh  (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.HLE:     return emit_hle    (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.ICBI:    return emit_icbi   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.LWZX:    return emit_lwzx   (ir, opcode);
