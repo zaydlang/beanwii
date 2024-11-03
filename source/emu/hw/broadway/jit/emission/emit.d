@@ -916,21 +916,23 @@ private EmissionAction emit_mulhwu(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
-private EmissionAction emit_nand(Code code, u32 opcode) {/*
-    GuestReg rs = to_gpr(opcode.bits(21, 25));
-    GuestReg ra = to_gpr(opcode.bits(16, 20));
-    GuestReg rb = to_gpr(opcode.bits(11, 15));
-    bool     rc = opcode.bit(0);
+private EmissionAction emit_nand(Code code, u32 opcode) {
+    code.reserve_register(ecx);
 
-    IRVariable result = ~(ir.get_reg(rs) & ir.get_reg(rb));
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    bool rc       = opcode.bit(0);
+    auto rs       = code.get_reg(guest_rs);
+    auto rb       = code.get_reg(guest_rb);
 
-    ir.set_reg(ra, result);
+    code.and(rs, rb);
+    code.not(rs);
+    code.set_reg(guest_ra, rs);
 
-    if (rc) emit_set_cr_flags_generic(ir, 0, result);
+    set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_negx(Code code, u32 opcode) {/*
@@ -1551,7 +1553,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.MULLWO:  return emit_mullwx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.MULHW:   return emit_mulhw  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.MULHWU:  return emit_mulhwu (code, opcode);
-        // case PrimaryOp1FSecondaryOpcode.NAND:    return emit_nand   (ir, opcode);
+        case PrimaryOp1FSecondaryOpcode.NAND:    return emit_nand   (code, opcode);
         // case PrimaryOp1FSecondaryOpcode.NEG:     return emit_negx   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.NEGO:    return emit_negx   (ir, opcode);
         // case PrimaryOp1FSecondaryOpcode.NOR:     return emit_nor    (ir, opcode);
