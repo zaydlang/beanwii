@@ -33,7 +33,7 @@ private EmissionAction emit_addcx(Code code, u32 opcode) {
     code.add(rd, rb);
     code.set_reg(guest_rd, rd);
     
-    set_flags(code, rc, oe, ra, rb, rd);
+    set_flags(code, rc, oe, rd, rd, rb, ra);
 
     return EmissionAction.CONTINUE;
 }
@@ -59,7 +59,7 @@ private EmissionAction emit_addex(Code code, u32 opcode) {
     code.adc(rd, rb);
     code.set_reg(guest_rd, rd);
     
-    set_flags(code, rc, oe, ra, rb, rd);
+    set_flags(code, rc, oe, rd, rd, ra, rb);
 
     return EmissionAction.CONTINUE;
 }
@@ -91,27 +91,25 @@ private EmissionAction emit_addic(Code code, u32 opcode) {
     code.add(ra, simm);
     code.set_reg(guest_rd, ra);
     
-    set_flags(code, false, false, ra, code.allocate_register(), code.allocate_register());
+    set_flags(code, false, false, ra, ra, code.allocate_register(), code.allocate_register());
 
     return EmissionAction.CONTINUE;
 }
 
-private EmissionAction emit_addic_(Code code, u32 opcode) {/*
-    GuestReg rd   = to_gpr(opcode.bits(21, 25));
-    GuestReg ra   = to_gpr(opcode.bits(16, 20));
-    int      simm = sext_32(opcode.bits(0, 15), 16);
+private EmissionAction emit_addic_(Code code, u32 opcode) {
+    code.reserve_register(ecx);
 
-    emit_add_generic(
-        ir,
-        rd, ir.get_reg(ra), ir.constant(simm),
-        true,  // record bit
-        true,  // XER CA
-        false, // XER SO & OV
-    );
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    int  simm     = sext_32(opcode.bits(0, 15), 16);
+    auto ra       = code.get_reg(guest_ra);
+
+    code.add(ra, simm);
+    code.set_reg(guest_rd, ra);
+
+    set_flags(code, true, false, ra, ra, code.allocate_register(), code.allocate_register());
 
     return EmissionAction.CONTINUE;
-*/
-return EmissionAction.STOP;
 }
 
 private EmissionAction emit_addis(Code code, u32 opcode) {
@@ -1598,7 +1596,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
     switch (primary_opcode) {
         case PrimaryOpcode.ADDI:   return emit_addi  (code, opcode);
         case PrimaryOpcode.ADDIC:  return emit_addic (code, opcode);
-        // case PrimaryOpcode.ADDIC_: return emit_addic_(ir, opcode);
+        case PrimaryOpcode.ADDIC_: return emit_addic_(code, opcode);
         case PrimaryOpcode.ADDIS:  return emit_addis (code, opcode);
         // case PrimaryOpcode.ANDI:   return emit_andi  (ir, opcode);
         // case PrimaryOpcode.ANDIS:  return emit_andis (ir, opcode);

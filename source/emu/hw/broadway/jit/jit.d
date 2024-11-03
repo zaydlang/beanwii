@@ -73,7 +73,7 @@ final class Jit {
                     // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
                 }
 
-        if (mem.read_be_u32(state.pc) == 0x7cde6c14) {
+        if (mem.read_be_u32(state.pc) == 0x371306ed) {
             int x = 2;
         }
         func(state);
