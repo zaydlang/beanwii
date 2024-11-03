@@ -5,8 +5,10 @@ import emu.hw.broadway.jit.emission.guest_reg;
 import xbyak;
 
 // result could equal tmp1 if needed
-void set_flags(Code code, bool rc, bool oe, Reg32 result, Reg32 tmp1, Reg32 tmp2, Reg32 tmp3) {
-    code.setc(tmp2.cvt8());
+void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, Reg32 result, Reg32 tmp1, Reg32 tmp2, Reg32 tmp3) {
+    if (set_xer_carry) {
+        code.setc(tmp2.cvt8());
+    }
 
     if (oe) {
         code.seto(tmp3.cvt8());
@@ -35,7 +37,9 @@ void set_flags(Code code, bool rc, bool oe, Reg32 result, Reg32 tmp1, Reg32 tmp2
         code.or(code.get_address(GuestReg.CR), tmp1);
     }
 
-    code.shl(tmp2, 29);
-    code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
-    code.or(code.get_address(GuestReg.XER), tmp2);
+    if (set_xer_carry) {
+        code.shl(tmp2, 29);
+        code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
+        code.or(code.get_address(GuestReg.XER), tmp2);
+    }
 }
