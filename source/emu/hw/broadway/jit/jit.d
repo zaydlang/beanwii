@@ -46,39 +46,45 @@ final class Jit {
     private alias JitHashMap = khash!(u32, JitFunction);
     private alias DebugRing  = RingBuffer!(DebugState);
     
-    private JitConfig  config;
     private Mem        mem;
     private JitHashMap jit_hash_map;
     private DebugRing  debug_ring;
     private Code       code;
 
     this(JitConfig config, Mem mem, size_t ringbuffer_size) {
-        this.config = config;
         this.mem = mem;
         this.jit_hash_map = JitHashMap();
         this.debug_ring = new DebugRing(ringbuffer_size);
-        this.code = new Code();
+        this.code = new Code(config);
     }
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
         code.init();
+        log_jit("GUEST lr: 0x%08x", state.lr);
+        log_jit("GUEST ctr: 0x%08x", state.ctr);
         emit(code, mem, state.pc);
         
-        
+        import std.stdio;
+        // dump register state, 8 regs at atime
+        for (int i = 0; i < 32; i += 8) {
+            writefln("GUEST r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x",
+                i, state.gprs[i], i + 1, state.gprs[i + 1], i + 2, state.gprs[i + 2], i + 3, state.gprs[i + 3],
+                i + 4, state.gprs[i + 4], i + 5, state.gprs[i + 5], i + 6, state.gprs[i + 6], i + 7, state.gprs[i + 7]);
+        }
+
         auto func = code.get_function!JitFunction();
                 auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
                 auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
                 foreach (instr; res) {
-                    // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                    log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
                 }
 
-        if (mem.read_be_u32(state.pc) == 0x7e20cbd6) {
+        if (mem.read_be_u32(state.pc) == 0x4d820020) {
             int x = 2;
         }
         func(state);
         
-        state.pc += 4;
         return 1;
     }
 

@@ -2,6 +2,7 @@ module emu.hw.broadway.jit.emission.guest_reg;
 
 import std.conv;
 import std.uni;
+import util.log;
 
 enum GuestReg {
     R0,  R1,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9,  R10, R11, R12, R13, R14, R15,
@@ -106,5 +107,36 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.PC:    return BroadwayState.pc.offsetof;
 
         default: assert(0);
+    }
+}
+
+public GuestReg get_spr_from_encoding(int encoding) {
+    switch (encoding) {
+        case 9:    return GuestReg.CTR;
+        case 8:    return GuestReg.LR;
+        case 1:    return GuestReg.XER;
+        case 26:   return GuestReg.SRR0;
+        case 912:  return GuestReg.GQR0;
+        case 913:  return GuestReg.GQR1;
+        case 914:  return GuestReg.GQR2;
+        case 915:  return GuestReg.GQR3;
+        case 916:  return GuestReg.GQR4;
+        case 917:  return GuestReg.GQR5;
+        case 918:  return GuestReg.GQR6;
+        case 919:  return GuestReg.GQR7;
+        case 1008: return GuestReg.HID0;
+        case 920:  return GuestReg.HID2;
+        case 1011: return GuestReg.HID4;
+        case 1017: return GuestReg.L2CR;
+        case 952:  return GuestReg.MMCR0;
+        case 956:  return GuestReg.MMCR1;
+        case 953:  return GuestReg.PMC1;
+        case 954:  return GuestReg.PMC2;
+        case 957:  return GuestReg.PMC3;
+        case 958:  return GuestReg.PMC4;
+
+        default: 
+            error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);
+            assert(0);
     }
 }

@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.emission.code;
 import core.bitop;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.x86;
+import emu.hw.broadway.jit.jit;
 import std.conv;
 import util.log;
 import util.number;
@@ -11,11 +12,17 @@ import xbyak;
 final class Code : CodeGenerator {
     static const CPU_BASE_REG = rdi;
 
-    this() {
+    JitConfig config;
+    
+    this(JitConfig config) {
+        this.config = config;
+
         free_all_registers();
     }
 
     void init() {
+        stack_alignment = 0;
+
         this.reset();
         this.free_all_registers();
         this.reserve_register(edi);
@@ -98,5 +105,45 @@ final class Code : CodeGenerator {
     int label_counter = 0;
     string fresh_label() {
         return "label_" ~ to!string(label_counter++);
+    }
+
+    int stack_alignment;
+    override void push(Operand op) {
+        super.push(op);
+        stack_alignment += 8;
+    }
+
+    override void pop(Operand op) {
+        super.pop(op);
+        stack_alignment -= 8;
+    }
+
+    bool in_stack_alignment_context;
+    bool did_align_stack;
+
+    // this is used for function calls
+    void enter_stack_alignment_context() {
+        assert(!in_stack_alignment_context);
+
+        // anticipate the function call
+        stack_alignment += 8;
+
+        in_stack_alignment_context = true;
+        if (stack_alignment % 16 != 0) {
+            sub(rsp, 8);
+            did_align_stack = true;
+        } else {
+            did_align_stack = false;
+        }
+    }
+
+    void exit_stack_alignment_context() {
+        assert(in_stack_alignment_context);
+
+        if (did_align_stack) {
+            add(rsp, 8);
+        }
+
+        in_stack_alignment_context = false;
     }
 }
