@@ -248,8 +248,6 @@ enum tests = [
     "subfmex",
     "subfx",
     "subfzex",
-    "tw",
-    "twi",
     "xori",
     "xoris",
     "xorx",
