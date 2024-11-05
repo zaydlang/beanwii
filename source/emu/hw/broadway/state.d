@@ -35,6 +35,8 @@ struct BroadwayState {
     u32     pc;
     
     bool    halted;
+    bool    icache_flushed;
+    u32     icbi_address;
 }
 
 struct PairedSingle {

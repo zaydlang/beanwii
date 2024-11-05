@@ -15,19 +15,37 @@ final class Code : CodeGenerator {
     JitConfig config;
     
     this(JitConfig config) {
+        super(1 << 30);
+
         this.config = config;
 
         free_all_registers();
     }
 
-    void init() {
+    u8* code_ptr;
+
+    // returns true if should flush
+    bool init() {
+        bool should_flush = false;
+
         stack_alignment = 0;
 
-        this.reset();
+        try {
+            this.setSize(this.getCurr() - this.getCode());
+        } catch (XError e) {
+            this.reset();
+            should_flush = true;
+        }
+        
+        this.code_ptr = cast(u8*) this.getCurr();
+        this.isCalledCalcJmpAddress_ = false;
+
         this.free_all_registers();
         this.reserve_register(edi);
         
         this.emit_prologue();
+        
+        return should_flush;
     }
 
     void emit_prologue() {
@@ -52,7 +70,9 @@ final class Code : CodeGenerator {
         this.emit_epilogue();
 
         assert(!this.hasUndefinedLabel());
-        return cast(T) this.getCode();
+        this.ready();
+
+        return cast(T) this.code_ptr;
     }
 
     Reg32 get_reg(GuestReg reg) {

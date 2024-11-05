@@ -21,7 +21,7 @@ final class SlowMem : MemStrategy {
     // TODO: temporary public
     public u8[] mem1;
     private u8[] mem2;
-    private u8[] hle_trampoline;
+    public u8[] hle_trampoline;
 
     private Mmio mmio;
 
@@ -41,7 +41,7 @@ final class SlowMem : MemStrategy {
 
         T result;
 
-        // log_slowmem("Read from address 0x%08x", address);
+        // log_slowmem("Read from address 0x%08x %x", address, cast(u64) cast(void*) this);
 
         switch (region) {
             case 0xC:
@@ -64,6 +64,7 @@ final class SlowMem : MemStrategy {
             
             case 0x2:
                 assert(offset < HLE_TRAMPOLINE_SIZE);
+                log_slowmem("Reading from HLE trampoline at 0x%08x", offset);
                 result = this.hle_trampoline.read_be!T(offset);
                 break;
             
@@ -72,7 +73,7 @@ final class SlowMem : MemStrategy {
                 assert(0);
         }
 
-        log_slowmem("Read 0x%08x from address 0x%08x", result, address);
+        // log_slowmem("Read 0x%08x from address 0x%08x", result, address);
         return result;
     }
 
@@ -80,7 +81,7 @@ final class SlowMem : MemStrategy {
         auto region = address >> 28;
         auto offset = address & 0xFFF_FFFF;
         
-        log_slowmem("Write 0x%08x to address 0x%08x", value, address);
+        // log_slowmem("Write 0x%08x to address 0x%08x", value, address);
 
         switch (region) {
             case 0xC:
@@ -100,7 +101,10 @@ final class SlowMem : MemStrategy {
             
             case 0x2:
                 assert(offset < HLE_TRAMPOLINE_SIZE);
-                return this.hle_trampoline.write_be!T(offset, value);
+                // log_slowmem("Writing 0x%08x to HLE trampoline at 0x%08x", value, offset);
+                this.hle_trampoline.write_be!T(offset, value);
+                // log_slowmem("verify: 0x%08x", this.hle_trampoline.read_be!T(offset));
+                break;
             
             default:
                 error_slowmem("Write 0x%08x to invalid address 0x%08x", value, address);
@@ -108,15 +112,15 @@ final class SlowMem : MemStrategy {
         }
     }
     
-    override public u64 read_be_u64(u32 address) { return read_be!u64(address); }
-    override public u32 read_be_u32(u32 address) { return read_be!u32(address); }
-    override public u16 read_be_u16(u32 address) { return read_be!u16(address); }
-    override public u8  read_be_u8 (u32 address) { return read_be!u8 (address); }
+    pragma(inline, true) override public u64 read_be_u64(u32 address) { return read_be!u64(address); }
+    pragma(inline, true) override public u32 read_be_u32(u32 address) { return read_be!u32(address); }
+    pragma(inline, true) override public u16 read_be_u16(u32 address) { return read_be!u16(address); }
+    pragma(inline, true) override public u8  read_be_u8 (u32 address) { return read_be!u8 (address); }
 
-    override public void write_be_u64(u32 address, u64 value) { write_be!u64(address, value); }
-    override public void write_be_u32(u32 address, u32 value) { write_be!u32(address, value); }
-    override public void write_be_u16(u32 address, u16 value) { write_be!u16(address, value); }
-    override public void write_be_u8 (u32 address, u8  value) { write_be!u8 (address, value); }
+    pragma(inline, true) override public void write_be_u64(u32 address, u64 value) { write_be!u64(address, value); }
+    pragma(inline, true) override public void write_be_u32(u32 address, u32 value) { write_be!u32(address, value); }
+    pragma(inline, true) override public void write_be_u16(u32 address, u16 value) { write_be!u16(address, value); }
+    pragma(inline, true) override public void write_be_u8 (u32 address, u8  value) { write_be!u8 (address, value); }
 
     override public void map_buffer(u8* buffer, size_t buffer_size, u32 address) {
         for (int i = 0; i < buffer_size; i++) {

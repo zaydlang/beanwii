@@ -60,30 +60,53 @@ final class Jit {
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        code.init();
-        log_jit("GUEST lr: 0x%08x", state.lr);
-        log_jit("GUEST ctr: 0x%08x", state.ctr);
-        emit(code, mem, state.pc);
-        
-        import std.stdio;
-        // dump register state, 8 regs at atime
-        for (int i = 0; i < 32; i += 8) {
-            writefln("GUEST r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x r%d: 0x%08x",
-                i, state.gprs[i], i + 1, state.gprs[i + 1], i + 2, state.gprs[i + 2], i + 3, state.gprs[i + 3],
-                i + 4, state.gprs[i + 4], i + 5, state.gprs[i + 5], i + 6, state.gprs[i + 6], i + 7, state.gprs[i + 7]);
-        }
+        if (code.init()) {
+            this.jit_hash_map = JitHashMap();
+        }        
 
-        auto func = code.get_function!JitFunction();
-                auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
-                foreach (instr; res) {
-                    log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                }
+        auto cached_func = jit_hash_map.require(state.pc, null);
+        if (cached_func != null) {
+            cached_func(state);
+        } else {
+            emit(code, mem, state.pc);
+            // log_state(state);
+            auto func = code.get_function!JitFunction();
+            // jit_hash_map[state.pc] = func;
+
+            //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+            //     auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
+            //     foreach (instr; res) {
+            //         // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+            //     }
 
         if (mem.read_be_u32(state.pc) == 0x4d820020) {
             int x = 2;
         }
-        func(state);
+        // func(state);
+            func(state);
+        }
+
+        if (state.icache_flushed) {
+            assert(state.icbi_address % 32 == 0);
+            
+            for (u32 i = 0; i < 32; i += 4) {
+                jit_hash_map.remove(state.icbi_address + i);    
+            }
+            
+            state.icache_flushed = false;
+        }
+
+        // auto func = code.get_function!JitFunction();
+                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                // auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
+                // foreach (instr; res) {
+                    // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
+                // }
+
+        // if (mem.read_be_u32(state.pc) == 0x4d820020) {
+            // int x = 2;
+        // }
+        // func(state);
         
         return 1;
     }

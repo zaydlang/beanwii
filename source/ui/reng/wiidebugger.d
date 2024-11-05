@@ -43,7 +43,7 @@ version (linux) {
             bg = ColorToNuklearF(Colors.RAYWHITE);
             auto ui_font = raylib.LoadFontEx("./res/CascadiaMono.ttf", UI_FS, null, 0);
             ctx = InitNuklearEx(ui_font, UI_FS);
-            SetNuklearScaling(ctx, cast(int) Core.window.scale_dpi);
+            // SetNuklearScaling(ctx, cast(int) Core.window.scale_dpi);
             apply_style(ctx);
 
             // nk_color[nk_style_colors.NK_COLOR_COUNT] table;

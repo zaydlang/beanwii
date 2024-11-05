@@ -94,7 +94,7 @@ final class Broadway {
         this.state.lr = 0xDEADBEEF;
 
         while (this.state.pc != 0xDEADBEEF) {
-            cycle(100);
+            cycle(1);
         }
     }
 

@@ -24,7 +24,7 @@ import util.number;
 final class Wii {
     public  Broadway         broadway;
     private Hollywood        hollywood;
-    private Mem              mem;
+    public  Mem              mem;
 
     private CommandProcessor command_processor;
     private VideoInterface   video_interface;
@@ -108,6 +108,10 @@ final class Wii {
         log_apploader("Apploader main  ptr = %08x", main_ptr);
         log_apploader("Apploader close ptr = %08x", close_ptr);
 
+
+        import util.dump;
+        dump(this.mem.mem1, "mem1.bin");
+
         this.broadway.set_pc(init_ptr);
         u32 hle_func_addr = this.broadway.get_hle_context().add_hle_func(&hle_os_report, &this.mem);
         this.broadway.set_gpr(3, hle_func_addr);
@@ -146,9 +150,6 @@ final class Wii {
         u32 entrypoint = this.broadway.get_gpr(3);
         assert(entrypoint != 0);
         this.broadway.set_pc(entrypoint);
-
-        import util.dump;
-        dump(this.mem.mem1, "mem1.bin");
     }
 
     private void setup_global_memory_value(u8[] wii_disk_data) {

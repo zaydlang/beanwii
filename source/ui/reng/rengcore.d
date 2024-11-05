@@ -29,7 +29,6 @@ class RengCore : Core {
             this.width  = max(this.width,  1280);
             this.height = max(this.height, 720);
 
-            sync_render_window_resolution = true;
         }
 
         // raylib.SetConfigFlags(raylib.ConfigFlags.FLAG_WINDOW_RESIZABLE);
@@ -40,7 +39,7 @@ class RengCore : Core {
         default_resolution = Vector2(width, height);
         content.paths ~= ["../content/", "content/"];
 
-        screen_scale *= cast(int) window.scale_dpi;
+        // screen_scale *= cast(int) window.scale_dpi;
 
         // if (start_debugger) {
             // load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);
