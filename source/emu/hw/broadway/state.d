@@ -19,6 +19,7 @@ struct BroadwayState {
     u32     hid2;
     u32     hid4;
     u32     srr0;
+    u32     srr1;
     u32     fpsr;
     u32     fpscr;
     u32     l2cr;
@@ -30,9 +31,24 @@ struct BroadwayState {
     u32     pmc4;
     u32     tbu;
     u32     tbl;
-    
+    u32[8]  ibat_low;
+    u32[8]  ibat_high;
+    u32[8]  dbat_low;
+    u32[8]  dbat_high;
+    u32[16] sr;
+    u32     sprg0;
+    u32     sprg1;
+    u32     sprg2;
+    u32     sprg3;
+    u32     dec;
+    u32     dar;
+
     u32     lr;
     u32     pc;
+    
+    bool    halted;
+    bool    icache_flushed;
+    u32     icbi_address;
 }
 
 struct PairedSingle {

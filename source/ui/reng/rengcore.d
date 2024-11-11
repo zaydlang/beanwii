@@ -1,5 +1,6 @@
 module ui.reng.rengcore;
 
+import emu.hw.wii;
 import raylib;
 import re;
 import re.math;
@@ -13,21 +14,21 @@ class RengCore : Core {
     int width;
     int height;
     int screen_scale;
-    bool start_full_ui = false;
+    bool start_debugger;
+    Wii wii;
 
-    this(int screen_scale, bool full_ui) {
-        this.start_full_ui = full_ui;
+    this(Wii wii, int screen_scale, bool start_debugger) {
+        this.wii            = wii;
+        this.screen_scale   = screen_scale;
+        this.start_debugger = start_debugger;
 
         this.width  = WII_SCREEN_WIDTH * screen_scale;
         this.height = WII_SCREEN_HEIGHT * screen_scale;
-        this.screen_scale = screen_scale;
 
-        if (this.start_full_ui) {
+        if (this.start_debugger) {
             this.width  = max(this.width,  1280);
             this.height = max(this.height, 720);
 
-            sync_render_window_resolution = true;
-            auto_compensate_hidpi = true;
         }
 
         // raylib.SetConfigFlags(raylib.ConfigFlags.FLAG_WINDOW_RESIZABLE);
@@ -38,13 +39,13 @@ class RengCore : Core {
         default_resolution = Vector2(width, height);
         content.paths ~= ["../content/", "content/"];
 
-        screen_scale *= cast(int) window.scale_dpi;
+        // screen_scale *= cast(int) window.scale_dpi;
 
-        if (start_full_ui) {
-            load_scenes([new EmuDebugInterfaceScene(screen_scale)]);
-        } else {
+        // if (start_debugger) {
+            // load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);
+        // } else {
             load_scenes([new EmuScene(screen_scale)]);
-        }
+        // }
     }
 
     pragma(inline, true) {

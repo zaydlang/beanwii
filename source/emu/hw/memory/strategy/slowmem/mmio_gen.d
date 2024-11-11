@@ -103,11 +103,11 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         return "???";
     }
 
-    private void log_read(T)(u32 address) {
+    private void log_read(T)(u32 address, T value) {
         int offset;
         string reg = get_mmio_reg_from_address(address, offset);
 
-        log_slowmem("MMIO: Reading from %s (offset = %d) (size = %d)", reg, offset, T.sizeof);
+        log_slowmem("MMIO: Reading from %s (offset = %d) (size = %d) (value = %x)", reg, offset, T.sizeof, value);
     }
 
     private void log_write(T)(u32 address, T value) {
@@ -118,7 +118,6 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     }
 
     T read(T)(u32 address) {
-        this.log_read!T(address);
         import std.format;
 
         // log_slowmem("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
@@ -129,7 +128,8 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 if (address + T.sizeof > mr.address && address < mr.address + mr.size) {
                     static if (mr.implemented) {
                         mixin("value |= context.%s.read_%s!T(address %% %d) << (8 * (address - mr.address));".format(mr.component, mr.name, mr.size));
-                        static if (is(T == u8)) return value;
+                        this.log_read!T(address, value);
+                        return value;
                     } else {
                         log_slowmem("Unimplemented read: %s (size = %d)", mr.name, T.sizeof);
                         return T(0);
@@ -139,7 +139,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         }
 
         static if (is(T == u32)) {
-            return (
+            value = (
                 read_byte(address + 0) <<  0 |
                 read_byte(address + 1) <<  8 |
                 read_byte(address + 2) << 16 |
@@ -148,17 +148,20 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         } else
 
         static if (is(T == u16)) {
-            return (
+            value = (
                 read_byte(address + 0) <<  0 |
                 read_byte(address + 1) <<  8
             );
         } else
 
         static if (is(T == u8)) {
-            return read_byte(address);
+            value = read_byte(address);
         }
 
         else assert(0);
+
+        this.log_read!T(address, value);
+        return value;
     }
 
     private u8 read_byte(u32 address) {

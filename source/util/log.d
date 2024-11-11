@@ -15,8 +15,12 @@ enum LogSource {
     CP,
     VI,
     SI,
+    EXI,
+    IPC,
+    INTERRUPT,
     HOLLYWOOD,
-    OS_REPORT
+    OS_REPORT,
+    SCHEDULER
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
@@ -47,6 +51,12 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
     version (silent) {
         return;
     } else {
+        version (quiet) {
+            if (!fatal) {
+                return;
+            }
+        }
+
         ulong timestamp = 0; // scheduler.get_current_time_relative_to_cpu();
         string prefix = format("%016x [%s] : ", timestamp, pad_string_right!(to!string(log_source), logsource_padding));
         string written_string = format(fmt, args);

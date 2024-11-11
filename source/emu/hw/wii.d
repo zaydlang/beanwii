@@ -3,8 +3,8 @@ module emu.hw.wii;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
-import emu.hw.broadway.interrupt;
 import emu.hw.broadway.hle;
+import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
@@ -14,49 +14,73 @@ import emu.hw.disk.readers.wbfs;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
+import emu.hw.ai.ai;
+import emu.hw.dsp.dsp;
+import emu.hw.exi.exi;
+import emu.hw.ipc.ipc;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
+import emu.scheduler;
 import ui.device;
 import util.array;
 import util.log;
 import util.number;
 
 final class Wii {
-    private Broadway         broadway;
+    public  Broadway         broadway;
     private Hollywood        hollywood;
-    private Mem              mem;
+    public  Mem              mem;
 
-    private CommandProcessor command_processor;
-    private VideoInterface   video_interface;
-    private SerialInterface  serial_interface;
+    private AudioInterface    audio_interface;
+    private CommandProcessor  command_processor;
+    private DSP               dsp;
+    private ExternalInterface external_interface;
+    private VideoInterface    video_interface;
+    private SerialInterface   serial_interface;
+    private IPC               ipc;
+
+    private Scheduler        scheduler;
 
     this(size_t ringbuffer_size) {
-        this.command_processor = new CommandProcessor();
-        this.video_interface   = new VideoInterface();
-        this.serial_interface  = new SerialInterface();
-
-        this.mem               = new Mem();
-        this.broadway          = new Broadway(ringbuffer_size);
-        this.hollywood         = new Hollywood();
+        this.command_processor  = new CommandProcessor();
+        this.video_interface    = new VideoInterface();
+        this.serial_interface   = new SerialInterface();
+        this.audio_interface    = new AudioInterface();
+        this.ipc                = new IPC();
+        this.external_interface = new ExternalInterface();
+        this.dsp                = new DSP();
+        this.mem                = new Mem();
+        this.broadway           = new Broadway(ringbuffer_size);
+        this.hollywood          = new Hollywood();
+        this.scheduler          = new Scheduler();
 
         this.broadway.connect_mem(this.mem);
+        this.broadway.connect_scheduler(this.scheduler);
+        this.external_interface.connect_mem(this.mem);
         this.video_interface.connect_mem(this.mem);
+        this.mem.connect_audio_interface(this.audio_interface);
         this.mem.connect_command_processor(this.command_processor);
+        this.mem.connect_dsp(this.dsp);
+        this.mem.connect_external_interface(this.external_interface);
         this.mem.connect_video_interface(this.video_interface);
         this.mem.connect_serial_interface(this.serial_interface);
         this.mem.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.mem.connect_ipc(this.ipc);
+        this.mem.connect_broadway(this.broadway);
+        this.ipc.connect_mem(this.mem);
+        this.ipc.connect_scheduler(this.scheduler);
+        this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
 
         this.broadway.reset();
     }
 
     public void cycle(int num_cycles) {
-        int cycles_elapsed = 0;
-
-        while (cycles_elapsed < num_cycles) {
-            cycles_elapsed += this.broadway.run() * 2;
-        }
-
+        this.broadway.cycle(num_cycles);
         this.video_interface.scanout();
+    }
+
+    public void single_step() {
+        this.broadway.single_step();
     }
 
     public void load_disk(u8[] wii_disk_data) {
@@ -109,6 +133,9 @@ final class Wii {
         log_apploader("Apploader main  ptr = %08x", main_ptr);
         log_apploader("Apploader close ptr = %08x", close_ptr);
 
+
+        import util.dump;
+
         this.broadway.set_pc(init_ptr);
         u32 hle_func_addr = this.broadway.get_hle_context().add_hle_func(&hle_os_report, &this.mem);
         this.broadway.set_gpr(3, hle_func_addr);
@@ -144,12 +171,12 @@ final class Wii {
         this.broadway.run_until_return();
         log_apploader("Apploader close() returned. Obtained entrypoint: %x", this.broadway.get_gpr(3));
 
+        broadway.should_log = true;
+        dump(this.mem.mem1, "mem1.bin");
+
         u32 entrypoint = this.broadway.get_gpr(3);
         assert(entrypoint != 0);
         this.broadway.set_pc(entrypoint);
-
-        import util.dump;
-        dump(this.mem.mem1, "mem1.bin");
     }
 
     private void setup_global_memory_value(u8[] wii_disk_data) {

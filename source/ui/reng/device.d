@@ -1,5 +1,6 @@
 module ui.reng.device;
 
+import emu.hw.wii;
 import raylib;
 import re;
 import std.format;
@@ -25,11 +26,11 @@ class RengMultimediaDevice : MultiMediaDevice {
     string rom_title;
     int fps;
 
-    this(int screen_scale, bool full_ui) {
+    this(Wii wii, int screen_scale, bool start_debugger) {
         SetTraceLogLevel(TraceLogLevel.LOG_NONE);
 
         Core.target_fps = 60;
-        reng_core = new RengCore(screen_scale, full_ui);
+        reng_core = new RengCore(wii, screen_scale, start_debugger);
 
         InitAudioDevice();
         SetAudioStreamBufferSizeDefault(SAMPLES_PER_UPDATE);
