@@ -1,15 +1,20 @@
 module emu.hw.broadway.cpu;
 
+import emu.hw.broadway.exception_type;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
 import emu.hw.broadway.state;
 import emu.hw.broadway.jit.jit;
 import emu.hw.memory.strategy.memstrategy;
+import emu.scheduler;
+import util.bitop;
 import util.endian;
 import util.log;
 import util.number;
 
 final class Broadway {
+    bool biglog = false;
+
     public  BroadwayState       state;
     private Mem                 mem;
     private Jit                 jit;
@@ -17,9 +22,15 @@ final class Broadway {
     private InterruptController interrupt_controller;
     private size_t              ringbuffer_size;
 
+    public  bool                should_log;
+
+    private Scheduler           scheduler;
+
     public this(size_t ringbuffer_size) {
         this.ringbuffer_size = ringbuffer_size;
         this.interrupt_controller = new InterruptController();
+        this.interrupt_controller.connect_cpu(this);
+        this.should_log = false;
     }
 
     public void connect_mem(Mem mem) {
@@ -54,6 +65,7 @@ final class Broadway {
         state.hid2   = 0xE0000000;
         state.hid4   = 0;
         state.srr0   = 0;
+        state.srr1   = 0;
         state.fpsr   = 0;
         state.fpscr  = 0;
         state.l2cr   = 0;
@@ -65,6 +77,7 @@ final class Broadway {
         state.pmc4   = 0;
         state.tbu    = 0;
         state.tbl    = 0;
+        state.sprg0  = 0;
 
         state.pc     = 0;
         state.lr     = 0;
@@ -72,14 +85,100 @@ final class Broadway {
         state.halted = false;
     }
 
+    int num_log = 0;
+    bool idle = false;
+    bool exception_raised = false;
+
     public void cycle(u32 num_cycles) {
         if (state.halted) {
             log_jit("CPU is halted, not running\n");
         }
+
         
         u32 elapsed = 0;
         while (elapsed < num_cycles && !state.halted) {
-            elapsed += jit.run(&state);
+            exception_raised = false;
+        // if (biglog) {
+        //     // num_log--;
+        //     log_jit("PC: %08X\n", state.pc);
+        //     log_state(state);
+        // }
+
+            if (state.pc == 0x80004420) {
+                log_jit("[FUNCTION] _cpu_context_switch");
+            }
+            if (state.pc == 0x800169b0) {
+                if (!idle) {
+log_jit("[FUNCTION] idle_func");
+                }
+                idle = true;
+            } else {
+                idle = false;
+            }
+
+            if (state.pc == 0x800068fc) {
+                log_jit("[FUNCTION] __crt_main()");
+                // should_log = true;
+            }
+            if (state.pc == 0x8001bd1c) {
+                log_jit("[FUNCTION] SYS_Init()");
+            }
+            if (state.pc == 0x80022808) {
+                log_jit("[FUNCTION] ipc sync()");
+            }
+            if (state.pc == 0x80022704) {
+                log_jit("[FUNCTION] ipc send()");
+            }
+            
+            if (state.pc == 0x80016e94) {
+                log_jit("[FUNCTION] LWP_ThreadSleep(%x)", state.gprs[3]);
+            }
+
+            if (state.pc == 0x80017014) {
+                log_jit("[FUNCTION] LWP_ThreadSignal(%x)", state.gprs[3]);
+            }
+        
+            if (biglog) {
+                u32 opcode = mem.read_be_u32(state.pc);
+                // log_jit("PC: %08X, Opcode: %08X\n", state.pc, opcode);
+                log_state(&state);
+            }
+
+
+            auto nobr = state.pc + 4;
+            auto older_dec = state.dec;
+            auto delta = jit.run(&state);
+            if (older_dec != state.dec) {
+                log_jit("Decrementer changed from %0x to %0x\n", older_dec, state.dec);
+            }
+
+            if (state.pc != nobr && state.pc != nobr - 4) {
+                log_jit("Branching from %08X to %08X\n", nobr - 4, state.pc);
+            }
+            scheduler.tick(delta);
+            scheduler.process_events();
+
+            // todo: yeet this to the scheduler
+            u64 time_base = cast(u64) state.tbu << 32 | cast(u64) state.tbl;
+            time_base += delta;
+            state.tbu = cast(u32) (time_base >> 32);
+            state.tbl = cast(u32) time_base;
+
+            log_jit("tbu: %08X, tbl: %08X\n", state.tbu, state.tbl);
+
+            // check for decrementer interrupt
+            auto old_dec = state.dec;
+            state.dec -= delta;
+            if (old_dec > 0 && state.dec <= 0 && state.msr.bit(15)) {
+                log_jit("Raising decrementer interrupt\n");
+                // num_log = 100;
+                raise_exception(ExceptionType.Decrementer);
+            } else {
+                interrupt_controller.maybe_raise_processor_interface_interrupt();
+            }
+
+
+            elapsed += delta;
         }
     }
 
@@ -195,5 +294,47 @@ final class Broadway {
 
     public InterruptController get_interrupt_controller() {
         return this.interrupt_controller;
+    }
+
+    // SRR1[0,5-9,16-23,25-27,30-31]
+    void raise_exception(ExceptionType type) {
+        if (exception_raised) error_jit("Exception already raised");
+        exception_raised = true;
+
+        assert(type == ExceptionType.Decrementer || type == ExceptionType.ExternalInterrupt);
+
+        state.srr0 = state.pc;
+        state.srr1 &= ~(0b0000_0111_1100_0000_1111_1111_1111_1111);
+        state.srr1 |= state.msr & (0b0000_0111_1100_0000_1111_1111_1111_1111);
+
+        // clear IR and DR
+        state.msr &= ~(1 << 4 | 1 << 5);
+
+        // clear RI
+        state.msr &= ~(1 << 30);
+
+        // this exception *is* recoverable
+        state.srr1 |= (1 << 30);
+
+        // clear POW, EE, PR, FP, FE0, SE, BE, FE1, PM
+        state.msr &= ~(0b0000_0000_0000_0100_1110_1111_0000_0000);
+
+        // copy ILE to LE
+        state.msr |= state.msr.bit(16);
+
+        bool ip = state.msr.bit(6);
+        u32 base = ip ? 0xFFF0_0000 : 0x0000_0000;
+
+        switch (type) {
+        case ExceptionType.ExternalInterrupt: state.pc = base + 0x500; break;
+        case ExceptionType.Decrementer:       state.pc = base + 0x900; break;
+        default: assert(0);
+        }
+
+        log_jit("Raised exception %s\n", type);
+    }
+
+    void connect_scheduler(Scheduler scheduler) {
+        this.scheduler = scheduler;
     }
 }

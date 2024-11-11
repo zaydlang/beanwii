@@ -429,8 +429,14 @@ final class VideoInterface {
     }
 
     public u8 read_VICLK(int target_byte) {
-        error_vi("Unimplemented: VICLK Read");
-        return 0; // TODO
+        // error_vi("Unimplemented: VICLK Read");
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) clock_select;
+            
+            case 1:
+                return 0;
+        }
     }
 
     public void write_VICLK(int target_byte, u8 value) {
@@ -455,10 +461,10 @@ final class VideoInterface {
 
     public void scanout() {
         for (int field = 0; field < 2; field++) {
-            u32 base_address = (this.top_field_fbb_address << 9) + 0x8000_0000 + (field * XBFR_WIDTH * 2);
+            u32 base_address = (this.top_field_fbb_address << 9) + (field * XBFR_WIDTH * 2);
             for (int y = field; y < XBFR_HEIGHT; y += 2) {
             for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
-                u32 ycbycr = mem.read_be_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
+                u32 ycbycr = mem.paddr_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
 
                 float cr = ycbycr.get_byte(0);
                 float y2 = ycbycr.get_byte(1);

@@ -14,8 +14,13 @@ import emu.hw.disk.readers.wbfs;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
+import emu.hw.ai.ai;
+import emu.hw.dsp.dsp;
+import emu.hw.exi.exi;
+import emu.hw.ipc.ipc;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
+import emu.scheduler;
 import ui.device;
 import util.array;
 import util.log;
@@ -26,25 +31,45 @@ final class Wii {
     private Hollywood        hollywood;
     public  Mem              mem;
 
-    private CommandProcessor command_processor;
-    private VideoInterface   video_interface;
-    private SerialInterface  serial_interface;
+    private AudioInterface    audio_interface;
+    private CommandProcessor  command_processor;
+    private DSP               dsp;
+    private ExternalInterface external_interface;
+    private VideoInterface    video_interface;
+    private SerialInterface   serial_interface;
+    private IPC               ipc;
+
+    private Scheduler        scheduler;
 
     this(size_t ringbuffer_size) {
-        this.command_processor = new CommandProcessor();
-        this.video_interface   = new VideoInterface();
-        this.serial_interface  = new SerialInterface();
-
-        this.mem               = new Mem();
-        this.broadway          = new Broadway(ringbuffer_size);
-        this.hollywood         = new Hollywood();
+        this.command_processor  = new CommandProcessor();
+        this.video_interface    = new VideoInterface();
+        this.serial_interface   = new SerialInterface();
+        this.audio_interface    = new AudioInterface();
+        this.ipc                = new IPC();
+        this.external_interface = new ExternalInterface();
+        this.dsp                = new DSP();
+        this.mem                = new Mem();
+        this.broadway           = new Broadway(ringbuffer_size);
+        this.hollywood          = new Hollywood();
+        this.scheduler          = new Scheduler();
 
         this.broadway.connect_mem(this.mem);
+        this.broadway.connect_scheduler(this.scheduler);
+        this.external_interface.connect_mem(this.mem);
         this.video_interface.connect_mem(this.mem);
+        this.mem.connect_audio_interface(this.audio_interface);
         this.mem.connect_command_processor(this.command_processor);
+        this.mem.connect_dsp(this.dsp);
+        this.mem.connect_external_interface(this.external_interface);
         this.mem.connect_video_interface(this.video_interface);
         this.mem.connect_serial_interface(this.serial_interface);
         this.mem.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.mem.connect_ipc(this.ipc);
+        this.mem.connect_broadway(this.broadway);
+        this.ipc.connect_mem(this.mem);
+        this.ipc.connect_scheduler(this.scheduler);
+        this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
 
         this.broadway.reset();
     }
@@ -110,7 +135,6 @@ final class Wii {
 
 
         import util.dump;
-        dump(this.mem.mem1, "mem1.bin");
 
         this.broadway.set_pc(init_ptr);
         u32 hle_func_addr = this.broadway.get_hle_context().add_hle_func(&hle_os_report, &this.mem);
@@ -146,6 +170,9 @@ final class Wii {
         this.broadway.set_pc(close_ptr);
         this.broadway.run_until_return();
         log_apploader("Apploader close() returned. Obtained entrypoint: %x", this.broadway.get_gpr(3));
+
+        broadway.should_log = true;
+        dump(this.mem.mem1, "mem1.bin");
 
         u32 entrypoint = this.broadway.get_gpr(3);
         assert(entrypoint != 0);

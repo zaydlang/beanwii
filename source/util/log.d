@@ -15,8 +15,12 @@ enum LogSource {
     CP,
     VI,
     SI,
+    EXI,
+    IPC,
+    INTERRUPT,
     HOLLYWOOD,
-    OS_REPORT
+    OS_REPORT,
+    SCHEDULER
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

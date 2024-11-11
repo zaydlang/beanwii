@@ -69,7 +69,7 @@ final class Jit {
             cached_func(state);
         } else {
             emit(code, mem, state.pc);
-            // log_state(state);
+            log_state(state);
             auto func = code.get_function!JitFunction();
             // jit_hash_map[state.pc] = func;
 
@@ -108,7 +108,7 @@ final class Jit {
         // }
         // func(state);
         
-        return 1;
+        return 2;
     }
 
     private void log_instruction(u32 instruction, u32 pc) {

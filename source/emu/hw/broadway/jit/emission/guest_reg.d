@@ -25,6 +25,7 @@ enum GuestReg {
     GQR0, GQR1, GQR2, GQR3, GQR4, GQR5, GQR6, GQR7,
 
     SRR0,
+    SRR1,
     FPSR,
     FPSCR,
     MMCR0,
@@ -33,6 +34,17 @@ enum GuestReg {
     PMC2,
     PMC3,
     PMC4,
+    SPRG0,
+    SPRG1,
+    SPRG2,
+    SPRG3,
+
+    IBAT0U, IBAT0L, IBAT1U, IBAT1L, IBAT2U, IBAT2L, IBAT3U, IBAT3L, IBAT4U, IBAT4L, IBAT5U, IBAT5L, IBAT6U, IBAT6L, IBAT7U, IBAT7L,
+    DBAT0U, DBAT0L, DBAT1U, DBAT1L, DBAT2U, DBAT2L, DBAT3U, DBAT3L, DBAT4U, DBAT4L, DBAT5U, DBAT5L, DBAT6U, DBAT6L, DBAT7U, DBAT7L,
+
+    DEC,
+
+    DAR,
 
     L2CR,
 
@@ -92,6 +104,7 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.HID2:  return BroadwayState.hid2.offsetof;
         case GuestReg.HID4:  return BroadwayState.hid4.offsetof;
         case GuestReg.SRR0:  return BroadwayState.srr0.offsetof;
+        case GuestReg.SRR1:  return BroadwayState.srr1.offsetof;
         case GuestReg.FPSR:  return BroadwayState.fpsr.offsetof;
         case GuestReg.FPSCR: return BroadwayState.fpscr.offsetof;
         case GuestReg.L2CR:  return BroadwayState.l2cr.offsetof;
@@ -106,6 +119,49 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.LR:    return BroadwayState.lr.offsetof;
         case GuestReg.PC:    return BroadwayState.pc.offsetof;
 
+        case GuestReg.IBAT0U: return BroadwayState.ibat_low.offsetof + 0 * 4;
+        case GuestReg.IBAT0L: return BroadwayState.ibat_high.offsetof + 0 * 4;
+        case GuestReg.IBAT1U: return BroadwayState.ibat_low.offsetof + 1 * 4;
+        case GuestReg.IBAT1L: return BroadwayState.ibat_high.offsetof + 1 * 4;
+        case GuestReg.IBAT2U: return BroadwayState.ibat_low.offsetof + 2 * 4;
+        case GuestReg.IBAT2L: return BroadwayState.ibat_high.offsetof + 2 * 4;
+        case GuestReg.IBAT3U: return BroadwayState.ibat_low.offsetof + 3 * 4;
+        case GuestReg.IBAT3L: return BroadwayState.ibat_high.offsetof + 3 * 4;
+        case GuestReg.IBAT4U: return BroadwayState.ibat_low.offsetof + 4 * 4;
+        case GuestReg.IBAT4L: return BroadwayState.ibat_high.offsetof + 4 * 4;
+        case GuestReg.IBAT5U: return BroadwayState.ibat_low.offsetof + 5 * 4;
+        case GuestReg.IBAT5L: return BroadwayState.ibat_high.offsetof + 5 * 4;
+        case GuestReg.IBAT6U: return BroadwayState.ibat_low.offsetof + 6 * 4;
+        case GuestReg.IBAT6L: return BroadwayState.ibat_high.offsetof + 6 * 4;
+        case GuestReg.IBAT7U: return BroadwayState.ibat_low.offsetof + 7 * 4;
+        case GuestReg.IBAT7L: return BroadwayState.ibat_high.offsetof + 7 * 4;
+        
+        case GuestReg.DBAT0U: return BroadwayState.dbat_low.offsetof + 0 * 4;
+        case GuestReg.DBAT0L: return BroadwayState.dbat_high.offsetof + 0 * 4;
+        case GuestReg.DBAT1U: return BroadwayState.dbat_low.offsetof + 1 * 4;
+        case GuestReg.DBAT1L: return BroadwayState.dbat_high.offsetof + 1 * 4;
+        case GuestReg.DBAT2U: return BroadwayState.dbat_low.offsetof + 2 * 4;
+        case GuestReg.DBAT2L: return BroadwayState.dbat_high.offsetof + 2 * 4;
+        case GuestReg.DBAT3U: return BroadwayState.dbat_low.offsetof + 3 * 4;
+        case GuestReg.DBAT3L: return BroadwayState.dbat_high.offsetof + 3 * 4;
+        case GuestReg.DBAT4U: return BroadwayState.dbat_low.offsetof + 4 * 4;
+        case GuestReg.DBAT4L: return BroadwayState.dbat_high.offsetof + 4 * 4;
+        case GuestReg.DBAT5U: return BroadwayState.dbat_low.offsetof + 5 * 4;
+        case GuestReg.DBAT5L: return BroadwayState.dbat_high.offsetof + 5 * 4;
+        case GuestReg.DBAT6U: return BroadwayState.dbat_low.offsetof + 6 * 4;
+        case GuestReg.DBAT6L: return BroadwayState.dbat_high.offsetof + 6 * 4;
+        case GuestReg.DBAT7U: return BroadwayState.dbat_low.offsetof + 7 * 4;
+        case GuestReg.DBAT7L: return BroadwayState.dbat_high.offsetof + 7 * 4;
+        
+        case GuestReg.SPRG0: return BroadwayState.sprg0.offsetof;
+        case GuestReg.SPRG1: return BroadwayState.sprg1.offsetof;
+        case GuestReg.SPRG2: return BroadwayState.sprg2.offsetof;
+        case GuestReg.SPRG3: return BroadwayState.sprg3.offsetof;
+
+        case GuestReg.DEC:   return BroadwayState.dec.offsetof;
+
+        case GuestReg.DAR:   return BroadwayState.dar.offsetof;
+
         default: assert(0);
     }
 }
@@ -116,6 +172,7 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 8:    return GuestReg.LR;
         case 1:    return GuestReg.XER;
         case 26:   return GuestReg.SRR0;
+        case 27:   return GuestReg.SRR1;
         case 912:  return GuestReg.GQR0;
         case 913:  return GuestReg.GQR1;
         case 914:  return GuestReg.GQR2;
@@ -134,6 +191,44 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 954:  return GuestReg.PMC2;
         case 957:  return GuestReg.PMC3;
         case 958:  return GuestReg.PMC4;
+        case 528:  return GuestReg.IBAT0U;
+        case 529:  return GuestReg.IBAT0L;
+        case 530:  return GuestReg.IBAT1U;
+        case 531:  return GuestReg.IBAT1L;
+        case 532:  return GuestReg.IBAT2U;
+        case 533:  return GuestReg.IBAT2L;
+        case 534:  return GuestReg.IBAT3U;
+        case 535:  return GuestReg.IBAT3L;
+        case 536:  return GuestReg.DBAT0U;
+        case 537:  return GuestReg.DBAT0L;
+        case 538:  return GuestReg.DBAT1U;
+        case 539:  return GuestReg.DBAT1L;
+        case 540:  return GuestReg.DBAT2U;
+        case 541:  return GuestReg.DBAT2L;
+        case 542:  return GuestReg.DBAT3U;
+        case 543:  return GuestReg.DBAT3L;
+        case 560:  return GuestReg.IBAT4U;
+        case 561:  return GuestReg.IBAT4L;
+        case 562:  return GuestReg.IBAT5U;
+        case 563:  return GuestReg.IBAT5L;
+        case 564:  return GuestReg.IBAT6U;
+        case 565:  return GuestReg.IBAT6L;
+        case 566:  return GuestReg.IBAT7U;
+        case 567:  return GuestReg.IBAT7L;
+        case 568:  return GuestReg.DBAT4U;
+        case 569:  return GuestReg.DBAT4L;
+        case 570:  return GuestReg.DBAT5U;
+        case 571:  return GuestReg.DBAT5L;
+        case 572:  return GuestReg.DBAT6U;
+        case 573:  return GuestReg.DBAT6L;
+        case 574:  return GuestReg.DBAT7U;
+        case 575:  return GuestReg.DBAT7L;
+        case 272:  return GuestReg.SPRG0;
+        case 273:  return GuestReg.SPRG1;
+        case 274:  return GuestReg.SPRG2;
+        case 275:  return GuestReg.SPRG3;
+        case 22:   return GuestReg.DEC;
+        case 19:   return GuestReg.DAR;
 
         default: 
             error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);
