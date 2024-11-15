@@ -58,6 +58,7 @@ final class Wii {
         this.broadway.connect_scheduler(this.scheduler);
         this.external_interface.connect_mem(this.mem);
         this.video_interface.connect_mem(this.mem);
+        this.video_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.mem.connect_audio_interface(this.audio_interface);
         this.mem.connect_command_processor(this.command_processor);
         this.mem.connect_dsp(this.dsp);
@@ -70,6 +71,8 @@ final class Wii {
         this.ipc.connect_mem(this.mem);
         this.ipc.connect_scheduler(this.scheduler);
         this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+
+        g_logger_scheduler = &this.scheduler;
 
         this.broadway.reset();
     }
@@ -244,5 +247,9 @@ final class Wii {
 
     public void on_error() {
         broadway.on_error();
+    }
+
+    public void load_sysconf(u8[] sysconf_data) {
+        this.ipc.load_sysconf(sysconf_data);
     }
 }

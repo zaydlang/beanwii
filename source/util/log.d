@@ -1,5 +1,9 @@
 module util.log;
 
+import emu.scheduler;
+
+__gshared Scheduler* g_logger_scheduler;
+
 enum LogSource {
     DISK,
     WBFS,
@@ -41,7 +45,6 @@ static ulong get_largest_logsource_length()(){
 // thanks https://github.com/dlang/phobos/blob/4239ed8ebd3525206453784908f5d37c82d338ee/std/outbuffer.d
 private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)[] fmt, A args) {
     import core.runtime;
-    import core.stdc.stdio;
     import core.stdc.stdlib;
     import std.array;
     import std.conv;
@@ -57,7 +60,7 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
             }
         }
 
-        ulong timestamp = 0; // scheduler.get_current_time_relative_to_cpu();
+        ulong timestamp = g_logger_scheduler ? g_logger_scheduler.get_current_time_relative_to_cpu() : 0;
         string prefix = format("%016x [%s] : ", timestamp, pad_string_right!(to!string(log_source), logsource_padding));
         string written_string = format(fmt, args);
         written_string = written_string.replace("\n", "\n" ~ prefix);
@@ -66,20 +69,24 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
             g_on_error_callback();
         }
 
-        writef(prefix);
-        writefln(written_string);
 
         if (fatal) {
+            stderr.writef(prefix);
+            stderr.writefln(written_string);
             version (unittest) {
                 assert(0);
             } else {
                 auto trace = defaultTraceHandler(null);
                 foreach (line; trace) {
+                    import core.stdc.stdio;
                     printf("%.*s\n", cast(int) line.length, line.ptr);
                 }
 
                 exit(-1);
             }
+        } else {
+            writef(prefix);
+            writefln(written_string);
         }
     }
 }

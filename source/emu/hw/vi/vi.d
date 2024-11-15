@@ -1,6 +1,7 @@
 module emu.hw.vi.vi;
 
 import emu.hw.memory.strategy.memstrategy;
+import emu.hw.broadway.interrupt;
 import emu.hw.vi.vi;
 import ui.device;
 import util.bitop;
@@ -78,11 +79,24 @@ final class VideoInterface {
 
     private VideoBuffer video_buffer;
     private Mem mem;
+    private InterruptController interrupt_controller;
     private PresentVideoBufferCallback present_videobuffer_callback;
 
     public u8 read_DCR(int target_byte) {
-        error_vi("Unimplemented: DCR Read");
-        return 0; // TODO
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) (
+                    non_interlaced  << 2 |
+                    display_mode_3  << 3 |
+                    display_latch_0 << 4 |
+                    display_latch_1 << 6
+                );
+            
+            case 1:
+                return cast(u8) (
+                    video_format << 0
+                );
+        }
     }
 
     public void write_DCR(int target_byte, u8 value) {
@@ -110,8 +124,19 @@ final class VideoInterface {
     }
 
     public u8 read_HTR0(int target_byte) {
-        error_vi("Unimplemented: HTR0 Read");
-        return 0; // TODO
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) halfline_width;
+            
+            case 1:
+                return cast(u8) (halfline_width >> 8);
+  
+            case 2:
+                return cast(u8) hsync_start_to_color_burst_end;
+            
+            case 3:
+                return cast(u8) hsync_start_to_color_burst_start;
+        }
     }
 
     public void write_HTR0(int target_byte, u8 value) {
@@ -126,7 +151,7 @@ final class VideoInterface {
                 halfline_width &= 0xFF;
                 halfline_width |= value.bit(0) << 8;
                 break;
-
+                
             case 2:
                 assert(value.bit(7) == 0);
                 hsync_start_to_color_burst_end = value;
@@ -363,6 +388,17 @@ final class VideoInterface {
         }
     }
 
+    int srcwidth;
+
+    public void write_HSW(int target_byte, u8 value) {
+        srcwidth = srcwidth.set_byte(target_byte, value);
+        srcwidth &= 0x3FF;
+    }
+
+    public u8 read_HSW(int target_byte) {
+        return cast(u8) srcwidth.get_byte(target_byte);
+    }
+
     public u8 read_HSR(int target_byte) {
         error_vi("Unimplemented: HSR Read");
         return 0; // TODO
@@ -450,6 +486,59 @@ final class VideoInterface {
         }
     }
 
+    bool[4] interrupt_status;
+    bool[4] interrupt_enable;
+    int[4]  vertical_position;
+    int[4]  horizontal_position;
+
+    public u8 read_DIx(int target_byte, int x) {
+        log_vi("Reading DI%d[%d]", x, target_byte);
+        log_vi("Dix info: %d %d %d %d", horizontal_position[x], vertical_position[x], interrupt_enable[x], interrupt_status[x]);
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) (horizontal_position[x] & 0xFF);
+            
+            case 1:
+                return cast(u8) (horizontal_position[x] >> 8);
+            
+            case 2:
+                return cast(u8) (vertical_position[x] & 0xFF);
+            
+            case 3:
+                return cast(u8) 
+                    (vertical_position[x] >> 8) |
+                    (interrupt_enable[x] << 4) |
+                    (interrupt_status[x] << 7);
+        }
+    }
+
+    public void write_DIx(int target_byte, u8 value, int x) {
+        log_vi("Writing DI%d[%d] = %02x", x, target_byte, value);
+        final switch (target_byte) {
+            case 0:
+                horizontal_position[x] &= 0xFF00;
+                horizontal_position[x] |= value;
+                break;
+            
+            case 1:
+                horizontal_position[x] &= 0xFF;
+                horizontal_position[x] |= value << 8;
+                break;
+            
+            case 2:
+                vertical_position[x] &= 0xFF00;
+                vertical_position[x] |= value;
+                break;
+            
+            case 3:
+                vertical_position[x] &= 0xFF;
+                vertical_position[x] |= (value & 3) << 8;
+                interrupt_enable[x] = value.bit(4);
+                interrupt_status[x] = value.bit(7);
+                break;
+        }
+    }
+
     public u8 read_UNKNOWN(int target_byte) {
         log_vi("Unimplemented: UNKNOWN Read");
         return 0; // TODO
@@ -459,9 +548,27 @@ final class VideoInterface {
         log_vi("Unimplemented: UNKNOWN Write (%08x)", value);
     }
 
+    int visel;
+    public void write_VISEL(int target_byte, u8 value) {
+        visel = visel.set_byte(target_byte, value);
+    }
+
+    public u8 read_VISEL(int target_byte) {
+        return cast(u8) visel.get_byte(target_byte);
+    }
+
+    public void write_GPIOB_STUB(int target_byte, u8 value, int x) {
+
+    }
+
+    public u8 read_GPIOB_STUB(int target_byte, int x) {
+        return 0; // TOneverDO
+    }
+
     public void scanout() {
         for (int field = 0; field < 2; field++) {
             u32 base_address = (this.top_field_fbb_address << 9) + (field * XBFR_WIDTH * 2);
+            log_vi("Scanning out field %d from base address %08x", field, base_address);
             for (int y = field; y < XBFR_HEIGHT; y += 2) {
             for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
                 u32 ycbycr = mem.paddr_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
@@ -480,6 +587,11 @@ final class VideoInterface {
         log_vi("Presenting VideoBuffer");
 
         this.present_videobuffer_callback(video_buffer);
+
+        if (interrupt_enable[0]) {
+            interrupt_status[0] = true;
+            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
+        }
     }
 
     private Pixel ycbycr_to_rgb(float y, float cr, float cb) {
@@ -498,5 +610,9 @@ final class VideoInterface {
 
     public void connect_mem(Mem mem) {
         this.mem = mem;
+    }
+
+    public void connect_interrupt_controller(InterruptController ic) {
+        this.interrupt_controller = ic;
     }
 }

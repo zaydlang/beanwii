@@ -4,24 +4,41 @@ import util.bitop;
 import util.number;
 
 final class DSP {
-    u32 mailbox_from = 0x8000_0000;
-    
-    u8 read_DSP_MAILBOX_FROM(int target_byte) {
+    u16 mailbox_from_lo;
+
+    u8 read_DSP_MAILBOX_FROM_LOW(int target_byte) {
+
+        return mailbox_from_lo.get_byte(target_byte);
+    }
+
+    u16 mailbox_from_hi;
+
+    u8 read_DSP_MAILBOX_FROM_HIGH(int target_byte) {
         // keep toggling the mailbox value
-        if (target_byte == 2)
-            mailbox_from ^= 0x8000_0000;
+        if (target_byte == 1)
+            mailbox_from_hi ^= 0x8000;
 
-        return mailbox_from.get_byte(target_byte ^ 2);
+        return mailbox_from_hi.get_byte(target_byte);
     }
 
-    u32 mailbox_to;
+    u16 mailbox_to_lo;
 
-    u8 read_DSP_MAILBOX_TO(int target_byte) {
-        return mailbox_to.get_byte(target_byte ^ 2);
+    u8 read_DSP_MAILBOX_TO_LOW(int target_byte) {
+        return mailbox_to_lo.get_byte(target_byte);
     }
 
-    void write_DSP_MAILBOX_TO(int target_byte, u8 value) {
-        mailbox_to = mailbox_to.set_byte(target_byte, value);
+    void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
+        mailbox_to_lo = cast(u16) mailbox_to_lo.set_byte(target_byte, value);
+    }
+
+    u16 mailbox_to_hi;
+
+    u8 read_DSP_MAILBOX_TO_HIGH(int target_byte) {
+        return mailbox_to_hi.get_byte(target_byte);
+    }
+
+    void write_DSP_MAILBOX_TO_HIGH(int target_byte, u8 value) {
+        mailbox_to_hi = cast(u16) mailbox_to_hi.set_byte(target_byte, value);
     }
 
     u32 csr;
@@ -33,6 +50,7 @@ final class DSP {
     void write_DSP_CSR(int target_byte, u8 value) {
         csr = csr.set_byte(target_byte, value);
         csr &= ~1;
+        csr &= ~(1 << 11);
     }
 
     u32 aram_mmaddr;

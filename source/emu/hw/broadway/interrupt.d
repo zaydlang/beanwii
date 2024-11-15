@@ -11,6 +11,7 @@ enum HollywoodInterruptCause {
 }
 
 enum ProcessorInterfaceInterruptCause {
+    VI        = 8,
     Hollywood = 14,
 }
 
@@ -107,7 +108,7 @@ final class InterruptController {
     void maybe_raise_processor_interface_interrupt() {
         if ((pi_interrupt_mask & pi_interrupt_cause) != 0) {
             if (broadway.state.msr.bit(15)) {
-                log_interrupt("InterruptController: raising Processor Interface interrupt");
+                log_interrupt("bazinga: raising Processor Interface interrupt %x %x", pi_interrupt_cause, pi_interrupt_mask);
                 broadway.raise_exception(ExceptionType.ExternalInterrupt);
             }
         }

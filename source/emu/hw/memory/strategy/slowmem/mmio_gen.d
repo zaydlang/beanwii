@@ -114,7 +114,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         int offset;
         string reg = get_mmio_reg_from_address(address, offset);
 
-        log_slowmem("MMIO: Writing to %s (offset = %d) (size = %d) (value = %d)", reg, offset, T.sizeof, value);
+        log_slowmem("MMIO: Writing to %s (offset = %d) (size = %d) (value = %x)", reg, offset, T.sizeof, value);
     }
 
     T read(T)(u32 address) {
@@ -140,17 +140,17 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
 
         static if (is(T == u32)) {
             value = (
-                read_byte(address + 0) <<  0 |
-                read_byte(address + 1) <<  8 |
-                read_byte(address + 2) << 16 |
-                read_byte(address + 3) << 24
+                read_byte(address + 3) <<  0 |
+                read_byte(address + 2) <<  8 |
+                read_byte(address + 1) << 16 |
+                read_byte(address + 0) << 24
             );
         } else
 
         static if (is(T == u16)) {
             value = (
-                read_byte(address + 0) <<  0 |
-                read_byte(address + 1) <<  8
+                read_byte(address + 1) <<  0 |
+                read_byte(address + 0) <<  8
             );
         } else
 
@@ -175,7 +175,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                             static if (!mr.filter_enabled || mr.f(offset)) {
                                 case mr.address + offset:
                                     static if (!mr.all_at_once) {
-                                        mixin("return context.%s.read_%s(%d);".format(mr.component, mr.name, offset));
+                                        mixin("return context.%s.read_%s(%d ^ %d);".format(mr.component, mr.name, offset, mr.size - 1));
                                     } else {
                                         mixin("break mmio_switch;");
                                     }
@@ -187,7 +187,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                                 static if (!mr.filter_enabled || mr.f(offset)) {
                                     case mr.address + stride_offset * mr.stride + offset:
                                         static if (!mr.all_at_once) {
-                                            mixin("return context.%s.read_%s(%d, %d);".format(mr.component, mr.name, offset, stride_offset));
+                                            mixin("return context.%s.read_%s(%d ^ %d, %d);".format(mr.component, mr.name, offset, mr.size - 1, stride_offset));
                                         } else {
                                             mixin("break mmio_switch;");
                                         }
@@ -223,15 +223,15 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         }
 
         static if (is(T == u32)) {
-            write_byte(address + 0, value.get_byte(0));
-            write_byte(address + 1, value.get_byte(1));
-            write_byte(address + 2, value.get_byte(2));
-            write_byte(address + 3, value.get_byte(3));
+            write_byte(address + 3, value.get_byte(0));
+            write_byte(address + 2, value.get_byte(1));
+            write_byte(address + 1, value.get_byte(2));
+            write_byte(address + 0, value.get_byte(3));
         } else
 
         static if (is(T == u16)) {
-            write_byte(address + 0, value.get_byte(0));
-            write_byte(address + 1, value.get_byte(1));
+            write_byte(address + 1, value.get_byte(0));
+            write_byte(address + 0, value.get_byte(1));
         } else
 
         static if (is(T == u8)) {
@@ -252,7 +252,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                             static if (!mr.filter_enabled || mr.f(offset)) {
                                 case mr.address + offset:
                                     static if (!mr.all_at_once) {
-                                        mixin("context.%s.write_%s(%d, value); break mmio_switch;".format(mr.component, mr.name, offset));
+                                        mixin("context.%s.write_%s(%d, value); break mmio_switch;".format(mr.component, mr.name, offset ^ (mr.size - 1)));
                                     } else {
                                         mixin("break mmio_switch;");
                                     }
@@ -264,7 +264,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                                 static if (!mr.filter_enabled || mr.f(offset)) {
                                     case mr.address + stride_offset * mr.stride + offset:
                                         static if (!mr.all_at_once) {
-                                            mixin("context.%s.write_%s(%d, value, %d); break mmio_switch;".format(mr.component, mr.name, offset, stride_offset));
+                                            mixin("context.%s.write_%s(%d, value, %d); break mmio_switch;".format(mr.component, mr.name, offset ^ (mr.size - 1), stride_offset));
                                         } else {
                                             mixin("break mmio_switch;");
                                         }

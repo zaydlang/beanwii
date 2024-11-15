@@ -24,12 +24,15 @@ version (unittest) {} else {
 		CliArgs cli_args = parse_cli_args(args);
 
 		auto disk_data = load_file_as_bytes(cli_args.rom_path);
+		log_wii("sysconf path: %s", cli_args.sysconf_path);
+		auto sysconf = load_file_as_bytes(cli_args.sysconf_path);
 
 		wii = new Wii(cli_args.ringbuffer_size);
 		
 		set_logger_on_error_callback(&logger_on_error_callback);
 
 		parse_and_load_file(wii, disk_data);
+		wii.load_sysconf(sysconf);
 		
 		auto reng = new RengMultimediaDevice(wii, 1, true);
 		wii.connect_multimedia_device(reng);

@@ -164,6 +164,8 @@ final class Code : CodeGenerator {
             add(rsp, 8);
         }
 
+        stack_alignment -= 8;
+
         in_stack_alignment_context = false;
     }
 }

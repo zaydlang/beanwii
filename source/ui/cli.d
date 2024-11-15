@@ -5,6 +5,7 @@ import std.conv;
 
 struct CliArgs {
     string rom_path;
+    string sysconf_path;
     size_t ringbuffer_size;
     bool   start_debugger;
 }
@@ -12,6 +13,8 @@ struct CliArgs {
 CliArgs parse_cli_args(string[] args) {
 	auto program = new Program("BeanWii", "0.1").summary("Wii Emulator")
 		.add(new Argument("rom_path", "path to rom file"))
+		.add(new Option("s", "sysconf_path", "path to SYSCONF file")
+            .optional().defaultValue("./roms/SYSCONF"))
         .add(new Option("r", "ringbuffer_size", "the number of instructions to capture in the broadway ring buffer")
             .optional().defaultValue("0"))
         .add(new Flag("d", "debug", "start the debugger"))
@@ -19,6 +22,7 @@ CliArgs parse_cli_args(string[] args) {
 
     return CliArgs(
         program.arg("rom_path"),
+        program.option("sysconf_path"),
         to!int(program.option("ringbuffer_size")),
         to!bool(program.flag("debug"))
     );

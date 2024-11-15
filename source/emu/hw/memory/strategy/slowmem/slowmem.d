@@ -86,7 +86,13 @@ final class SlowMem : MemStrategy {
             switch (region) {
                 case 0x8: return MemoryAccess(MemoryRegion.MEM1,           address & 0x17FFFFF); 
                 case 0x9: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
-                case 0xC: return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x3FFFFF);
+                case 0xC: 
+                    if (address <= 0xC17FFFFF) {
+                        return MemoryAccess(MemoryRegion.MEM2,             address & 0x3FFFFF);
+                    } else {
+                        return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO,   address & 0x3FFFFF);
+                    }
+
                 case 0xD: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
                 case 0x2: return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address & 0x3FFFFF);
                 default:
@@ -135,16 +141,13 @@ final class SlowMem : MemStrategy {
                 error_slowmem("Read from EXI boot code at 0x%08x", address);
                 break;
         }
-        if (address == 0x80053068) {
-            log_slowmem("[DATA READ] _context_switch_want = 0x%08x", result);
-        }
 
         return result;
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
-        if (address == 0x80053068) {
-            log_slowmem("[DATA WRIT] _context_switch_want = 0x%08x", value);
+        if (address >= 0x8002b200 && address < 0x8002b200 + 257) {
+            log_slowmem("__conf_txt_buffer[%d] = 0x%02x", address - 0x8002b200, value);
         }
 
         static if (translate) {

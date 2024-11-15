@@ -100,61 +100,25 @@ final class Broadway {
             exception_raised = false;
         // if (biglog) {
         //     // num_log--;
-        //     log_jit("PC: %08X\n", state.pc);
-        //     log_state(state);
+            // log_jit("PC: %08X\n", state.pc);
+            if (state.pc == 0x80016cdc) {
+                // dump stack
+                auto sp = state.gprs[1];
+                log_jit("LR: %08X\n", state.lr);
+                for (int i = 0; i < 32; i++) {
+                    log_jit("SP[%d]: %08X\n", i, mem.read_be_u32(sp + i * 4));
+                }
+            }
+            // log_state(&state);
         // }
 
-            if (state.pc == 0x80004420) {
-                log_jit("[FUNCTION] _cpu_context_switch");
-            }
-            if (state.pc == 0x800169b0) {
-                if (!idle) {
-log_jit("[FUNCTION] idle_func");
-                }
-                idle = true;
-            } else {
-                idle = false;
-            }
+        if (state.pc == 0x8001018c) biglog = true;
 
-            if (state.pc == 0x800068fc) {
-                log_jit("[FUNCTION] __crt_main()");
-                // should_log = true;
-            }
-            if (state.pc == 0x8001bd1c) {
-                log_jit("[FUNCTION] SYS_Init()");
-            }
-            if (state.pc == 0x80022808) {
-                log_jit("[FUNCTION] ipc sync()");
-            }
-            if (state.pc == 0x80022704) {
-                log_jit("[FUNCTION] ipc send()");
-            }
-            
-            if (state.pc == 0x80016e94) {
-                log_jit("[FUNCTION] LWP_ThreadSleep(%x)", state.gprs[3]);
-            }
+            // log_state(&state);
+            // log_jit("PC: %08X\n", state.pc);
 
-            if (state.pc == 0x80017014) {
-                log_jit("[FUNCTION] LWP_ThreadSignal(%x)", state.gprs[3]);
-            }
-        
-            if (biglog) {
-                u32 opcode = mem.read_be_u32(state.pc);
-                // log_jit("PC: %08X, Opcode: %08X\n", state.pc, opcode);
-                log_state(&state);
-            }
-
-
-            auto nobr = state.pc + 4;
-            auto older_dec = state.dec;
+            // bool old = state.msr.bit(15);
             auto delta = jit.run(&state);
-            if (older_dec != state.dec) {
-                log_jit("Decrementer changed from %0x to %0x\n", older_dec, state.dec);
-            }
-
-            if (state.pc != nobr && state.pc != nobr - 4) {
-                log_jit("Branching from %08X to %08X\n", nobr - 4, state.pc);
-            }
             scheduler.tick(delta);
             scheduler.process_events();
 
@@ -164,18 +128,19 @@ log_jit("[FUNCTION] idle_func");
             state.tbu = cast(u32) (time_base >> 32);
             state.tbl = cast(u32) time_base;
 
-            log_jit("tbu: %08X, tbl: %08X\n", state.tbu, state.tbl);
 
             // check for decrementer interrupt
             auto old_dec = state.dec;
             state.dec -= delta;
             if (old_dec > 0 && state.dec <= 0 && state.msr.bit(15)) {
-                log_jit("Raising decrementer interrupt\n");
                 // num_log = 100;
-                raise_exception(ExceptionType.Decrementer);
+                handle_exception(ExceptionType.Decrementer);
             } else {
-                interrupt_controller.maybe_raise_processor_interface_interrupt();
+                handle_pending_interrupts();
             }
+            // } else if (old != state.msr.bit(15)) {
+                // interrupt_controller.maybe_raise_processor_interface_interrupt();
+            // }
 
 
             elapsed += delta;
@@ -297,7 +262,7 @@ log_jit("[FUNCTION] idle_func");
     }
 
     // SRR1[0,5-9,16-23,25-27,30-31]
-    void raise_exception(ExceptionType type) {
+    void handle_exception(ExceptionType type) {
         if (exception_raised) error_jit("Exception already raised");
         exception_raised = true;
 
@@ -336,5 +301,22 @@ log_jit("[FUNCTION] idle_func");
 
     void connect_scheduler(Scheduler scheduler) {
         this.scheduler = scheduler;
+    }
+
+    int pending_interrupts = 0;
+    void handle_pending_interrupts() {
+        if (pending_interrupts > 0) {
+            assert(pending_interrupts == ExceptionType.ExternalInterrupt);
+            if (state.msr.bit(15)) {
+                handle_exception(ExceptionType.ExternalInterrupt);
+                pending_interrupts = 0;
+            } else {
+                interrupt_controller.maybe_raise_processor_interface_interrupt();
+            }
+        }
+    }
+
+    void raise_exception(ExceptionType type) {
+        pending_interrupts |= type;
     }
 }

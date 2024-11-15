@@ -229,6 +229,8 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 275:  return GuestReg.SPRG3;
         case 22:   return GuestReg.DEC;
         case 19:   return GuestReg.DAR;
+        case 284:  return GuestReg.TBL;
+        case 285:  return GuestReg.TBU;
 
         default: 
             error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);

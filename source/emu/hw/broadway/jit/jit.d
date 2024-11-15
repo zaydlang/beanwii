@@ -69,7 +69,6 @@ final class Jit {
             cached_func(state);
         } else {
             emit(code, mem, state.pc);
-            log_state(state);
             auto func = code.get_function!JitFunction();
             // jit_hash_map[state.pc] = func;
 
