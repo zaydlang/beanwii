@@ -6,12 +6,15 @@ import emu.hw.cp.cp;
 import emu.hw.dsp.dsp;
 import emu.hw.broadway.cpu;
 import emu.hw.disk.dol;
+import emu.hw.hollywood.hollywood;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.memory.strategy.slowmem.mmio_spec;
 import emu.hw.ai.ai;
+import emu.hw.di.di;
 import emu.hw.exi.exi;
 import emu.hw.ipc.ipc;
+import emu.hw.pe.pe;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
 import util.array;
@@ -56,6 +59,9 @@ final class SlowMem : MemStrategy {
     }
 
     private MemoryAccess get_memory_access_from_paddr(u32 address) {
+        if (address == 0x20) {
+            log_slowmem("Invalid address 0x%08x", address);
+        }
         if        (0x00000000 <= address && address <= 0x017FFFFF) {
             return MemoryAccess(MemoryRegion.MEM1, address & 0x17FFFFF);
         } else if (0x10000000 <= address && address <= 0x13FFFFFF) {
@@ -88,7 +94,7 @@ final class SlowMem : MemStrategy {
                 case 0x9: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
                 case 0xC: 
                     if (address <= 0xC17FFFFF) {
-                        return MemoryAccess(MemoryRegion.MEM2,             address & 0x3FFFFF);
+                        return MemoryAccess(MemoryRegion.MEM1,             address & 0x3FFFFF);
                     } else {
                         return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO,   address & 0x3FFFFF);
                     }
@@ -96,7 +102,7 @@ final class SlowMem : MemStrategy {
                 case 0xD: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
                 case 0x2: return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address & 0x3FFFFF);
                 default:
-                    error_slowmem("Invalid region 0x%08x", region);
+                    error_slowmem("Invalid region 0x%08x (0x%08x)", region, address);
                     assert(0);
             }
         } else {
@@ -142,12 +148,28 @@ final class SlowMem : MemStrategy {
                 break;
         }
 
+        // log_slowmem("Read from 0x%08x = 0x%08x", address, result);
+
+
+        if (cpu.state.pc == 0x802956f8) {
+            log_ipc("Read from ipc mailbox: %x %x", result, address);
+        }
         return result;
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
-        if (address >= 0x8002b200 && address < 0x8002b200 + 257) {
-            log_slowmem("__conf_txt_buffer[%d] = 0x%02x", address - 0x8002b200, value);
+        // log_slowmem("Write to 0x%08x = 0x%08x", address, value);
+        if (address == 0x933e2160) {
+            // if (value == 0x133e2380) error_slowmem("Write to 0x933e2160 = 0x133e2380");
+        }
+        if (address == 0x80557866) {
+            log_slowmem("Write to wtf = 0x%08x", value);
+        }
+
+        if (address == 0x8056d3d0) {
+            import std.stdio;
+            
+            log_ipc("_ipc_mailboxack = 0x%08x", value);
         }
 
         static if (translate) {
@@ -199,16 +221,32 @@ final class SlowMem : MemStrategy {
         return this.read_be!(u8, false)(address);
     }
 
+    pragma(inline, true) override public u16 paddr_read_u16(u32 address) {
+        return this.read_be!(u16, false)(address);
+    }
+
     pragma(inline, true) override public u32 paddr_read_u32(u32 address) {
         return this.read_be!(u32, false)(address);
+    }
+
+    pragma(inline, true) override public u64 paddr_read_u64(u32 address) {
+        return this.read_be!(u64, false)(address);
     }
 
     pragma(inline, true) override public void paddr_write_u8(u32 address, u8 value) {
         this.write_be!(u8, false)(address, value);
     }
 
+    pragma(inline, true) override public void paddr_write_u16(u32 address, u16 value) {
+        this.write_be!(u16, false)(address, value);
+    }
+
     pragma(inline, true) override public void paddr_write_u32(u32 address, u32 value) {
         this.write_be!(u32, false)(address, value);
+    }
+
+    pragma(inline, true) override public void paddr_write_u64(u32 address, u64 value) {
+        this.write_be!(u64, false)(address, value);
     }
 
     override public void map_buffer(u8* buffer, size_t buffer_size, u32 address) {
@@ -281,6 +319,10 @@ final class SlowMem : MemStrategy {
         this.mmio.connect_serial_interface(si);
     }
 
+    public void connect_dvd_interface(DVDInterface di) {
+        this.mmio.connect_dvd_interface(di);
+    }
+
     public void connect_interrupt_controller(InterruptController ic) {
         this.mmio.connect_interrupt_controller(ic);
     }
@@ -291,6 +333,14 @@ final class SlowMem : MemStrategy {
 
     public void connect_broadway(Broadway cpu) {
         this.cpu = cpu;
+    }
+
+    public void connect_hollywood(Hollywood hollywood) {
+        this.mmio.connect_hollywood(hollywood);
+    }
+
+    public void connect_pixel_engine(PixelEngine pe) {
+        this.mmio.connect_pixel_engine(pe);
     }
 
     int mi_interrupt_mask = 0;

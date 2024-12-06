@@ -42,6 +42,7 @@ struct BroadwayState {
     u32     sprg3;
     u32     dec;
     u32     dar;
+    u32     wpar;
 
     u32     lr;
     u32     pc;
@@ -58,8 +59,8 @@ struct PairedSingle {
 }
 
 public void log_state(BroadwayState* state) {
-    if (false) { // mimic dolphin style logs for diffing
         import std.stdio;
+    if (false) { // mimic dolphin style logs for diffing
         writefln("LOG: fregs PC: 0x%08x CRval: 0x%08x FPSCR: 0x%08x XER: 0x%08x MSR: 0x%08x LR: 0x%08x ",
             state.pc, state.cr, state.fpscr, state.xer, state.msr, state.lr
         );
@@ -77,17 +78,33 @@ public void log_state(BroadwayState* state) {
         writefln("");
     } else {
         for (int i = 0; i < 32; i += 8) {
-            log_broadway("0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x",
+            writefln("0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x",
                 state.gprs[i + 0], state.gprs[i + 1], state.gprs[i + 2], state.gprs[i + 3],
                 state.gprs[i + 4], state.gprs[i + 5], state.gprs[i + 6], state.gprs[i + 7]
             );
         }
 
-        log_broadway("cr:  0x%08x", state.cr);
-        log_broadway("xer: 0x%08x", state.xer);
-        log_broadway("ctr: 0x%08x", state.ctr);
+        // fprs
+        for (int i = 0; i < 32; i += 2) {
+            writefln("f%02d: 0x%08x (%f) 0x%08x (%f) 0x%08x (%f) 0x%08x (%f)",
+                i + 0,
+                state.ps[i + 0].ps0, *(cast(double*)&state.ps[i + 0].ps0),
+                state.ps[i + 0].ps1, *(cast(double*)&state.ps[i + 0].ps1),
+                state.ps[i + 1].ps0, *(cast(double*)&state.ps[i + 1].ps0),
+                state.ps[i + 1].ps1, *(cast(double*)&state.ps[i + 1].ps1)
+            );
+        }
 
-        log_broadway("lr:  0x%08x", state.lr);
-        log_broadway("pc:  0x%08x", state.pc);
+        writefln("cr:  0x%08x", state.cr);
+        writefln("xer: 0x%08x", state.xer);
+        writefln("ctr: 0x%08x", state.ctr);
+        writefln("hid2: 0x%08x", state.hid2);
+
+        for (int i = 0; i < 8; i += 2) {
+            writefln("gqr%02d: 0x%08x 0x%08x", i + 0, state.gqrs[i + 0], state.gqrs[i + 1]);
+        }
+
+        writefln("lr:  0x%08x", state.lr);
+        writefln("pc:  0x%08x", state.pc);
     }
 }

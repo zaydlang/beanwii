@@ -7,14 +7,59 @@ import emu.scheduler;
 import util.bitop;
 import util.log;
 import util.number;
+import std.container : DList;
+import std.stdio;
 
+alias IPCResponseQueue = IPC.IPCResponseQueue;
 final class IPC {
-    enum State {
-        WaitingForCommand,
-        ProcessingCommand
+    struct IPCResponse {
+        u32 paddr;
+        int return_value;
     }
 
-    State state = State.WaitingForCommand;
+    final class IPCResponseQueue {
+        IPC ipc;
+
+        this(IPC ipc) {
+            this.ipc = ipc;
+        }
+
+        DList!IPCResponse responses;
+
+        void push_later(u32 paddr, int return_value, int cycles) {
+            ipc.scheduler.add_event_relative_to_clock(() => push(paddr, return_value), cycles);
+        }
+
+        void push(u32 paddr, int return_value) {
+            log_ipc("IPC: Pushing response %x with return value %x", paddr, return_value);
+            
+            if (ipc.waiting_for_cpu_to_get_response) {
+                IPCResponse response;
+                response.paddr = paddr;
+                response.return_value = return_value;
+                responses.insertBack(response);
+                log_ipc("IPC: Waiting for CPU to get response");
+            } else {
+                ipc.finalize_command(paddr, return_value);
+            }
+        }
+
+        void maybe_finalize_new_response() {
+            if (!ipc.waiting_for_cpu_to_get_response && !responses.empty) {
+                log_ipc("IPC: Finalizing new response");
+                IPCResponse response = responses.front;
+                responses.removeFront();
+                ipc.finalize_command(response.paddr, response.return_value);
+            }
+        }
+
+        bool empty() {
+            return responses.empty;
+        }
+    }
+
+    IPCResponseQueue response_queue;
+    bool waiting_for_cpu_to_get_response = false;
 
     Mem mem;
     InterruptController interrupt_controller;
@@ -26,7 +71,8 @@ final class IPC {
     FileManager file_manager;
 
     this() {
-        file_manager = new FileManager();
+        response_queue = new IPCResponseQueue(this);
+        file_manager = new FileManager(response_queue);
 
         hw_ipc_ppcmsg = 0;
         hw_ipc_ppcctrl = 0;
@@ -35,6 +81,7 @@ final class IPC {
 
     void connect_mem(Mem mem) {
         this.mem = mem;
+        this.file_manager.connect_mem(mem);
     }
 
     void connect_scheduler(Scheduler scheduler) {
@@ -78,6 +125,17 @@ final class IPC {
         bool iy1 = hw_ipc_ppcctrl.bit(4);
         bool iy2 = hw_ipc_ppcctrl.bit(5);
 
+        if (value.bit(2)) {
+            log_ipc("Acknowledging IPC interrupt");
+            interrupt_controller.acknowledge_hollywood_interrupt(HollywoodInterruptCause.IPC);
+            waiting_for_cpu_to_get_response = false;
+            response_queue.maybe_finalize_new_response();
+        }
+
+        if (value.bit(1)) {
+            interrupt_controller.acknowledge_hollywood_interrupt(HollywoodInterruptCause.IPC);
+        }
+
         if (x2) {
             // hw_ipc_ppcctrl &= ~0xF;
             // scheduler.remove_event(process_command_event_id);
@@ -88,11 +146,7 @@ final class IPC {
         } 
 
         if (x1) {
-            if (state != State.WaitingForCommand) {
-                error_ipc("Received two commands at once");
-            }
-
-            state = State.ProcessingCommand;
+            log_ipc("Sending command");
 
             auto paddr = hw_ipc_ppcmsg;
             u32 command = mem.paddr_read_u32(paddr + 0);
@@ -112,7 +166,7 @@ final class IPC {
     u32 hw_ipc_armmsg;
 
     u8 read_HW_IPC_ARMMSG(int target_byte) {
-        interrupt_controller.broadway.biglog = true;
+        log_ipc("IPC: Reading from HW_IPC_ARMMSG[%d] = %x", target_byte, hw_ipc_armmsg.get_byte(target_byte));
         return hw_ipc_armmsg.get_byte(target_byte);
     }
 
@@ -124,14 +178,27 @@ final class IPC {
             interrupt_controller.raise_hollywood_interrupt(HollywoodInterruptCause.IPC);
         }
 
-        switch (command) {
-            case 1: ios_open(paddr);  return;
-            case 2: ios_close(paddr); return;
-            case 3: ios_read(paddr);  return;
-            case 6: ios_ioctl(paddr); return;
+        log_ipc("IPC::ProcessCommand: %x\n", command);
 
-            default: error_ipc("unimplemented command %x", command);
+        switch (command) {
+            case 1: ios_open(paddr);   return;
+            case 2: ios_close(paddr);  return;
+            case 3: ios_read(paddr);   return;
+            case 4: ios_write(paddr);  return;
+            case 5: ios_seek(paddr);   return;
+            case 6: ios_ioctl(paddr);  return;
+            case 7: ios_ioctlv(paddr); return;
+
+            default: error_ipc("unimplemented command %x for fd %x", command, mem.paddr_read_u32(paddr + 8));
         }
+    }
+
+    void ios_seek(u32 paddr) {
+        u32 fd = mem.paddr_read_u32(paddr + 8);
+        u32 where = mem.paddr_read_u32(paddr + 0xC);
+        u32 whence = mem.paddr_read_u32(paddr + 0x10);
+
+        file_manager.seek(paddr, fd, where, whence);
     }
 
     void ios_open(u32 paddr) {
@@ -147,22 +214,27 @@ final class IPC {
             if (c == 0) break;
             path ~= cast(char) c;
         }
-
-        ios_return(paddr, file_manager.open(path, cast(OpenMode) mode, uid, gid));
+        writefln("IOS::Open paddr: %x, path: %s, mode: %d, uid: %d, gid: %d\n", paddr, path, mode, uid, gid);
+        file_manager.open(paddr, path, cast(OpenMode) mode, uid, gid);
     }
 
     void ios_close(u32 paddr) {
         u32 fd = mem.paddr_read_u32(paddr + 8);
-        ios_return(paddr, file_manager.close(fd));
+        file_manager.close(paddr, fd);
     }
 
     void ios_ioctl(u32 paddr) {
         u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 input_argc = mem.paddr_read_u32(paddr + 0xC);
-        u32 io_argc = mem.paddr_read_u32(paddr + 0x10);
-        u32 data_paddr = mem.paddr_read_u32(paddr + 0x14);
+        u32 ioctl = mem.paddr_read_u32(paddr + 0xC);
+        u32 input_buffer = mem.paddr_read_u32(paddr + 0x10);
+        u32 input_buffer_length = mem.paddr_read_u32(paddr + 0x14);
+        u32 output_buffer = mem.paddr_read_u32(paddr + 0x18);
+        u32 output_buffer_length = mem.paddr_read_u32(paddr + 0x1C);
+        log_ipc("IOS::Ioctl paddr: %x, fd: %d, ioctl: %d, input_buffer: %x, input_buffer_length: %d, output_buffer: %x, output_buffer_length: %d", paddr, fd, ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
 
-        ios_return(paddr, file_manager.ioctl(fd, input_argc, io_argc, data_paddr));
+        // wtf?
+
+        file_manager.ioctl(paddr, fd, ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
     }
 
     void ios_read(u32 paddr) {
@@ -172,44 +244,64 @@ final class IPC {
         log_ipc("IOS::Read paddr: %x, fd: %d, buffer_paddr: %x, size: %d", paddr, fd, buffer_paddr, size);
 
         u8[] buffer = new u8[size];
-        int return_value = file_manager.read(fd, size, buffer.ptr);
+        file_manager.read(paddr, fd, size, buffer);
+    }
 
-        if (return_value > 0) {
-            for (int i = 0; i < size; i++) {
-                if (fd == 4) {
-                    log_ipc("    IOS::Read[%d]: %x", i, buffer[i]);
-                }
-                mem.paddr_write_u8(buffer_paddr + i, buffer[i]);
+    void ios_write(u32 paddr) {
+        u32 fd = mem.paddr_read_u32(paddr + 8);
+        u32 buffer_paddr = mem.paddr_read_u32(paddr + 0xC);
+        u32 size = mem.paddr_read_u32(paddr + 0x10);
+        log_ipc("IOS::Write paddr: %x, fd: %d, buffer_paddr: %x, size: %d", paddr, fd, buffer_paddr, size);
+
+        u8[] buffer = new u8[size];
+        for (int i = 0; i < size; i++) {
+            buffer[i] = mem.paddr_read_u8(buffer_paddr + i);
+            if (fd == 4) {
+                log_ipc("    IOS::Write[%d]: %x", i, buffer[i]);
             }
         }
 
-        ios_return(paddr, return_value);
+        file_manager.write(paddr, fd, size, buffer.ptr);
     }
 
-    void ios_return(u32 paddr, int return_value) {
-        state = State.WaitingForCommand;
-
-        finalize_command_event_id = scheduler.add_event_relative_to_self(() => finalize_command(paddr, return_value), 40000);
+    void ios_ioctlv(u32 paddr) {
+        u32 fd = mem.paddr_read_u32(paddr + 8);
+        u32 ioctl = mem.paddr_read_u32(paddr + 0xC);
+        u32 argcin = mem.paddr_read_u32(paddr + 0x10);
+        u32 argcio = mem.paddr_read_u32(paddr + 0x14);
+        u32 ioctlv_struct = mem.paddr_read_u32(paddr + 0x18);
+        log_ipc("IOS::Ioctlv paddr: %x, fd: %d, ioctl: %d, argcin: %d, argcio: %d, ioctlv_struct: %x", paddr, fd, ioctl, argcin, argcio, ioctlv_struct);
+        file_manager.ioctlv(paddr, fd, ioctl, argcin, argcio, ioctlv_struct);
     }
+
+    // void ios_return(u32 paddr, int return_value) {
+        // state = State.WaitingForCommand;
+
+        // finalize_command_event_id = scheduler.add_event_relative_to_self(() => finalize_command(paddr, return_value), 40000);
+    // }
 
     void finalize_command(u32 paddr, int return_value) {
+        waiting_for_cpu_to_get_response = true;
         mem.paddr_write_u32(paddr + 4, *(cast(u32*) &return_value));
         for (int i = 0; i < 0x1c; i += 4) {
             log_ipc("COMMAND[%d]: %08x", i, mem.paddr_read_u32(paddr + i));
         }
 
+        log_ipc("Finalizing command %x with return value %x", paddr, return_value);
         hw_ipc_ppcctrl |= 1 << 2;
         hw_ipc_armmsg = paddr;
 
-        state = State.WaitingForCommand;
-
         if (hw_ipc_ppcctrl.bit(4)) {
-            log_ipc("Raising Interrupt2...");
+            log_ipc("Raising IPCIRQ");
             interrupt_controller.raise_hollywood_interrupt(HollywoodInterruptCause.IPC);
         }
     }
 
     void load_sysconf(ubyte[] sysconf) {
         file_manager.load_sysconf(sysconf);
+    }
+
+    void set_title_id(u64 title_id) {
+        file_manager.set_title_id(title_id);
     }
 }

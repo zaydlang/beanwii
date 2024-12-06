@@ -94,7 +94,7 @@ public void hle_os_report(void* context, BroadwayState* state) {
         next_char = mem.read_be_u8(string_ptr++);
         if (next_char == '%') {
             char format_type = mem.read_be_u8(string_ptr++);
-            final switch (format_type) {
+                switch (format_type) {
                 case 's':
                     char inserted_char;
                     u32 current_address = state.gprs[current_gpr_arg++];
@@ -106,6 +106,14 @@ public void hle_os_report(void* context, BroadwayState* state) {
                 
                 case 'd':
                     output ~= to!string(state.gprs[current_gpr_arg++]);
+                    break;
+                
+                case 'x':
+                    output ~= to!string(state.gprs[current_gpr_arg++], 16);
+                    break;
+
+                default:
+                    output ~= format_type;
                     break;
             }
         } else {

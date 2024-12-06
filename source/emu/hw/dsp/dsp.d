@@ -28,7 +28,7 @@ final class DSP {
     }
 
     void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
-        mailbox_to_lo = cast(u16) mailbox_to_lo.set_byte(target_byte, value);
+        mailbox_to_lo = 0;
     }
 
     u16 mailbox_to_hi;
@@ -38,7 +38,7 @@ final class DSP {
     }
 
     void write_DSP_MAILBOX_TO_HIGH(int target_byte, u8 value) {
-        mailbox_to_hi = cast(u16) mailbox_to_hi.set_byte(target_byte, value);
+        mailbox_to_hi = 0;
     }
 
     u32 csr;

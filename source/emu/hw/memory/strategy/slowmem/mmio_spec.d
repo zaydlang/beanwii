@@ -5,8 +5,11 @@ import emu.hw.cp.cp;
 import emu.hw.memory.strategy.slowmem.mmio_gen;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.ai.ai;
+import emu.hw.di.di;
 import emu.hw.dsp.dsp;
 import emu.hw.exi.exi;
+import emu.hw.hollywood.hollywood;
+import emu.hw.pe.pe;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
 import emu.hw.ipc.ipc;
@@ -18,21 +21,40 @@ final class Mmio {
     public AudioInterface      audio_interface;
     public CommandProcessor    command_processor;
     public DSP                 dsp;
+    public DVDInterface        dvd_interface;
     public ExternalInterface   external_interface;
     public VideoInterface      video_interface;
+    public PixelEngine         pixel_engine;
     public SerialInterface     serial_interface;
     public InterruptController interrupt_controller;
     public IPC                 ipc;
+    public Hollywood           hollywood;
     public Mem                 memory;
 
     static const mmio_spec = [
         MmioRegister("command_processor",    "CP_FIFO_STATUS",        0xCC00_0000, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_CONTROL",            0xCC00_0002, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_CLEAR",              0xCC00_0004, 2, READ_WRITE),
+        MmioRegister("command_processor",    "UNKNOWN_CC000006",      0xCC00_0006, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_TOKEN",              0xCC00_000E, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_FIFO_START",         0xCC00_0020, 4, READ_WRITE),
         MmioRegister("command_processor",    "CP_FIFO_END",           0xCC00_0024, 4, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_HI_WM_LO",      0xCC00_0028, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_HI_WM_HI",      0xCC00_002A, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_LO_WM_LO",      0xCC00_002C, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_LO_WM_HI",      0xCC00_002E, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_DISTANCE_LO",   0xCC00_0030, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_DISTANCE_HI",   0xCC00_0032, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_FIFO_WP",            0xCC00_0034, 4, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_RP_LO",         0xCC00_0038, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_RP_HI",         0xCC00_003A, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "Z_CONFIG",              0xCC00_1000, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "ALPHA_CONFIG",          0xCC00_1002, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "DESTINATION_ALPHA",     0xCC00_1004, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "ALPHA_MODE",            0xCC00_1006, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "ALPHA_READ",            0xCC00_1008, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "PE_IRQ",                0xCC00_100A, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "PE_TOKEN",              0xCC00_100E, 2, READ_WRITE),
         MmioRegister("video_interface",      "VTR",                   0xCC00_2000, 2, READ_WRITE),
         MmioRegister("video_interface",      "DCR",                   0xCC00_2002, 2, READ_WRITE),
         MmioRegister("video_interface",      "HTR0",                  0xCC00_2004, 4, READ_WRITE),
@@ -50,15 +72,29 @@ final class Mmio {
         MmioRegister("video_interface",      "VICLK",                 0xCC00_206C, 2, READ_WRITE),
         MmioRegister("video_interface",      "VISEL",                 0xCC00_206E, 2, READ_WRITE),
         MmioRegister("video_interface",      "UNKNOWN",               0xCC00_2070, 2, READ_WRITE),
+        MmioRegister("video_interface",      "HBE",                   0xCC00_2072, 2, READ_WRITE),
+        MmioRegister("video_interface",      "HBS",                   0xCC00_2074, 2, READ_WRITE),
+        MmioRegister("interrupt_controller", "UNKNOWN_CC003024",      0xCC00_3024, 4, READ_WRITE),
         MmioRegister("interrupt_controller", "UNKNOWN_CC00302C",      0xCC00_302C, 4, READ_WRITE),
         MmioRegister("interrupt_controller", "INTERRUPT_CAUSE",       0xCC00_3000, 4, READ_WRITE),
         MmioRegister("interrupt_controller", "INTERRUPT_MASK",        0xCC00_3004, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "FIFO_BASE_START",       0xCC00_300C, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "FIFO_BASE_END",         0xCC00_3010, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "FIFO_WRITE_PTR",        0xCC00_3014, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "UNKNOWN_CC003018",      0xCC00_3018, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "UNKNOWN_CC00301C",      0xCC00_301C, 4, READ_WRITE),
+        MmioRegister("interrupt_controller", "UNKNOWN_CC003020",      0xCC00_3020, 4, READ_WRITE),
         MmioRegister("interrupt_controller", "HW_PPCIRQFLAG",         0xCD00_0030, 4, READ_WRITE),
         MmioRegister("interrupt_controller", "HW_PPCIRQMASK",         0xCD00_0034, 4, READ_WRITE),
         MmioRegister("memory",               "MI_PROT_TYPE",          0xCC00_4010, 2, READ_WRITE),
         MmioRegister("memory",               "MI_INTERRUPT_MASK",     0xCC00_401C, 4, READ_WRITE),
         MmioRegister("memory",               "UNKNOWN_CC004020",      0xCC00_4020, 2, READ_WRITE),
         MmioRegister("audio_interface",      "AI_CONTROL",            0xCD00_6C00, 4, READ_WRITE),
+        MmioRegister("audio_interface",      "AIVR",                  0xCD00_6C04, 4, READ_WRITE),
+        MmioRegister("audio_interface",      "AISCNT",                0xCD00_6C08, 4, READ_WRITE),
+        MmioRegister("audio_interface",      "AIIT",                  0xCD00_6C0C, 4, READ_WRITE),
+        MmioRegister("audio_interface",      "HW_PLLAI",              0xCD00_01CC, 4, READ_WRITE),
+        MmioRegister("audio_interface",      "HW_PLLAIEXT",           0xCD00_01D0, 4, READ_WRITE),
         MmioRegister("dsp",                  "DSP_MAILBOX_TO_HIGH",   0xCC00_5000, 2, READ_WRITE),
         MmioRegister("dsp",                  "DSP_MAILBOX_TO_LOW",    0xCC00_5002, 2, READ_WRITE),
         MmioRegister("dsp",                  "DSP_MAILBOX_FROM_HIGH", 0xCC00_5004, 2, READ),
@@ -73,9 +109,12 @@ final class Mmio {
         MmioRegister("external_interface",   "EXI_LEN",               0xCD00_6808, 4, READ_WRITE).repeat(3, 0x14),
         MmioRegister("external_interface",   "EXI_CR",                0xCD00_680C, 4, READ_WRITE).repeat(3, 0x14).dont_decompose_into_bytes(),
         MmioRegister("external_interface",   "EXI_DATA",              0xCD00_6810, 4, READ_WRITE).repeat(3, 0x14),
+        MmioRegister("hollywood",            "GX_FIFO",               0xCC00_8000, 8,      WRITE).dont_decompose_into_bytes(),
         MmioRegister("ipc",                  "HW_IPC_PPCMSG",         0xCD00_0000, 4, READ_WRITE),
         MmioRegister("ipc",                  "HW_IPC_PPCCTRL",        0xCD00_0004, 4, READ_WRITE).dont_decompose_into_bytes(),
         MmioRegister("ipc",                  "HW_IPC_ARMMSG",         0xCD00_0008, 4, READ),
+        MmioRegister("dvd_interface",        "DICFG",                 0xCD00_6024, 4, READ),
+        MmioRegister("dvd_interface",        "HW_COMPAT",             0xCD00_0180, 4, READ_WRITE),
         MmioRegister("serial_interface",     "SICxOUTBUF",            0xCD00_6400, 4, READ_WRITE).repeat(4, 0xC),
         MmioRegister("serial_interface",     "SIPOLL",                0xCD00_6430, 4, READ_WRITE),
         MmioRegister("serial_interface",     "SICOMCSR",              0xCD00_6434, 4, READ_WRITE),
@@ -125,6 +164,10 @@ final class Mmio {
         this.video_interface = video_interface;
     }
 
+    public void connect_dvd_interface(DVDInterface dvd_interface) {
+        this.dvd_interface = dvd_interface;
+    }
+
     public void connect_serial_interface(SerialInterface serial_interface) {
         this.serial_interface = serial_interface;
     }
@@ -139,5 +182,13 @@ final class Mmio {
 
     public void connect_memory(Mem memory) {
         this.memory = memory;
+    }
+
+    public void connect_pixel_engine(PixelEngine pe) {
+        this.pixel_engine = pe;
+    }
+
+    public void connect_hollywood(Hollywood hollywood) {
+        this.hollywood = hollywood;
     }
 }

@@ -12,6 +12,7 @@ enum PrimaryOpcode {
     CMPLI  = 0x0A,
     CMPI   = 0x0B,
     LFD    = 0x32,
+    LFS    = 0x30,
     LHA    = 0x2A,
     LHZ    = 0x28,
     LHZU   = 0x29,
@@ -24,13 +25,17 @@ enum PrimaryOpcode {
     ORI    = 0x18,
     ORIS   = 0x19,
     PSQ_L  = 0x38,
+    PSQ_ST = 0x3C,
     RLWIMI = 0x14,
     RLWINM = 0x15,
     RLWNM  = 0x17,
     SC     = 0x11,
     STB    = 0x26,
     STBU   = 0x27,
+    STFD   = 0x36,
+    STFS   = 0x34,
     STH    = 0x2C,
+    STHU   = 0x2D,
     STMW   = 0x2F,
     STW    = 0x24,
     STWU   = 0x25,
@@ -46,13 +51,17 @@ enum PrimaryOpcode {
 }
 
 enum PrimaryOp04SecondaryOpcode {
-    PS_MR = 0x48
+    PS_CMPO0   = 0x20,
+    PS_MR      = 0x48,
+    PS_MERGE01 = 0x230,
+    PS_MERGE10 = 0x250,
 }
 
 enum PrimaryOp13SecondaryOpcode {
     BCCTR  = 0x210,
     BCLR   = 0x010,
     RFI    = 0x032,
+    CROR   = 0x1C1,
     CRXOR  = 0x0C1,
     ISYNC  = 0x096,
 }
@@ -76,6 +85,7 @@ enum PrimaryOp1FSecondaryOpcode {
     DCBF    = 0x056,
     DCBI    = 0x1D6,
     DCBST   = 0x036,
+    DCBZ    = 0x3F6,
     DIVW    = 0x1EB,
     DIVWO   = 0x3EB,
     DIVWU   = 0x1CB,
@@ -88,6 +98,7 @@ enum PrimaryOp1FSecondaryOpcode {
     LBZX    = 0x057,
     LHZX    = 0x117,
     LWZX    = 0x017,
+    LWZUX   = 0x037,
     MFCR    = 0x013,
     MFMSR   = 0x053,
     MFSPR   = 0x153,
@@ -111,8 +122,10 @@ enum PrimaryOp1FSecondaryOpcode {
     SRAWI   = 0x338,
     SRW     = 0x218,
     STBX    = 0x0D7,
+    STHBRX  = 0x396,
     STHX    = 0x197,
     STWX    = 0x097,
+    STWUX   = 0x0B7,
     SUBF    = 0x028,
     SUBFO   = 0x228,
     SUBFC   = 0x008,
@@ -142,7 +155,10 @@ enum PrimaryOp3BSecondaryOpcode {
 enum PrimaryOp3FSecondaryOpcode {
     FABSX   = 0x108,
     FADDX   = 0x015,
+    FCMPO   = 0x020,
+    FCMPU   = 0x000,
     FCTIWX  = 0x00E,
+    FCTIWZX = 0x00F,
     FDIVX   = 0x012,
     FMADDX  = 0x01D,
     FMR     = 0x048,
@@ -152,7 +168,9 @@ enum PrimaryOp3FSecondaryOpcode {
     FNEGX   = 0x028,
     FNMADDX = 0x01F,
     FNMSUBX = 0x01E,
+    FRSPX   = 0x00C,
     FSEL    = 0x017,
+    FSUB    = 0x014,
     MTFSF   = 0x2C7,
     MFTSB1  = 0x026
 }

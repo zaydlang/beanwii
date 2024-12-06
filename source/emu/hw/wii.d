@@ -15,9 +15,11 @@ import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
 import emu.hw.ai.ai;
+import emu.hw.di.di;
 import emu.hw.dsp.dsp;
 import emu.hw.exi.exi;
 import emu.hw.ipc.ipc;
+import emu.hw.pe.pe;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
 import emu.scheduler;
@@ -33,11 +35,14 @@ final class Wii {
 
     private AudioInterface    audio_interface;
     private CommandProcessor  command_processor;
+    
     private DSP               dsp;
+    private DVDInterface      dvd_interface;
     private ExternalInterface external_interface;
     private VideoInterface    video_interface;
     private SerialInterface   serial_interface;
     private IPC               ipc;
+    private PixelEngine       pixel_engine;
 
     private Scheduler        scheduler;
 
@@ -46,6 +51,7 @@ final class Wii {
         this.video_interface    = new VideoInterface();
         this.serial_interface   = new SerialInterface();
         this.audio_interface    = new AudioInterface();
+        this.dvd_interface      = new DVDInterface();
         this.ipc                = new IPC();
         this.external_interface = new ExternalInterface();
         this.dsp                = new DSP();
@@ -53,6 +59,7 @@ final class Wii {
         this.broadway           = new Broadway(ringbuffer_size);
         this.hollywood          = new Hollywood();
         this.scheduler          = new Scheduler();
+        this.pixel_engine       = new PixelEngine();
 
         this.broadway.connect_mem(this.mem);
         this.broadway.connect_scheduler(this.scheduler);
@@ -65,12 +72,19 @@ final class Wii {
         this.mem.connect_external_interface(this.external_interface);
         this.mem.connect_video_interface(this.video_interface);
         this.mem.connect_serial_interface(this.serial_interface);
+        this.mem.connect_dvd_interface(this.dvd_interface);
         this.mem.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.mem.connect_pixel_engine(this.pixel_engine);
         this.mem.connect_ipc(this.ipc);
         this.mem.connect_broadway(this.broadway);
+        this.mem.connect_hollywood(this.hollywood);
         this.ipc.connect_mem(this.mem);
         this.ipc.connect_scheduler(this.scheduler);
         this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.pixel_engine.connect_scheduler(this.scheduler);
+        this.pixel_engine.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.audio_interface.connect_scheduler(this.scheduler);
+        this.audio_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
 
         g_logger_scheduler = &this.scheduler;
 
@@ -86,7 +100,8 @@ final class Wii {
         this.broadway.single_step();
     }
 
-    public void load_disk(u8[] wii_disk_data) {
+    public void load_disk(u8[] wii_disk_data, u64 title_id) {
+        this.ipc.set_title_id(title_id);
         this.setup_global_memory_value(wii_disk_data);
 
         WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
@@ -212,6 +227,8 @@ final class Wii {
         this.mem.write_be_u32(0x8000_00FC, 0x2B73_A840); // Console CPU Speed
         this.mem.write_be_u64(0x8000_30D8, 0x0054_98F0_5340_7000); // System Time
         this.mem.write_be_u32(0x8000_30F0, 0); // DOL Execute Parameters
+        this.mem.write_be_u32(0x8000_310C, 0x0000_0000); // MEM1 Arena Start (start of usable memory by the game) 
+        this.mem.write_be_u32(0x8000_3110, 0x8180_0000); // MEM1 Arena End (end of usable memory by the game)
         this.mem.write_be_u32(0x8000_3118, 0x0400_0000); // Physical MEM2 size
         this.mem.write_be_u32(0x8000_311C, 0x0400_0000); // Simulated MEM2 size
         this.mem.write_be_u32(0x8000_3120, 0x9340_0000); // End of MEM2 addressable to PPC

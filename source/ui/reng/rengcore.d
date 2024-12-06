@@ -33,13 +33,14 @@ class RengCore : Core {
 
         // raylib.SetConfigFlags(raylib.ConfigFlags.FLAG_WINDOW_RESIZABLE);
         super(width, height, "BeanWii");
+        sync_render_target_to_window_resolution = true;
     }
 
     override void initialize() {
         default_resolution = Vector2(width, height);
         content.paths ~= ["../content/", "content/"];
 
-        // screen_scale *= cast(int) window.scale_dpi;
+        screen_scale *= cast(int) window.dpi_scale();
 
         // if (start_debugger) {
             // load_scenes([new EmuDebugInterfaceScene(wii.get_debugger(), screen_scale)]);

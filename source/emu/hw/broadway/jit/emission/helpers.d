@@ -2,9 +2,9 @@ module emu.hw.broadway.jit.emission.helpers;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
+import gallinule.x86;
 import util.bitop;
 import util.number;
-import xbyak;
 
 u32 generate_rlw_mask(u32 mb, u32 me) {
     // i hate this entire function
@@ -25,7 +25,7 @@ int get_cr_index(int cr_bit) {
     return 3 - (cr_bit & 3) + 4 * (cr_bit >> 2);
 }
 
-void is_cond_ok(Code code, int bo, int bi, Reg32 result) {
+void is_cond_ok(Code code, int bo, int bi, R32 result) {
     bool should_decrement_ctr = !bo.bit(2);
     bool should_check_cr      = !bo.bit(4);
     bool ctr_should_be        =  bo.bit(1);
@@ -49,7 +49,7 @@ void is_cond_ok(Code code, int bo, int bi, Reg32 result) {
 
     if (should_check_cr) {
         auto cr = code.get_reg(GuestReg.CR);
-        code.shr(cr, cr_bit);
+        code.shr(cr, cast(u8) cr_bit);
         code.and(cr, 1);
     
         if (cr_should_be) {
@@ -59,4 +59,9 @@ void is_cond_ok(Code code, int bo, int bi, Reg32 result) {
             code.and(result, cr);
         }
     }
+}
+
+void abort(Code code) {
+    code.xor(rdi, rdi);
+    code.mov(rdi, code.qwordPtr(rdi));
 }

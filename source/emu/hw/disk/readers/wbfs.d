@@ -152,7 +152,7 @@ final class WbfsReader : FileReader {
                     decrypted_offset += 0x7C00;
                 }
 
-                wii.load_disk(decrypted_data);                
+                wii.load_disk(decrypted_data, cast(u64) partition_header.ticket.title_id);
                 return;
             }
         }

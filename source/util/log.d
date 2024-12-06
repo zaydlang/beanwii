@@ -4,7 +4,18 @@ import emu.scheduler;
 
 __gshared Scheduler* g_logger_scheduler;
 
+enum Whitelist = [
+    // LogSource.USB,
+    // LogSource.BLUETOOTH,
+    LogSource.AI,
+    // LogSource.IPC,
+    // LogSource.FUNCTION,
+    LogSource.OS_REPORT,
+    LogSource.SLOWMEM
+];
+
 enum LogSource {
+    FUNCTION,
     DISK,
     WBFS,
     ENCRYPTION,
@@ -20,11 +31,15 @@ enum LogSource {
     VI,
     SI,
     EXI,
+    AI,
     IPC,
     INTERRUPT,
     HOLLYWOOD,
     OS_REPORT,
-    SCHEDULER
+    SCHEDULER,
+    PE,
+    USB,
+    BLUETOOTH
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
@@ -118,12 +133,17 @@ static string generate_prettier_logging_functions() {
 
         mixed_in ~= "
             public void log_%s(Char, A...)(scope const(Char)[] fmt, A args) {
+                import std.algorithm: canFind;
+                static if (!Whitelist.canFind(LogSource.%s)) {
+                    return;
+                }
+
                 version (quiet) {
                 } else {
                     log!(LogSource.%s, false, Char, A)(fmt, args);
                 }
             }
-        ".format(source_name.toLower(), source_name);
+        ".format(source_name.toLower(), source_name, source_name);
 
         mixed_in ~= "
             public void error_%s(Char, A...)(scope const(Char)[] fmt, A args) {

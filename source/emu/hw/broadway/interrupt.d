@@ -11,7 +11,9 @@ enum HollywoodInterruptCause {
 }
 
 enum ProcessorInterfaceInterruptCause {
+    AI        = 5,
     VI        = 8,
+    PeFinish  = 10,
     Hollywood = 14,
 }
 
@@ -39,6 +41,7 @@ final class InterruptController {
     u32 hollywood_interrupt_flag;
 
     u8 read_HW_PPCIRQFLAG(int target_byte) {
+        log_interrupt("read HW_PPCIRQFLAG[%d] = %02x", target_byte, hollywood_interrupt_flag.get_byte(target_byte));
         return hollywood_interrupt_flag.get_byte(target_byte);
     }
 
@@ -46,7 +49,7 @@ final class InterruptController {
         log_interrupt("HW_PPCIRQFLAG[%d] = %02x", target_byte, value);
         if (target_byte == 3 && value & 0x40) {
             log_interrupt("wtf");
-            pi_interrupt_cause = 0;
+            // pi_interrupt_cause = 0;
         }
 
         hollywood_interrupt_flag = hollywood_interrupt_flag.set_byte(
@@ -65,6 +68,14 @@ final class InterruptController {
         maybe_raise_hollywood_interrupt();
     }
 
+    u8 read_UNKNOWN_CC003024(int target_byte) {
+        return 0;
+    }
+
+    void write_UNKNOWN_CC003024(int target_byte, u8 value) {
+        error_interrupt("apparently this causes a complete fucking reset????? lol");
+    }
+
     u8 read_UNKNOWN_CC00302C(int target_byte) {
         return 0x20000000.get_byte(target_byte);
     }
@@ -76,10 +87,12 @@ final class InterruptController {
     u32 pi_interrupt_cause;
 
     u8 read_INTERRUPT_CAUSE(int target_byte) {
+        log_interrupt("InterruptController: read INTERRUPT_CAUSE[%d] = %02x", target_byte, pi_interrupt_cause.get_byte(target_byte));
         return pi_interrupt_cause.get_byte(target_byte);
     }
 
     void write_INTERRUPT_CAUSE(int target_byte, u8 value) {
+        log_interrupt("InterruptController: write INTERRUPT_CAUSE[%d] = %02x", target_byte, value);
         pi_interrupt_cause = pi_interrupt_cause.set_byte(target_byte, pi_interrupt_cause.get_byte(target_byte) & ~value);
     }
 
@@ -107,10 +120,80 @@ final class InterruptController {
 
     void maybe_raise_processor_interface_interrupt() {
         if ((pi_interrupt_mask & pi_interrupt_cause) != 0) {
-            if (broadway.state.msr.bit(15)) {
+            // if (broadway.state.msr.bit(15)) {
+                import std.stdio;
                 log_interrupt("bazinga: raising Processor Interface interrupt %x %x", pi_interrupt_cause, pi_interrupt_mask);
                 broadway.raise_exception(ExceptionType.ExternalInterrupt);
-            }
+            // }
         }
+    }
+
+    void acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause cause) {
+        log_interrupt("InterruptController: acknowledging Processor Interface interrupt %s", cause);
+        pi_interrupt_cause &= ~(1 << cause);
+        maybe_raise_processor_interface_interrupt();
+    }
+
+    void acknowledge_hollywood_interrupt(HollywoodInterruptCause cause) {
+        log_interrupt("InterruptController: acknowledging Hollywood interrupt %s", cause);
+        hollywood_interrupt_flag &= ~(1 << cause);
+        maybe_raise_hollywood_interrupt();
+    }
+
+    int fifo_base_start;
+    int fifo_base_end;
+
+    u8 read_FIFO_BASE_START(int target_byte) {
+        return fifo_base_start.get_byte(target_byte);
+    }
+
+    void write_FIFO_BASE_START(int target_byte, u8 value) {
+        fifo_base_start = fifo_base_start.set_byte(target_byte, value);
+    }
+
+    u8 read_FIFO_BASE_END(int target_byte) {
+        return fifo_base_end.get_byte(target_byte);
+    }
+
+    void write_FIFO_BASE_END(int target_byte, u8 value) {
+        fifo_base_end = fifo_base_end.set_byte(target_byte, value);
+    }
+
+    int UNKNOWN_CC003018;
+    int UNKNOWN_CC00301C;
+    int UNKNOWN_CC003020;
+
+    u8 read_UNKNOWN_CC003018(int target_byte) {
+        return UNKNOWN_CC003018.get_byte(target_byte);
+    }
+
+    void write_UNKNOWN_CC003018(int target_byte, u8 value) {
+        UNKNOWN_CC003018 = UNKNOWN_CC003018.set_byte(target_byte, value);
+    }
+
+    u8 read_UNKNOWN_CC00301C(int target_byte) {
+        return UNKNOWN_CC00301C.get_byte(target_byte);
+    }
+
+    void write_UNKNOWN_CC00301C(int target_byte, u8 value) {
+        UNKNOWN_CC00301C = UNKNOWN_CC00301C.set_byte(target_byte, value);
+    }
+
+    u8 read_UNKNOWN_CC003020(int target_byte) {
+        return UNKNOWN_CC003020.get_byte(target_byte);
+    }
+
+    void write_UNKNOWN_CC003020(int target_byte, u8 value) {
+        UNKNOWN_CC003020 = UNKNOWN_CC003020.set_byte(target_byte, value);
+    }
+
+    int fifo_write_ptr;
+    
+    u8 read_FIFO_WRITE_PTR(int target_byte) {
+        return fifo_write_ptr.get_byte(target_byte);
+    }
+
+    void write_FIFO_WRITE_PTR(int target_byte, u8 value) {
+        fifo_write_ptr = fifo_write_ptr.set_byte(target_byte, value);
     }
 }

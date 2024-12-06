@@ -4,48 +4,54 @@ import core.bitop;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.x86;
 import emu.hw.broadway.jit.jit;
+import gallinule.x86;
 import std.conv;
 import util.log;
 import util.number;
-import xbyak;
 
-final class Code : CodeGenerator {
+Reg!to cvt(ushort to, ushort from)(Reg!from r) {
+    return Reg!to(r.index, (r.index & 4) && to == 8);
+}
+
+R64 cvt64(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 64, T)(r);
+}
+
+R32 cvt32(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 32, T)(r);
+}
+
+R16 cvt16(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 16, T)(r);
+}
+
+R8 cvt8(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 8, T)(r);
+}
+
+final class Code {
+    Block!true block;
+    alias block this;
+
     static const CPU_BASE_REG = rdi;
 
     JitConfig config;
     
     this(JitConfig config) {
-        super(1 << 30);
-
         this.config = config;
+        block = Block!true();
 
         free_all_registers();
     }
 
     u8* code_ptr;
 
-    // returns true if should flush
-    bool init() {
-        bool should_flush = false;
-
+    void init() {
         stack_alignment = 0;
+        block.reset();
 
-        try {
-            this.setSize(this.getCurr() - this.getCode());
-        } catch (XError e) {
-            this.reset();
-            should_flush = true;
-        }
-        
-        this.code_ptr = cast(u8*) this.getCurr();
-        this.isCalledCalcJmpAddress_ = false;
-
-        this.free_all_registers();
-        this.reserve_register(edi);
-        
+        this.free_all_registers();        
         this.emit_prologue();
-        
-        return should_flush;
     }
 
     void emit_prologue() {
@@ -66,41 +72,66 @@ final class Code : CodeGenerator {
         this.ret();
     }
     
-    T get_function(T)() {
-        this.emit_epilogue();
+    u8[] get() {
+        emit_epilogue();
 
-        assert(!this.hasUndefinedLabel());
-        this.ready();
+        auto code = block.finalize();
+        ubyte[] copy = new ubyte[code.length];
+        copy[0 .. code.length] = code;
 
-        return cast(T) this.code_ptr;
+        return copy;
     }
 
-    Reg32 get_reg(GuestReg reg) {
+    R32 get_reg(GuestReg reg) {
         auto offset = get_reg_offset(reg);
         auto host_reg = allocate_register();
 
-        this.mov(host_reg, dword [rdi + cast(int) offset]);
+        this.mov(host_reg, dwordPtr(rdi, cast(int) offset));
         return host_reg;
     }
 
-    void set_reg(GuestReg reg, Reg32 host_reg) {
+    R64 get_fpr(GuestReg reg) {
         auto offset = get_reg_offset(reg);
-        this.mov(dword [rdi + cast(int) offset], host_reg);
+        auto host_reg = allocate_register().cvt64();
+
+        log_jit("get_fpr: %s %s, %d", reg, host_reg, offset);
+        this.mov(host_reg, qwordPtr(rdi, cast(int) offset));
+        return host_reg;
+    }
+
+    void get_ps(GuestReg reg, XMM dest) {
+        auto offset = get_reg_offset(reg);
+        this.movupd(dest, xmmwordPtr(rdi, cast(int) offset));
+    }
+
+    void set_reg(GuestReg reg, R32 host_reg) {
+        auto offset = get_reg_offset(reg);
+        this.mov(dwordPtr(rdi, cast(int) offset), host_reg);
     }
 
     void set_reg(GuestReg reg, int value) {
         auto offset = get_reg_offset(reg);
-        this.mov(dword [rdi + cast(int) offset], value);
+        this.mov(dwordPtr(rdi, cast(int) offset), value);
     }
 
-    Address get_address(GuestReg reg) {
+    void set_fpr(GuestReg reg, R64 host_reg) {
         auto offset = get_reg_offset(reg);
-        return dword [rdi + cast(int) offset];
+        this.mov(qwordPtr(rdi, cast(int) offset), host_reg);
+    }
+
+    void set_ps(GuestReg reg, XMM src) {
+        auto offset = get_reg_offset(reg);
+        this.movupd(xmmwordPtr(rdi, cast(int) offset), src);
+    }
+
+    Address!32 get_address(GuestReg reg) {
+        auto offset = get_reg_offset(reg);
+        return dwordPtr(rdi, cast(int) offset);
     }
 
     // bitfield
     u16 allocated_regs;
-    Reg32 allocate_register() {
+    R32 allocate_register() {
         if (allocated_regs == 0xFFFF) {
             error_jit("No free registers available");
         }
@@ -110,16 +141,17 @@ final class Code : CodeGenerator {
         return u16_to_reg32(cast(u16) reg);
     }
 
-    void reserve_register(Reg32 reg) {
+    void reserve_register(R32 reg) {
         allocated_regs |= 1 << reg32_to_u16(reg);
     }
 
-    void free_register(Reg32 reg) {
+    void free_register(R32 reg) {
         allocated_regs &= ~(1 << reg32_to_u16(reg));
     }
 
     void free_all_registers() {
         allocated_regs = 0;
+        this.reserve_register(edi);
     }
 
     int label_counter = 0;
@@ -128,14 +160,24 @@ final class Code : CodeGenerator {
     }
 
     int stack_alignment;
-    override void push(Operand op) {
-        super.push(op);
+    void push(R64 reg) {
+        block.push(reg);
         stack_alignment += 8;
     }
 
-    override void pop(Operand op) {
-        super.pop(op);
+    void push(R32 reg) {
+        block.push(reg.cvt64());
+        stack_alignment += 4;
+    }
+
+    void pop(R64 reg) {
+        block.pop(reg);
         stack_alignment -= 8;
+    }
+
+    void pop(R32 reg) {
+        block.pop(reg.cvt64());
+        stack_alignment -= 4;
     }
 
     bool in_stack_alignment_context;
@@ -167,5 +209,17 @@ final class Code : CodeGenerator {
         stack_alignment -= 8;
 
         in_stack_alignment_context = false;
+    }
+
+    void push_caller_saved_registers() {
+        foreach (reg; [rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11]) {
+            this.push(reg);
+        }
+    }
+
+    void pop_caller_saved_registers() {
+        foreach (reg; [r11, r10, r9, r8, rdi, rsi, rdx, rcx, rax]) {
+            this.pop(reg);
+        }
     }
 }

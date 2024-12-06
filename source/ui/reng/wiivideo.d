@@ -53,6 +53,8 @@ class WiiVideo : Component, Updatable, Renderable2D {
     void render() {
         UpdateTexture(render_target_screen.texture, cast(const void*) videobuffer);
 
+        import std.stdio;
+        writefln("rendering video buffer %x %x", videobuffer[0], screen_scale);
         raylib.DrawTexturePro(
             render_target_screen.texture,
             Rectangle(0, 0, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT),

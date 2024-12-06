@@ -2,16 +2,17 @@ module emu.hw.broadway.jit.emission.flags;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
+import gallinule.x86;
 import util.log;
-import xbyak;
+import util.number;
 
 enum CmpType {
     Unsigned,
     Signed
 };
 
-void do_cmp(T)(Code code, CmpType cmp_type, Reg32 lhs, T rhs, int cr) {
-    static if (is(T == Reg32)) {
+void do_cmp(T)(Code code, CmpType cmp_type, R32 lhs, T rhs, int cr) {
+    static if (is(T == R32)) {
         auto tmp = rhs;
     } else {
         auto tmp = code.allocate_register();
@@ -38,14 +39,14 @@ void do_cmp(T)(Code code, CmpType cmp_type, Reg32 lhs, T rhs, int cr) {
     code.cmove(lhs, tmp);
 
     code.mov(tmp, code.get_address(GuestReg.XER));
-    code.shr(tmp, 31);
+    code.shr(tmp, cast(u8) 31);
     code.or(lhs, tmp);
-    code.shl(lhs, cr * 4);
+    code.shl(lhs, cast(u8) (cr * 4));
     code.and(code.get_address(GuestReg.CR), ~(0xf << (cr * 4)));
     code.or(code.get_address(GuestReg.CR), lhs);
 }
 
-void set_division_flags(Code code, bool rc, bool oe, Reg32 tmp1, Reg32 tmp3, bool bad_division) {
+void set_division_flags(Code code, bool rc, bool oe, R32 tmp1, R32 tmp3, bool bad_division) {
     if (oe) {
         if (bad_division) {
             code.or(code.get_address(GuestReg.XER), 0xc000_0000);
@@ -79,7 +80,7 @@ void set_division_flags(Code code, bool rc, bool oe, Reg32 tmp1, Reg32 tmp3, boo
 }
 
 // result could equal tmp1 if needed
-void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, Reg32 result, Reg32 tmp1, Reg32 tmp2, Reg32 tmp3, int cr) {
+void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, R32 result, R32 tmp1, R32 tmp2, R32 tmp3, int cr) {
     if (set_xer_carry) {
         code.setc(tmp2.cvt8());
     }
@@ -89,8 +90,10 @@ void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, Reg32 result, Re
     }
 
     if (oe) {
-        code.lea(tmp3, dword [tmp3 + tmp3 * 2]);
-        code.shl(tmp3, 30);
+        code.mov(tmp1, tmp3);
+        code.add(tmp1, tmp3);
+        code.add(tmp3, tmp1);
+        code.shl(tmp3, cast(u8) 30);
         code.and(code.get_address(GuestReg.XER), 0xbfff_ffff);
         code.or(code.get_address(GuestReg.XER), tmp3);
     }
@@ -105,16 +108,33 @@ void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, Reg32 result, Re
         code.cmove(tmp1, tmp3);
 
         code.mov(tmp3, code.get_address(GuestReg.XER));
-        code.shr(tmp3, 31);
+        code.shr(tmp3, cast(u8) 31);
         code.or(tmp1, tmp3);
-        code.shl(tmp1, cr * 4);
+        code.shl(tmp1, cast(u8) (cr * 4));
         code.and(code.get_address(GuestReg.CR), ~(0xf << (cr * 4)));
         code.or(code.get_address(GuestReg.CR), tmp1);
     }
 
     if (set_xer_carry) {
-        code.shl(tmp2, 29);
+        code.shl(tmp2, cast(u8) 29);
         code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
         code.or(code.get_address(GuestReg.XER), tmp2);
     }
+}
+
+void emit_fp_flags_helper(Code code, int crfd, R32 tmp) {
+    // thanks merryhime
+    code.sete(cl);
+    code.rcl(cl, 5);  // cl = ZF:CF:0000
+
+    code.mov(tmp.cvt64(), 0x0000_2000_8000_4000);
+    code.shr(tmp.cvt64());
+    code.and(tmp, 0xffff);
+    code.shr(tmp, 12);
+
+    auto cr = code.get_reg(GuestReg.CR);
+    code.and(cr, ~(0xf << (crfd * 4)));
+    code.shl(tmp, cast(u8) (crfd * 4));
+    code.or(cr, tmp);
+    code.set_reg(GuestReg.CR, cr);
 }

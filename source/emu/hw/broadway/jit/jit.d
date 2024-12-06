@@ -3,7 +3,9 @@ module emu.hw.broadway.jit.jit;
 import capstone;
 import dklib.khash;
 import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.codeblocks;
 import emu.hw.broadway.jit.emission.emit;
+import emu.hw.broadway.cpu;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import std.meta;
@@ -51,38 +53,81 @@ final class Jit {
     private DebugRing  debug_ring;
     private Code       code;
 
+    private CodeBlockTracker codeblocks;
+
     this(JitConfig config, Mem mem, size_t ringbuffer_size) {
         this.mem = mem;
         this.jit_hash_map = JitHashMap();
         this.debug_ring = new DebugRing(ringbuffer_size);
         this.code = new Code(config);
+        this.codeblocks = new CodeBlockTracker();
     }
 
     // returns the number of instructions executed
     public u32 run(BroadwayState* state) {
-        if (code.init()) {
-            this.jit_hash_map = JitHashMap();
-        }        
-
         auto cached_func = jit_hash_map.require(state.pc, null);
         if (cached_func != null) {
+            import std.stdio;
+            
             cached_func(state);
         } else {
+        code.init();
+            // biglog = true;
+            biglog = false;
             emit(code, mem, state.pc);
-            auto func = code.get_function!JitFunction();
-            // jit_hash_map[state.pc] = func;
+            u8[] bytes = code.get();
+            // log_jit("Generated %d bytes of code for 0x%08x", bytes.length, state.pc);
+            for (int i = 0; i < bytes.length - 8; i+= 8) {
+                import std.stdio;
+                // writefln("%02x %02x %02x %02x %02x %02x %02x %02x", bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
+            }
+            auto ptr = codeblocks.put(bytes.ptr, bytes.length);
+            auto func = cast(JitFunction) ptr;
+                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
+                // auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. bytes.length], 0);
+                // foreach (instr; res) {
+                    // import std.stdio;
+                    
+                    // writefln("0x%08x | %s\t\t%s", instr.address + cast(ulong) func, instr.mnemonic, instr.opStr);
+                // }
+if (instrument && biglog) {
+            // import std.stdio;
+            // log_state(state);
+            // auto opcode = mem.read_be_u32(state.pc);
+// log_jit("Unimplemented opcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", opcode, state.pc, opcode.bits(26, 31), opcode.bits(1, 10));
+            // writefln("Opcode: %08x. Before. Paused emulation. >", mem.read_be_u32(state.pc));
+            // readln;
+            
+            }
+                
 
-            //     auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-            //     auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
-            //     foreach (instr; res) {
-            //         // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-            //     }
-
-        if (mem.read_be_u32(state.pc) == 0x4d820020) {
+        if (state.pc == 0x800050f8) {
             int x = 2;
         }
+
+        jit_hash_map[state.pc] = func;
+        // log_state(state);
         // func(state);
+        // log_instruction(mem.read_be_u32(state.pc), state.pc);
             func(state);
+
+        if (instrument && biglog) {
+            // import std.stdio;
+            // log_state(state);
+            // writefln("Opcode: %08x. After. Paused emulation. >", mem.read_be_u32(state.pc));
+            // readln;
+
+            // jit_hash_map = JitHashMap();
+        }
+        }
+
+        // make sure none of the ps are NaN
+        for (int i = 0; i < 64; i++) {
+            // float ps0 = *(cast(float*)&state.ps[i].ps0);
+            // if (ps0 != ps0) {
+                // error_broadway("NaN detected in PS[%d].ps0", i);
+            // }
+
         }
 
         if (state.icache_flushed) {
@@ -111,10 +156,11 @@ final class Jit {
     }
 
     private void log_instruction(u32 instruction, u32 pc) {
-        // auto res = this.capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
-        // foreach (instr; res) {
-            // log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
-        // }
+        auto x86_capstone = create(Arch.ppc, ModeFlags(Mode.bit64));
+        auto res = x86_capstone.disasm((cast(ubyte*) &instruction)[0 .. 4], pc);
+        foreach (instr; res) {
+            log_broadway("0x%08x | %s\t\t%s", pc, instr.mnemonic, instr.opStr);
+        }
     }
 
     public void on_error() {

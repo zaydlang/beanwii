@@ -2,16 +2,412 @@ module emu.hw.broadway.jit.emission.paired_singles;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.emit;
+import emu.hw.broadway.jit.emission.flags;
+import emu.hw.broadway.jit.emission.helpers;
 import emu.hw.broadway.jit.emission.guest_reg;
+import gallinule.x86;
+import util.bitop;
 import util.log;
 import util.number;
-import xbyak;
 
-// fuck this instruction omg
 EmissionAction emit_psq_l(Code code, u32 opcode) {
+    abort_if_no_pse_or_lsqe(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    bool w = opcode.bit(15);
+    int i = opcode.bits(12, 14);
+    int d = sext_32(opcode.bits(0, 11), 12);
+
+    auto ra = code.get_reg(guest_ra);
+    auto rd = code.get_fpr(guest_rd);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, d);
+    } else {
+        code.add(ra, d);
+    }
+
+    auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
+    if (w) {
+        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+        code.cvtss2sd(xmm0, xmm0);
+        code.movq(rd, xmm0);
+        code.set_fpr(guest_rd, rd);
+    } else {
+        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
+        dequantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+        code.cvtss2sd(xmm0, xmm0);
+        code.cvtss2sd(xmm1, xmm1);
+        code.punpcklqdq(xmm0, xmm1);
+        code.set_fpr(guest_rd, rd);
+    }
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto crfd = opcode.bits(23, 25);
+
+    assert(opcode.bits(21, 22) == 0);
+
+    auto ra = code.get_fpr(guest_ra);
+    auto rb = code.get_fpr(guest_rb);
+
+    code.movq(xmm0, ra);
+    code.movq(xmm1, rb);
+
+    code.comisd(xmm0, xmm1);
+    emit_fp_flags_helper(code, crfd, ra.cvt32());
+
     return EmissionAction.CONTINUE;
 }
 
 EmissionAction emit_ps_mr(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+    assert(opcode.bits(16, 20) == 0);
+
+    code.get_ps(guest_rb, xmm0);
+    code.set_ps(guest_rd, xmm0);
+
     return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_merge01(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(16, 20).to_ps;
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.punpcklqdq(xmm0, xmm1);
+
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_merge10(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.punpcklqdq(xmm1, xmm0);
+
+    code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_psq_st(Code code, u32 opcode) {
+    abort_if_no_pse_or_lsqe(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_gpr;    
+    auto guest_rs = opcode.bits(21, 25).to_ps;
+    bool w = opcode.bit(15);
+    int i = opcode.bits(12, 14);
+    int d = sext_32(opcode.bits(0, 11), 12);
+
+    auto ra = code.get_reg(guest_ra);
+    code.get_ps(guest_rs, xmm0);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, d);
+    } else {
+        code.add(ra, d);
+    }
+
+    auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
+    if (w) {
+        code.cvtsd2ss(xmm0, xmm0);
+        quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+    } else {
+        code.cvtsd2ss(xmm1, xmm0);
+        quantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
+        code.shufpd(xmm0, xmm1, 0b00000001);
+        code.cvtsd2ss(xmm0, xmm0);
+        quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+    }
+
+    return EmissionAction.CONTINUE;
+}
+
+void dequantize(Code code, XMM dest, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM tmp_xmm, bool increment_address) {
+    code.mov(tmp1, gqr);
+    code.mov(tmp2, gqr);
+    code.and(tmp1, 0b111111 << 18);
+    code.and(tmp2, 0b111 << 29);
+
+    auto dequantize_float = code.fresh_label();
+    auto dequantize_u8 = code.fresh_label();
+    auto dequantize_u16 = code.fresh_label();
+    auto dequantize_s8 = code.fresh_label();
+    auto dequantize_s16 = code.fresh_label();
+    auto end = code.fresh_label();
+
+    code.cmp(tmp2, 0);
+    code.je(dequantize_float);
+    
+    // materialize 2^(tmp1)
+    code.shl(tmp1, 14);
+    code.sar(tmp1, 3);    
+    code.add(tmp1, 127 << 23);
+    code.movd(tmp_xmm, tmp1);
+    
+    code.cmp(tmp2, 4);
+    code.je(dequantize_u8);
+    code.cmp(tmp2, 5);
+    code.je(dequantize_u16);
+    code.cmp(tmp2, 6);
+    code.je(dequantize_s8);
+    code.cmp(tmp2, 7);
+    code.je(dequantize_s16);
+    abort(code);
+
+code.label(dequantize_float);
+    load_32(code, address, tmp1);
+    code.movd(dest, tmp1);
+    if (increment_address) code.add(address, 4);
+    code.jmp(end);
+
+code.label(dequantize_u8);
+    load_8(code, address, tmp1);
+    code.movzx(tmp1, tmp1.cvt8());
+    code.movd(dest, tmp1);
+    code.divss(dest, tmp_xmm);
+    if (increment_address) code.add(address, 1);
+    code.jmp(end);
+
+code.label(dequantize_u16);
+    load_16(code, address, tmp1);
+    code.movzx(tmp1, tmp1.cvt16());
+    code.movd(dest, tmp1);
+    code.divss(dest, tmp_xmm);
+    if (increment_address) code.add(address, 2);
+    code.jmp(end);
+
+code.label(dequantize_s8);
+    load_8(code, address, tmp1);
+    code.movsx(tmp1, tmp1.cvt8());
+    code.movd(dest, tmp1);
+    code.divss(dest, tmp_xmm);
+    if (increment_address) code.add(address, 1);
+    code.jmp(end);
+
+code.label(dequantize_s16);
+    load_16(code, address, tmp1);
+    code.movsx(tmp1, tmp1.cvt16());
+    code.movd(dest, tmp1);
+    code.divss(dest, tmp_xmm);
+    if (increment_address) code.add(address, 2);
+
+code.label(end);
+}
+
+void quantize(Code code, XMM src, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM tmp_xmm, bool increment_address) {
+    code.mov(tmp1, gqr);
+    code.mov(tmp2, gqr);
+    code.and(tmp1, 0b111111 << 18);
+    code.and(tmp2, 0b111 << 29);
+
+    auto quantize_float = code.fresh_label();
+    auto quantize_u8 = code.fresh_label();
+    auto quantize_u16 = code.fresh_label();
+    auto quantize_s8 = code.fresh_label();
+    auto quantize_s16 = code.fresh_label();
+    auto end = code.fresh_label();
+
+    code.cmp(tmp2, 0);
+    code.je(quantize_float);
+    
+    // materialize 2^(tmp1)
+    code.shl(tmp1, 14);
+    code.sar(tmp1, 3);    
+    code.add(tmp1, 127 << 23);
+    
+    code.movd(tmp_xmm, tmp1);
+    code.mulss(tmp_xmm, src);
+    code.cvtss2si(tmp1, tmp_xmm);
+
+    code.cmp(tmp2, 4);
+    code.je(quantize_u8);
+    code.cmp(tmp2, 5);
+    code.je(quantize_u16);
+    code.cmp(tmp2, 6);
+    code.je(quantize_s8);
+    code.cmp(tmp2, 7);
+    code.je(quantize_s16);
+    abort(code);
+
+code.label(quantize_float);
+    code.movd(tmp2, src);
+    store_32(code, address, tmp2);
+    if (increment_address) code.add(address, 4);
+    code.jmp(end);
+
+code.label(quantize_u8);
+    code.cmp(tmp1, 255);
+    code.mov(tmp2, 255);
+    code.cmovg(tmp1, tmp2);
+    code.cmp(tmp1, 0);
+    code.mov(tmp2, 0);
+    code.cmovl(tmp1, tmp2);
+    store_8(code, address, tmp1);
+    if (increment_address) code.add(address, 1);
+    code.jmp(end);
+
+code.label(quantize_u16);
+    code.cmp(tmp1, 65535);
+    code.mov(tmp2, 65535);
+    code.cmovg(tmp1, tmp2);
+    code.cmp(tmp1, 0);
+    code.mov(tmp2, 0);
+    code.cmovl(tmp1, tmp2);
+    store_16(code, address, tmp1);
+    if (increment_address) code.add(address, 2);
+    code.jmp(end);
+
+code.label(quantize_s8);
+    code.cmp(tmp1, 127);
+    code.mov(tmp2, 127);
+    code.cmovg(tmp1, tmp2);
+    code.cmp(tmp1, -128);
+    code.mov(tmp2, -128);
+    code.cmovl(tmp1, tmp2);
+    store_8(code, address, tmp1);
+    if (increment_address) code.add(address, 1);
+    code.jmp(end);
+
+code.label(quantize_s16);
+    code.cmp(tmp1, 32767);
+    code.mov(tmp2, 32767);
+    code.cmovg(tmp1, tmp2);
+    code.cmp(tmp1, -32768);
+    code.mov(tmp2, -32768);
+    code.cmovl(tmp1, tmp2);
+    store_16(code, address, tmp1);
+    if (increment_address) code.add(address, 2);
+
+code.label(end);
+}
+
+void store_32(Code code, R32 address, R32 value) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+        code.mov(edx, value);
+
+        code.mov(rax, cast(u64) code.config.write_handler32);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void store_16(Code code, R32 address, R32 value) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+        code.mov(edx, value);
+
+        code.mov(rax, cast(u64) code.config.write_handler16);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void store_8(Code code, R32 address, R32 value) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+        code.mov(edx, value);
+
+        code.mov(rax, cast(u64) code.config.write_handler8);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void load_32(Code code, R32 address, R32 dest) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+
+        code.mov(rax, cast(u64) code.config.read_handler32);
+        code.call(rax);
+        code.mov(dest, eax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void load_16(Code code, R32 address, R32 dest) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+
+        code.mov(rax, cast(u64) code.config.read_handler16);
+        code.call(rax);
+        code.mov(dest, eax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void load_8(Code code, R32 address, R32 dest) {
+    code.push(rdi);
+    code.push_caller_saved_registers();
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, address);
+
+        code.mov(rax, cast(u64) code.config.read_handler8);
+        code.call(rax);
+        code.mov(dest, eax);
+    code.exit_stack_alignment_context();
+    code.pop_caller_saved_registers();
+    code.pop(rdi);
+}
+
+void abort_if_no_pse_or_lsqe(Code code) {
+    auto noabort = code.fresh_label();
+    
+    auto hid2 = code.get_reg(GuestReg.HID2);
+    code.test(hid2, 0b1010 << 28);
+    code.jnz(noabort);
+    abort(code);
+    code.label(noabort);
+}
+
+void abort_if_no_pse(Code code) {
+    auto noabort = code.fresh_label();
+    
+    auto hid2 = code.get_reg(GuestReg.HID2);
+    code.test(hid2, 0b0010 << 28);
+    code.jnz(noabort);
+    abort(code);
+    code.label(noabort);
 }

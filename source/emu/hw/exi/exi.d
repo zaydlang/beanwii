@@ -235,6 +235,8 @@ final class ExternalInterface {
     void write_EXI_MAR(int target_byte, u8 value, int x) {
         log_exi("EXI_MAR[%d][%d] = %02X", x, target_byte, value);
         exi_mar[x] = exi_mar[x].set_byte(target_byte, value);
+
+        exi_mar[x] &= 0x03FFFFE0;
     }
 
     u8 read_EXI_MAR(int target_byte, int x) {

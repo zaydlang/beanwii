@@ -41,6 +41,7 @@ final class Scheduler {
     }
 
     private ulong add_event(void delegate() callback, ulong timestamp) {
+        log_scheduler("Adding event %d at %X", id_counter + 1, timestamp);
         int insert_at = 0;
 
         for (; insert_at < events_in_queue; insert_at++) {
@@ -109,14 +110,13 @@ final class Scheduler {
 
         event_in_progress = true;
         void delegate() cb = events[0].callback;
+        log_scheduler("Firing event %d", events[0].id);
+        cb();
         
         for (int i = 0; i < events_in_queue; i++) {
             *events[i] = *events[i + 1];
         }
         events_in_queue--;
-
-
-        cb();
         
         event_in_progress = false;
     }

@@ -27,9 +27,13 @@ interface MemStrategy {
     public void write_be_u8 (u32 address, u8  value);
 
     public u8 paddr_read_u8(u32 address);
+    public u16 paddr_read_u16(u32 address);
     public u32 paddr_read_u32(u32 address);
+    public u64 paddr_read_u64(u32 address);
     public void paddr_write_u8(u32 address, u8 value);
+    public void paddr_write_u16(u32 address, u16 value);
     public void paddr_write_u32(u32 address, u32 value);
+    public void paddr_write_u64(u32 address, u64 value);
     
     public void map_buffer(u8* buffer, size_t buffer_size, u32 address);
     public void map_dol(WiiDol* dol);

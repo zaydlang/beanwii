@@ -535,6 +535,10 @@ final class VideoInterface {
                 vertical_position[x] |= (value & 3) << 8;
                 interrupt_enable[x] = value.bit(4);
                 interrupt_status[x] = value.bit(7);
+
+                if (!value.bit(7)) {
+                    interrupt_controller.acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
+                }
                 break;
         }
     }
@@ -565,9 +569,63 @@ final class VideoInterface {
         return 0; // TOneverDO
     }
 
+    bool brdr_en; // bit 15
+    int hbe656; // bits 0-9
+    public u8 read_HBE(int target_byte) {
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) hbe656;
+            
+            case 1:
+                return cast(u8) (hbe656 >> 8) | (brdr_en << 7);
+        }
+    }
+
+    public void write_HBE(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                hbe656 &= 0xFF00;
+                hbe656 |= value;
+                break;
+            
+            case 1:
+                hbe656 &= 0xFF;
+                hbe656 |= (value & 3) << 8;
+                brdr_en = value.bit(7);
+                break;
+        }
+    }
+
+    int hbs656; // bits 0-9
+    public u8 read_HBS(int target_byte) {
+        final switch (target_byte) {
+            case 0:
+                return cast(u8) hbs656;
+            
+            case 1:
+                return cast(u8) (hbs656 >> 8);
+        }
+    }
+
+    public void write_HBS(int target_byte, u8 value) {
+        final switch (target_byte) {
+            case 0:
+                hbs656 &= 0xFF00;
+                hbs656 |= value;
+                break;
+            
+            case 1:
+                hbs656 &= 0xFF;
+                hbs656 |= value << 8;
+                break;
+        }
+    }
+
     public void scanout() {
         for (int field = 0; field < 2; field++) {
-            u32 base_address = (this.top_field_fbb_address << 9) + (field * XBFR_WIDTH * 2);
+            auto field_address = (field == 0) ? bottom_field_fbb_address : top_field_fbb_address;
+            u32 base_address = (field_address << 9) + (field * XBFR_WIDTH * 2);
+            if (field == 0 && base_address > 256) base_address += (256);
             log_vi("Scanning out field %d from base address %08x", field, base_address);
             for (int y = field; y < XBFR_HEIGHT; y += 2) {
             for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
@@ -590,6 +648,7 @@ final class VideoInterface {
 
         if (interrupt_enable[0]) {
             interrupt_status[0] = true;
+            log_vi("Raising VI interrupt");
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
         }
     }
