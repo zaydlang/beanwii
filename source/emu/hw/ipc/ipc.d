@@ -1,6 +1,7 @@
 module emu.hw.ipc.ipc;
 
 import emu.hw.broadway.interrupt;
+import emu.hw.disk.readers.filereader;
 import emu.hw.ipc.filemanager;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
@@ -27,6 +28,7 @@ final class IPC {
         DList!IPCResponse responses;
 
         void push_later(u32 paddr, int return_value, int cycles) {
+            log_ipc("FUCK MY ASS!\n");
             ipc.scheduler.add_event_relative_to_clock(() => push(paddr, return_value), cycles);
         }
 
@@ -125,17 +127,6 @@ final class IPC {
         bool iy1 = hw_ipc_ppcctrl.bit(4);
         bool iy2 = hw_ipc_ppcctrl.bit(5);
 
-        if (value.bit(2)) {
-            log_ipc("Acknowledging IPC interrupt");
-            interrupt_controller.acknowledge_hollywood_interrupt(HollywoodInterruptCause.IPC);
-            waiting_for_cpu_to_get_response = false;
-            response_queue.maybe_finalize_new_response();
-        }
-
-        if (value.bit(1)) {
-            interrupt_controller.acknowledge_hollywood_interrupt(HollywoodInterruptCause.IPC);
-        }
-
         if (x2) {
             // hw_ipc_ppcctrl &= ~0xF;
             // scheduler.remove_event(process_command_event_id);
@@ -197,6 +188,7 @@ final class IPC {
         u32 fd = mem.paddr_read_u32(paddr + 8);
         u32 where = mem.paddr_read_u32(paddr + 0xC);
         u32 whence = mem.paddr_read_u32(paddr + 0x10);
+        log_ipc("IOS::Seek paddr: %x, fd: %d, where: %d, whence: %d", paddr, fd, where, whence);
 
         file_manager.seek(paddr, fd, where, whence);
     }
@@ -221,6 +213,8 @@ final class IPC {
     void ios_close(u32 paddr) {
         u32 fd = mem.paddr_read_u32(paddr + 8);
         file_manager.close(paddr, fd);
+
+        log_ipc("IOS::Close paddr: %x, fd: %d", paddr, fd);
     }
 
     void ios_ioctl(u32 paddr) {
@@ -301,7 +295,18 @@ final class IPC {
         file_manager.load_sysconf(sysconf);
     }
 
+    void load_file_reader(FileReader reader) {
+        file_manager.load_file_reader(reader);
+    }
+
     void set_title_id(u64 title_id) {
         file_manager.set_title_id(title_id);
+    }
+
+    void interrupt_acknowledged() {
+        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1)) {
+            waiting_for_cpu_to_get_response = false;
+            response_queue.maybe_finalize_new_response();
+        }
     }
 }

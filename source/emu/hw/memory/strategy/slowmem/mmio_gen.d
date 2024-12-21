@@ -107,14 +107,14 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
         int offset;
         string reg = get_mmio_reg_from_address(address, offset);
 
-        log_slowmem("MMIO: Reading from %s (offset = %d) (size = %d) (value = %x)", reg, offset, T.sizeof, value);
+        log_slowmem("MMIO: Reading from %s (offset = %d) (size = %d) (value = %x) from 0x%08x / 0x%08x", reg, offset, T.sizeof, value, context.interrupt_controller.broadway.state.pc, context.interrupt_controller.broadway.state.lr);
     }
 
     private void log_write(T)(u32 address, T value) {
         int offset;
         string reg = get_mmio_reg_from_address(address, offset);
 
-        log_slowmem("MMIO: Writing to %s (offset = %d) (size = %d) (value = %x)", reg, offset, T.sizeof, value);
+        log_slowmem("MMIO: Writing to %s (offset = %d) (size = %d) (value = %x) from 0x%08x / 0x%08x", reg, offset, T.sizeof, value, context.interrupt_controller.broadway.state.pc, context.interrupt_controller.broadway.state.lr);
     }
 
     T read(T)(u32 address) {

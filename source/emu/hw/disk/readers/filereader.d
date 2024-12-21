@@ -11,6 +11,7 @@ import util.number;
 interface FileReader {
     public bool is_valid_file(u8[] file_data);
     public void load_file(Wii wii, u8[] file_data);
+    public void decrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size);
 }
 
 public void parse_and_load_file(Wii wii, u8[] file_data) {

@@ -63,6 +63,7 @@ final class Wii {
 
         this.broadway.connect_mem(this.mem);
         this.broadway.connect_scheduler(this.scheduler);
+        this.broadway.connect_ipc(this.ipc);
         this.external_interface.connect_mem(this.mem);
         this.video_interface.connect_mem(this.mem);
         this.video_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
@@ -85,6 +86,8 @@ final class Wii {
         this.pixel_engine.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.audio_interface.connect_scheduler(this.scheduler);
         this.audio_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.dsp.connect_scheduler(this.scheduler);
+        this.dsp.connect_interrupt_controller(this.broadway.get_interrupt_controller());
 
         g_logger_scheduler = &this.scheduler;
 
@@ -94,16 +97,20 @@ final class Wii {
     public void cycle(int num_cycles) {
         this.broadway.cycle(num_cycles);
         this.video_interface.scanout();
+        this.scheduler.print_state();
     }
 
     public void single_step() {
         this.broadway.single_step();
     }
 
-    public void load_disk(u8[] wii_disk_data, u64 title_id) {
+    public void load_disk(FileReader file_reader, u8[] wii_disk_data, u64 title_id) {
         this.ipc.set_title_id(title_id);
+        this.ipc.load_file_reader(file_reader);
         this.setup_global_memory_value(wii_disk_data);
 
+        log_wii("FileSystem start: %x", cast(u32) wii_disk_data.read_be!u32(0x420) << 2);
+        log_wii("FileSystem size:  %x", cast(u32) wii_disk_data.read_be!u32(0x424));
         WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
         this.run_apploader(apploader, wii_disk_data);
     }

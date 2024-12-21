@@ -310,8 +310,7 @@ EmissionAction emit_fmulsx(Code code, u32 opcode) {
     code.jmp(end);
 
 code.label(paired_single);
-    code.mulsd(xmm0, xmm1);
-    code.vpbroadcastq(xmm0, xmm0);
+    code.mulpd(xmm0, xmm1);
 
 code.label(end);
     code.set_ps(guest_rd, xmm0);
@@ -526,72 +525,6 @@ EmissionAction emit_faddx(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
-EmissionAction emit_fmsubx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    auto guest_rc = opcode.bits(6, 10).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
-
-    code.mulsd(xmm0, xmm2);
-    code.subsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
-EmissionAction emit_fmsubsx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    auto guest_rc = opcode.bits(6, 10).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
-
-    auto paired_single = code.fresh_label();
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jnz(paired_single);
-
-    code.mulsd(xmm0, xmm2);
-    code.subsd(xmm0, xmm1);
-    code.jmp(end);
-
-code.label(paired_single);
-    code.mulsd(xmm0, xmm2);
-    code.subsd(xmm0, xmm1);
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
-EmissionAction emit_frsqrtex(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    code.get_ps(guest_rb, xmm0);
-    code.rsqrtsd(xmm0, xmm0);
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
 EmissionAction emit_fdivx(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_ps;
     auto guest_rb = opcode.bits(11, 15).to_ps;
@@ -639,107 +572,6 @@ EmissionAction emit_fnegx(Code code, u32 opcode) {
     code.mov(tmp2.cvt64(), 0x80000000_00000000);
     code.xor(tmp.cvt64(), tmp2.cvt64());
     code.movq(xmm0, tmp.cvt64());
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
-EmissionAction emit_fnmaddsx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    auto guest_rc = opcode.bits(6, 10).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    auto tmp = code.allocate_register();
-    auto tmp2 = code.allocate_register();
-
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
-
-    code.mulsd(xmm0, xmm2);
-    code.addsd(xmm0, xmm1);
-    code.movq(tmp.cvt64(), xmm0);
-    code.mov(tmp2.cvt64(), 0x80000000_00000000);
-    code.xor(tmp.cvt64(), tmp2.cvt64());
-    code.movq(xmm0, tmp.cvt64);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
-EmissionAction emit_fnmsubsx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    auto guest_rc = opcode.bits(6, 10).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    auto tmp = code.allocate_register();
-    auto tmp2 = code.allocate_register();
-
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
-
-    code.mulsd(xmm0, xmm2);
-    code.subsd(xmm0, xmm1);
-    code.movq(tmp.cvt64(), xmm0);
-    code.mov(tmp2.cvt64(), 0x80000000_00000000);
-    code.xor(tmp.cvt64(), tmp2.cvt64());
-    code.movq(xmm0, tmp.cvt64);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
-
-    return EmissionAction.CONTINUE;
-}
-
-EmissionAction emit_fmaddsx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_ps;
-    auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(11, 15).to_ps;
-    auto guest_rc = opcode.bits(6, 10).to_ps;
-    bool rc = opcode.bit(0);
-    assert(rc == 0);
-
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
-
-    code.mulsd(xmm0, xmm2);
-    code.addsd(xmm0, xmm1);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
     code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.CONTINUE;

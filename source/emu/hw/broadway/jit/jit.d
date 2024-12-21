@@ -74,6 +74,7 @@ final class Jit {
         code.init();
             // biglog = true;
             biglog = false;
+        dicksinmyass = false;
             emit(code, mem, state.pc);
             u8[] bytes = code.get();
             // log_jit("Generated %d bytes of code for 0x%08x", bytes.length, state.pc);
@@ -105,11 +106,20 @@ if (instrument && biglog) {
             int x = 2;
         }
 
+        if (!dicksinmyass) 
         jit_hash_map[state.pc] = func;
         // log_state(state);
         // func(state);
         // log_instruction(mem.read_be_u32(state.pc), state.pc);
+        if (dicksinmyass) {
+            log_function("dicksinmyass");log_function("poopcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", mem.read_be_u32(state.pc), state.pc, mem.read_be_u32(state.pc).bits(26, 31), mem.read_be_u32(state.pc).bits(1, 10));
+            log_instruction(mem.read_be_u32(state.pc), state.pc);
+            // log_state(state);
+        }
             func(state);
+        if (dicksinmyass) {
+            // log_state(state);
+        }
 
         if (instrument && biglog) {
             // import std.stdio;

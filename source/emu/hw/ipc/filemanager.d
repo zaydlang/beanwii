@@ -1,5 +1,6 @@
 module emu.hw.ipc.filemanager;
 
+import emu.hw.disk.readers.filereader;
 import emu.hw.ipc.error;
 import emu.hw.ipc.ipc;
 import emu.hw.ipc.usb.usb;
@@ -55,8 +56,11 @@ final class FileManager {
     }
 
     final class DiskDi : File {
-        this() {
+        FileReader file_reader;
+        this(FileReader file_reader) {
             super("/dev/di");
+
+            this.file_reader = file_reader;
         }
 
         bool cover_irq_pending = false;
@@ -65,15 +69,37 @@ final class FileManager {
             if (ioctl == 0x86) {
                 cover_irq_pending = false;
             } else if (ioctl == 0x12) {
+                u8[] data = [
+                    0x00, 0x00, 0x00, 0x00,
+                    0x20, 0x02, 0x04, 0x02,
+                    0x61, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00,
+                ];
 
-                // GetTitleID
-                // u32 addr = mem.paddr_read_u32(data_paddr);
-                // mem.paddr_write_u16(addr, title_id);
-                // mem.paddr_write_u32(data_paddr + 4, 0x20);
-                // log_ipc("DevES::GetTitleID(%x)", title_id);
+                for (int i = 0; i < 16; i++) {
+                    mem.paddr_write_u8(output_buffer + i, data[i]);
+                }
+
                 return 1;
-            } else {
-                error_ipc("Unknown ioctl %d", ioctl);
+            } else if (ioctl == 0x71) {
+                u32 size   = mem.paddr_read_u32(input_buffer + 4);
+                u32 offset = mem.paddr_read_u32(input_buffer + 8) << 2;
+                log_disk("Read %x bytes from disk at offset %x to %x (%x)", size, offset, output_buffer, output_buffer_length);
+
+                if (output_buffer_length < size) {
+                    error_ipc("Output buffer too small for read");
+                }
+
+                u8[] buffer = new u8[size];
+                file_reader.decrypted_disk_read(0, offset, buffer.ptr, size);
+                
+                for (int i = 0; i < size; i++) {
+                    if (buffer[i] != 0) {
+                        log_disk("non-zero byte at %x: %x", i, buffer[i]);
+                    }
+                }
+                mem.write_bulk(output_buffer, buffer.ptr, size);
+                return 1;
             }
 
             return 0;
@@ -639,7 +665,6 @@ final class FileManager {
             new EncryptedBuffer("/title/00000001/00000002/data/setting.txt", settings_txt),
             new TitleState(),
             new NANDBootInfo(),
-            new DiskDi(),
             new PlayRec(),
             new DevUsbVen(),
             new DevUsbHid()
@@ -772,6 +797,10 @@ final class FileManager {
 
     void load_sysconf(ubyte[] sysconf) {
         this.files ~= new DataFile("/shared2/sys/SYSCONF", sysconf);
+    }
+
+    void load_file_reader(FileReader file_reader) {
+        this.files ~= new DiskDi(file_reader);
     }
 
     void set_title_id(u64 title_id) {

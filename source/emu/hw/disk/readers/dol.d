@@ -51,4 +51,8 @@ final class DolReader : FileReader {
 
         wii.load_dol(cast(WiiDol*) file_data.ptr);
     }
+
+    override public void decrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        error_dol("Encrypted read not supported for DOL files.");
+    }
 }

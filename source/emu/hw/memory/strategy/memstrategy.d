@@ -55,4 +55,7 @@ interface MemStrategy {
 
     public u8   read_MI_PROT_TYPE(int target_byte);
     public void write_MI_PROT_TYPE(int target_byte, u8 value);
+
+    public void read_bulk(u8* dest, u32 src, u32 size);
+    public void write_bulk(u32 dest, u8* src, u32 size);
 }

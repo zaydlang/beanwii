@@ -7,11 +7,17 @@ __gshared Scheduler* g_logger_scheduler;
 enum Whitelist = [
     // LogSource.USB,
     // LogSource.BLUETOOTH,
-    LogSource.AI,
+    // LogSource.AI,
+    // LogSource.DISK,
+    // LogSource.DSP,
     // LogSource.IPC,
-    // LogSource.FUNCTION,
-    LogSource.OS_REPORT,
-    LogSource.SLOWMEM
+    // LogSource.INTERRUPT,
+    LogSource.FUNCTION,
+    // LogSource.OS_REPORT,
+    // LogSource.SLOWMEM,
+    // LogSource.SCHEDULER,
+    // LogSource.WBFS,
+    // LogSource.WII,
 ];
 
 enum LogSource {
@@ -39,7 +45,9 @@ enum LogSource {
     SCHEDULER,
     PE,
     USB,
-    BLUETOOTH
+    DSP,
+    BLUETOOTH,
+    DOL,
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

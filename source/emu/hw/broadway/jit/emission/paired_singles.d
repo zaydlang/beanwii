@@ -46,6 +46,93 @@ EmissionAction emit_psq_l(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
+EmissionAction emit_ps_msubx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.mulpd(xmm0, xmm2);
+    code.subpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_subx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.subpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_maddx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.mulpd(xmm0, xmm2);
+    code.addpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_sum0(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    auto guest_rc = opcode.bits(6, 10).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.addpd(xmm0, xmm1);
+    code.blendpd(xmm0, xmm2, 2);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_mulx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.mulpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
 EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
@@ -65,6 +152,85 @@ EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
+EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.vpbroadcastq(xmm2, xmm2);
+    code.mulpd(xmm0, xmm2);
+    code.addpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_madds1x(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.shufpd(xmm2, xmm2, 3);
+    code.mulpd(xmm0, xmm2);
+    code.addpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_absx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    auto tmp = code.allocate_register();
+
+    code.get_ps(guest_ra, xmm0);
+    code.mov(tmp.cvt64(), 0x7FFF_FFFF_FFFF_FFFFUL);
+    code.movq(xmm1, tmp.cvt64());
+    code.vpbroadcastq(xmm1, xmm1);
+    code.andpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_negx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    auto tmp = code.allocate_register();
+    auto tmp2 = code.allocate_register();
+
+    code.get_ps(guest_ra, xmm0);
+    code.mov(tmp.cvt64(), 0x8000_0000_0000_0000UL);
+    code.movq(xmm1, tmp.cvt64());
+    code.vpbroadcastq(xmm1, xmm1);
+    code.xorpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
 EmissionAction emit_ps_mr(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
@@ -78,12 +244,28 @@ EmissionAction emit_ps_mr(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
+EmissionAction emit_ps_merge11(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.shufpd(xmm0, xmm1, 0b0011);
+
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
 EmissionAction emit_ps_merge01(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
     auto guest_ra = opcode.bits(16, 20).to_ps;
-    auto guest_rb = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
 
     code.get_ps(guest_ra, xmm0);
     code.get_ps(guest_rb, xmm1);
@@ -106,6 +288,67 @@ EmissionAction emit_ps_merge10(Code code, u32 opcode) {
     code.punpcklqdq(xmm1, xmm0);
 
     code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_muls0(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rc = opcode.bits(6, 10).to_ps;
+    bool rc = opcode.bit(0);
+    assert(rc == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rc, xmm1);
+
+    code.vpbroadcastq(xmm1, xmm1);
+    code.mulpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+    log_function("BIG DICKS!");
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    auto tmp = code.allocate_register();
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.mulpd(xmm0, xmm2);
+    code.addpd(xmm0, xmm1);
+    code.mov(tmp.cvt64(), 0x8000_0000_0000_0000UL);
+    code.movq(xmm1, tmp.cvt64());
+    code.vpbroadcastq(xmm1, xmm1);
+    code.xorpd(xmm1, xmm0);
+    code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_add(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.addpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.CONTINUE;
 }

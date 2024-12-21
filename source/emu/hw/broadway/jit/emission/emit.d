@@ -15,6 +15,7 @@ import util.log;
 import util.number;
 
 __gshared bool instrument = false; 
+__gshared bool dicksinmyass = false; 
 enum MAX_GUEST_OPCODES_PER_RECIPE = 1;
 
 enum EmissionAction {
@@ -2340,13 +2341,32 @@ private EmissionAction emit_xoris(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_op_04(Code code, u32 opcode) {
-    int secondary_opcode = opcode.bits(1, 10);
+    int secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
+        case PrimaryOp04SecondaryOpcode.PS_ADD:     return emit_ps_add    (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_NMADDX:  return emit_ps_nmaddx (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MADDX:   return emit_ps_maddx  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MADDS0X: return emit_ps_madds0x(code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MADDS1X: return emit_ps_madds1x(code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MULX:    return emit_ps_mulx   (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MULS0:   return emit_ps_muls0  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MSUBX:   return emit_ps_msubx  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_SUM0:    return emit_ps_sum0   (code, opcode);
+        default: break;
+    }
+
+    secondary_opcode = opcode.bits(1, 10);
+
+    switch (secondary_opcode) {
+        case PrimaryOp04SecondaryOpcode.PS_ABSX:   return emit_ps_absx   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_CMPO0:  instrument = true;  return emit_ps_cmpo0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MR:     instrument = true;  return emit_ps_mr     (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE01:instrument = true;  return emit_ps_merge01(code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE10:instrument = true;  return emit_ps_merge10(code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MERGE11:instrument = true;  return emit_ps_merge11(code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_NEGX:   instrument = true;  return emit_ps_negx   (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_SUBX:  instrument = true;   return emit_ps_subx   (code, opcode);
 
         default: unimplemented_opcode(opcode); return EmissionAction.STOP;
     }
@@ -2400,6 +2420,9 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.HLE:     return emit_hle    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.ICBI:    return emit_icbi   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LBZX:    return emit_lbzx   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LFDX:    return emit_lfdx   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LFSUX:   return emit_lfsux  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LFSX:    return emit_lfsx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHZX:    return emit_lhzx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LWZX:    return emit_lwzx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LWZUX:   return emit_lwzux  (code, opcode);
@@ -2426,6 +2449,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.SRAWI:   return emit_srawi  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.SRW:     return emit_srw    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STBX:    return emit_stbx   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.STFSX:   return emit_stfsx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHBRX:  return emit_sthbrx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHX:    return emit_sthx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STWUX:   return emit_stwux  (code, opcode);
@@ -2453,11 +2477,11 @@ instrument = true;
     switch (secondary_opcode) {
         case PrimaryOp3BSecondaryOpcode.FADDSX:   return emit_faddsx  (code, opcode);
         case PrimaryOp3BSecondaryOpcode.FDIVSX:   return emit_fdivsx  (code, opcode);
-        // case PrimaryOp3BSecondaryOpcode.FMADDSX:  return emit_fmaddsx (code, opcode);
-        // case PrimaryOp3BSecondaryOpcode.FMSUBSX:  return emit_fmsubsx (code, opcode);
+        case PrimaryOp3BSecondaryOpcode.FMADDSX:  return emit_fmaddsx (code, opcode);
+        case PrimaryOp3BSecondaryOpcode.FMSUBSX:  return emit_fmsubsx (code, opcode);
         case PrimaryOp3BSecondaryOpcode.FMULSX:   return emit_fmulsx  (code, opcode);
-        // case PrimaryOp3BSecondaryOpcode.FNMADDSX: return emit_fnmaddsx(code, opcode);
-        // case PrimaryOp3BSecondaryOpcode.FNMSUBSX: return emit_fnmsubsx(code, opcode);
+        case PrimaryOp3BSecondaryOpcode.FNMADDSX: return emit_fnmaddsx(code, opcode);
+        case PrimaryOp3BSecondaryOpcode.FNMSUBSX: return emit_fnmsubsx(code, opcode);
         // case PrimaryOp3BSecondaryOpcode.FRESX:    return emit_fresx   (code, opcode);
         case PrimaryOp3BSecondaryOpcode.FSUBSX:   return emit_fsubsx  (code, opcode);
 
@@ -2469,15 +2493,15 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
     int secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        // case PrimaryOp3FSecondaryOpcode.FABSX:  return emit_fabsx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FABSX:  return emit_fabsx  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FCTIWZX: return emit_fctiwzx (code, opcode);
-        case PrimaryOp3FSecondaryOpcode.FCMPO:  instrument = true; return emit_fcmpo  (code, opcode);
-        case PrimaryOp3FSecondaryOpcode.FCMPU:  instrument = true; return emit_fcmpu  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FCMPO:  dicksinmyass = true; instrument = true; return emit_fcmpo  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FCMPU:  dicksinmyass = true; instrument = true; return emit_fcmpu  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FMR:    instrument = true; return emit_fmr    (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FRSPX: return emit_frspx (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FSUB:   instrument = true; return emit_fsub   (code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNABSX: return emit_fnabsx (code, opcode);
-        // case PrimaryOp3FSecondaryOpcode.FNEGX:  return emit_fnegx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FNEGX:  return emit_fnegx  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.MFTSB1: return emit_mftsb1 (code, opcode);
         case PrimaryOp3FSecondaryOpcode.MTFSF:  return emit_mtfsf  (code, opcode);
         default: break;
@@ -2486,11 +2510,12 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
     secondary_opcode = opcode.bits(1, 5);
 
     switch (secondary_opcode) {
-        // case PrimaryOp3FSecondaryOpcode.FADDX:   return emit_faddx  (code, opcode);
-        // case PrimaryOp3FSecondaryOpcode.FDIVX:   return emit_fdivx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FADDX:    return emit_faddx   (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FDIVX:    return emit_fdivx   (code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FMADDX:  return emit_fmaddx (code, opcode);
-        // case PrimaryOp3FSecondaryOpcode.FMSUBX:  return emit_fmsubx (code, opcode);
-        // case PrimaryOp3FSecondaryOpcode.FMULX:   return emit_fmulx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FMSUBX:   return emit_fmsubx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FMULX:    return emit_fmulx   (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FRSQRTEX: return emit_frsqrtex(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
         default: unimplemented_opcode(opcode); return EmissionAction.STOP;

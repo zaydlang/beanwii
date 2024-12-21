@@ -20,6 +20,7 @@ final class Scheduler {
     EventID id_counter;
     ulong   current_timestamp;
     bool    event_in_progress;
+    Event   self;
 
     this() {
         for (int i = 0; i < TOTAL_NUMBER_OF_EVENTS; i++) {
@@ -37,7 +38,7 @@ final class Scheduler {
     }
 
     ulong add_event_relative_to_self(void delegate() callback, int delta_cycles) {
-        return add_event(callback, events[0].timestamp + delta_cycles);
+        return add_event(callback, self.timestamp + delta_cycles);
     }
 
     private ulong add_event(void delegate() callback, ulong timestamp) {
@@ -111,13 +112,22 @@ final class Scheduler {
         event_in_progress = true;
         void delegate() cb = events[0].callback;
         log_scheduler("Firing event %d", events[0].id);
-        cb();
+        self = *events[0];
         
         for (int i = 0; i < events_in_queue; i++) {
             *events[i] = *events[i + 1];
         }
         events_in_queue--;
+        cb();
         
         event_in_progress = false;
+    }
+
+    void print_state() {
+        log_scheduler("Current timestamp: %X", current_timestamp);
+        log_scheduler("Events in queue: %d", events_in_queue);
+        for (int i = 0; i < events_in_queue; i++) {
+            log_scheduler("Event %d: %d", events[i].id, events[i].timestamp);
+        }
     }
 }

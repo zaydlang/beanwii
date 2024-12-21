@@ -43,7 +43,7 @@ final class SlowMem : MemStrategy {
 
     // TODO: temporary public
     public u8[] mem1;
-    private u8[] mem2;
+    public u8[] mem2;
     public u8[] hle_trampoline;
 
     private Mmio mmio;
@@ -59,13 +59,10 @@ final class SlowMem : MemStrategy {
     }
 
     private MemoryAccess get_memory_access_from_paddr(u32 address) {
-        if (address == 0x20) {
-            log_slowmem("Invalid address 0x%08x", address);
-        }
         if        (0x00000000 <= address && address <= 0x017FFFFF) {
-            return MemoryAccess(MemoryRegion.MEM1, address & 0x17FFFFF);
+            return MemoryAccess(MemoryRegion.MEM1, address);
         } else if (0x10000000 <= address && address <= 0x13FFFFFF) {
-            return MemoryAccess(MemoryRegion.MEM2, address & 0x3FFFFF);
+            return MemoryAccess(MemoryRegion.MEM2, address - 0x10000000);
         } else if (0x0D000000 <= address && address <= 0x0D008000) {
             return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
         } else if (0x0C000000 <= address && address <= 0x0C008003) {
@@ -87,24 +84,53 @@ final class SlowMem : MemStrategy {
             // See: wii.setup_global_memory_value(u8[] wii_disk_data);
             // assert(address != 0x8000_3198);
 
-            auto region = address >> 28;
-
-            switch (region) {
-                case 0x8: return MemoryAccess(MemoryRegion.MEM1,           address & 0x17FFFFF); 
-                case 0x9: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
-                case 0xC: 
-                    if (address <= 0xC17FFFFF) {
-                        return MemoryAccess(MemoryRegion.MEM1,             address & 0x3FFFFF);
-                    } else {
-                        return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO,   address & 0x3FFFFF);
-                    }
-
-                case 0xD: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFF);
-                case 0x2: return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address & 0x3FFFFF);
-                default:
-                    error_slowmem("Invalid region 0x%08x (0x%08x)", region, address);
-                    assert(0);
+            if        (0x80000000 <= address && address <= 0x817FFFFF) {
+                return MemoryAccess(MemoryRegion.MEM1, address - 0x80000000);
+            } else if (0x90000000 <= address && address <= 0x93FFFFFF) {
+                return MemoryAccess(MemoryRegion.MEM2, address - 0x90000000);
+            } else if (0xC0000000 <= address && address <= 0xC17FFFFF) {
+                return MemoryAccess(MemoryRegion.MEM1, address - 0xC0000000);
+            } else if (0xD0000000 <= address && address <= 0xD3FFFFFF) {
+                return MemoryAccess(MemoryRegion.MEM2, address - 0xD0000000);
+            } else if (0xCC000000 <= address && address <= 0xCDFFFFFF) {
+                return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
+            } else if (0x20000000 <= address && address <= 0x2FFFFFFF) {
+                return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address - 0x20000000);
+            } else {
+                error_slowmem("Invalid address 0x%08x", address);
+                assert(0);
             }
+
+
+            // auto region = address >> 28;
+
+            // switch (region) {
+            //     case 0x8: 
+            //         if (address < 0x81800000) {
+            //             return MemoryAccess(MemoryRegion.MEM1, address);
+            //         } else {
+            //             break;
+            //         } 
+            //     case 0x9: 
+            //         if (address < 0x93FFFFFF) {
+            //             return MemoryAccess(MemoryRegion.MEM2, address);
+            //         } else {
+            //             break;
+            //         } 
+            //     case 0xC: 
+            //         if (address <= 0xC17FFFFF) {
+            //             return MemoryAccess(MemoryRegion.MEM1,             address & 0x17FFFFF);
+            //         } else {
+            //             return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO,   address & 0x3FFFFF);
+            //         }
+
+            //     case 0xD: return MemoryAccess(MemoryRegion.MEM2,           address & 0x3FFFFFF);
+            //     case 0x2: return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address & 0x3FFFFF);
+            //     default:
+            //         error_slowmem("Invalid region 0x%08x (0x%08x)", region, address);
+            //         assert(0);
+            // }
+
         } else {
             return get_memory_access_from_paddr(address);
         }
@@ -158,6 +184,14 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
+        if (address == 0x80000500) {
+            log_function("WRITE TO BIGBOY 0X500: %x", value);
+        }
+
+        if ((address & 0xFFF_FFFF) == 0x004f0c7c && value == 0xe2) {
+            error_disk("HELLO! Big baller biswadev dev roy back at it again: %x", value);
+        }
+
         // log_slowmem("Write to 0x%08x = 0x%08x", address, value);
         if (address == 0x933e2160) {
             // if (value == 0x133e2380) error_slowmem("Write to 0x933e2160 = 0x133e2380");
@@ -169,7 +203,7 @@ final class SlowMem : MemStrategy {
         if (address == 0x8056d3d0) {
             import std.stdio;
             
-            log_ipc("_ipc_mailboxack = 0x%08x", value);
+            log_function("_ipc_mailboxack = 0x%08x", value);
         }
 
         static if (translate) {
@@ -369,5 +403,20 @@ final class SlowMem : MemStrategy {
 
     public void write_UNKNOWN_CC004020(int target_byte, u8 value) {
 
+    }
+
+    override public void read_bulk(u8* dst, u32 address, u32 size) {
+        for (int i = 0; i < size; i++) {
+            dst[i] = this.paddr_read_u8(address + i);
+        }
+    }
+
+    override public void write_bulk(u32 address, u8* data, u32 size) {
+        for (int i = 0; i < size; i++) {
+        if (address + i == 0x004f0c7c) {
+            log_disk("Big baller biswadev dev roy back at it again: %x", data[i]);
+        }
+            this.paddr_write_u8(address + i, data[i]);
+        }
     }
 }

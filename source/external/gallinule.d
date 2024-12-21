@@ -2301,10 +2301,15 @@ import std.stdio;
 
     /* ====== SSE ====== */
 
+    auto roundsd(RM)(XMM dst, RM src, ubyte imm8) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0x66, 0x0f, 0x3a, 0x0b, dst, src, imm8);
+    auto xorpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x57, dst, src);
     auto addpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x58, dst, src);
     auto addps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x58, dst, src);
     auto addss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x58, dst, src);
     auto addsd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf2, 0x0f, 0x58, dst, src);
+
+    auto andpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x54, dst, src);
+    auto andpd(RM)(XMM dst, long src) => emit!(0, SSE)(0x66, 0x0f, 0x54, dst, src);
 
     auto pxor(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xef, dst, src);
     
@@ -2322,7 +2327,8 @@ import std.stdio;
     auto cvtsd2ss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x5a, dst, src);
     auto cvtss2si(RM)(RM dst, XMM src) if (valid!(RM, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x2d, dst, src);
     auto cvtsd2si(RM)(RM dst, XMM src) if (valid!(RM, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x2d, dst, src);
-
+    auto cvtsi2sd(RM)(XMM dst, RM src) if (valid!(RM, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x2a, dst, src);
+    auto cvtsi2sd(RM)(XMM dst, RM src) if (valid!(RM, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x2a, dst, src);
     auto comiss(XMM src1, XMM src2) => emit!(0, SSE)(0x0f, 0x2f, src1, src2);
     auto ucomiss(XMM src1, XMM src2) => emit!(0, SSE)(0x0f, 0x2e, src1, src2);
     auto comisd(XMM src1, XMM src2) => emit!(0, SSE)(0x66, 0x0f, 0x2f, src1, src2);
@@ -2335,6 +2341,7 @@ import std.stdio;
     /* ====== SSE2 ====== */
 
     auto punpcklqdq(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x6c, dst, src);
+    auto unpcklpd(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x14, dst, src);
     auto shufps(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x0f, 0xc6, dst, src, imm8);
     auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x66, 0x0f, 0xc6, dst, src, imm8);
 
@@ -2354,13 +2361,16 @@ import std.stdio;
     auto movupd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x10, dst, src);
     auto movupd(RM)(RM dst, XMM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x11, src, dst);
 
+    auto rsqrtsd(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf3, 0x0f, 0x52, dst, src);
     /* ====== SSE3 ====== */
 
     auto addsubps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0xf2, 0x0f, 0xd0, dst, src);
     auto addsubpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xd0, dst, src);
-    
+    auto blendpd(RM)(XMM dst, RM src, ubyte imm8) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x3a, 0x0d, dst, src, imm8);
     /* ====== AVX ====== */
 
+    // auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src, imm8);
+    auto vshufpd(XMM dst, XMM src1, XMM src2, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src1, src2, imm8);
     auto vpbroadcastq(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x59, dst, src);
 
     auto vaddpd(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x58, dst, src, stor);
@@ -3652,4 +3662,37 @@ unittest
     assert(block.finalize().toHexString == 
         "0FB7C00FB7C80FB6C00FB6C8" ~
         "0FBFC00FBFC80FBEC00FBEC8");
+}
+
+@("roundsd")
+unittest
+{
+    Block!true block;
+    with (block)
+    {
+        roundsd(xmm4, xmm5, 0);
+        roundsd(xmm4, xmm5, 1);
+        roundsd(xmm4, xmm5, 2);
+        roundsd(xmm4, xmm5, 3);
+    }
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == 
+        "660F3A0BE500660F3A0BE501660F3A0BE502660F3A0BE503");
+}
+
+@("shufpd")
+unittest
+{
+    Block!true block;
+    with (block) {
+        shufpd(xmm0, xmm2, 0x3);
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == 
+        "660FC6C203");
 }

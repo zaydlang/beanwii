@@ -44,7 +44,7 @@ class RengMultimediaDevice : MultiMediaDevice {
         // video stuffs
         void present_videobuffer(VideoBuffer buffer) {
         import std.stdio;
-        writefln("presenting video buffer");
+        // writefln("presenting video buffer");
             for (int y = 0; y < WII_SCREEN_HEIGHT; y++) {
             for (int x = 0; x < WII_SCREEN_WIDTH;  x++) {
                     wii_video.videobuffer[y * WII_SCREEN_WIDTH + x] = 

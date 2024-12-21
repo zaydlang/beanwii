@@ -2,6 +2,7 @@ module emu.hw.broadway.interrupt;
 
 import emu.hw.broadway.cpu;
 import emu.hw.broadway.exception_type;
+import emu.hw.ipc.ipc;
 import util.bitop;
 import util.log;
 import util.number;
@@ -12,6 +13,7 @@ enum HollywoodInterruptCause {
 
 enum ProcessorInterfaceInterruptCause {
     AI        = 5,
+    DSP       = 6,
     VI        = 8,
     PeFinish  = 10,
     Hollywood = 14,
@@ -23,6 +25,7 @@ final class InterruptController {
     }
 
     Broadway broadway;
+    IPC ipc;
     
     void connect_cpu(Broadway broadway) {
         this.broadway = broadway;
@@ -35,7 +38,7 @@ final class InterruptController {
     }
 
     void write_INTERRUPT_MASK(int target_byte, u8 value) {
-        pi_interrupt_mask = pi_interrupt_mask.set_byte(target_byte, value);
+        set_interrupt_mask(pi_interrupt_mask.set_byte(target_byte, value));
     }
 
     u32 hollywood_interrupt_flag;
@@ -47,14 +50,15 @@ final class InterruptController {
 
     void write_HW_PPCIRQFLAG(int target_byte, u8 value) {
         log_interrupt("HW_PPCIRQFLAG[%d] = %02x", target_byte, value);
-        if (target_byte == 3 && value & 0x40) {
-            log_interrupt("wtf");
-            // pi_interrupt_cause = 0;
-        }
 
-        hollywood_interrupt_flag = hollywood_interrupt_flag.set_byte(
-            target_byte, hollywood_interrupt_flag.get_byte(target_byte) & ~value);
-        maybe_raise_hollywood_interrupt();
+        bool was_ipc_raised = (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
+        set_hollywood_interrupt_flag(hollywood_interrupt_flag.set_byte(
+            target_byte, hollywood_interrupt_flag.get_byte(target_byte) & ~value));
+        
+        bool is_ipc_raised = (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
+        if (was_ipc_raised && !is_ipc_raised) {
+            ipc.interrupt_acknowledged();
+        }
     }
 
     u32 hollywood_interrupt_mask;
@@ -64,8 +68,7 @@ final class InterruptController {
     }
 
     void write_HW_PPCIRQMASK(int target_byte, u8 value) {
-        hollywood_interrupt_mask = hollywood_interrupt_mask.set_byte(target_byte, value);
-        maybe_raise_hollywood_interrupt();
+        set_hollywood_interrupt_mask(hollywood_interrupt_mask.set_byte(target_byte, value));
     }
 
     u8 read_UNKNOWN_CC003024(int target_byte) {
@@ -93,51 +96,67 @@ final class InterruptController {
 
     void write_INTERRUPT_CAUSE(int target_byte, u8 value) {
         log_interrupt("InterruptController: write INTERRUPT_CAUSE[%d] = %02x", target_byte, value);
-        pi_interrupt_cause = pi_interrupt_cause.set_byte(target_byte, pi_interrupt_cause.get_byte(target_byte) & ~value);
+        set_interrupt_cause(pi_interrupt_cause.set_byte(target_byte, pi_interrupt_cause.get_byte(target_byte) & ~value));
     }
 
     void raise_hollywood_interrupt(HollywoodInterruptCause cause) {
         log_interrupt("InterruptController: raising Hollywood interrupt %s", cause);
-        hollywood_interrupt_flag |= (1 << cause);
-        maybe_raise_hollywood_interrupt();
+        set_hollywood_interrupt_flag(hollywood_interrupt_flag | (1 << cause));
     }
 
-    void maybe_raise_hollywood_interrupt() {
-        log_interrupt("InterruptController: maybe raising Hollywood interrupt: flag=%08x mask=%08x",
-            hollywood_interrupt_flag, hollywood_interrupt_mask);
+    void recalculate_hollywood_interrupt() {
         if ((hollywood_interrupt_flag & hollywood_interrupt_mask) != 0) {
-            log_interrupt("InterruptController: raising Hollywood interrupt");
-            pi_interrupt_cause |= (1 << ProcessorInterfaceInterruptCause.Hollywood);
-            maybe_raise_processor_interface_interrupt();
+            log_interrupt("InterruptController: Hollywood interrupt is pending");
+            set_interrupt_cause(pi_interrupt_cause | (1 << ProcessorInterfaceInterruptCause.Hollywood));
+        } else {
+            log_interrupt("InterruptController: Hollywood interrupt is not pending");
+            set_interrupt_cause(pi_interrupt_cause & ~(1 << ProcessorInterfaceInterruptCause.Hollywood));
         }
     }
 
     void raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause cause) {
         log_interrupt("InterruptController: raising Processor Interface interrupt %s", cause);
-        pi_interrupt_cause |= (1 << cause);
-        maybe_raise_processor_interface_interrupt();
+        set_interrupt_cause(pi_interrupt_cause | (1 << cause));
     }
 
-    void maybe_raise_processor_interface_interrupt() {
-        if ((pi_interrupt_mask & pi_interrupt_cause) != 0) {
-            // if (broadway.state.msr.bit(15)) {
-                import std.stdio;
-                log_interrupt("bazinga: raising Processor Interface interrupt %x %x", pi_interrupt_cause, pi_interrupt_mask);
-                broadway.raise_exception(ExceptionType.ExternalInterrupt);
-            // }
-        }
+    void recalculate_processor_interface_interrupt() {
+        bool interrupt = ((pi_interrupt_mask & pi_interrupt_cause) != 0);
+        log_interrupt("InterruptController: Processor Interface interrupt is %s", interrupt ? "pending" : "not pending");
+        broadway.set_exception(ExceptionType.ExternalInterrupt, interrupt);
     }
 
     void acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause cause) {
         log_interrupt("InterruptController: acknowledging Processor Interface interrupt %s", cause);
-        pi_interrupt_cause &= ~(1 << cause);
-        maybe_raise_processor_interface_interrupt();
+        set_interrupt_cause(pi_interrupt_cause & ~(1 << cause));
     }
 
     void acknowledge_hollywood_interrupt(HollywoodInterruptCause cause) {
         log_interrupt("InterruptController: acknowledging Hollywood interrupt %s", cause);
-        hollywood_interrupt_flag &= ~(1 << cause);
-        maybe_raise_hollywood_interrupt();
+        set_hollywood_interrupt_flag(hollywood_interrupt_flag & ~(1 << cause));
+    }
+
+    void set_interrupt_mask(u32 mask) {
+        pi_interrupt_mask = mask;
+        log_interrupt("InterruptController: set interrupt mask to %08x", mask);
+        recalculate_processor_interface_interrupt();
+    }
+
+    void set_interrupt_cause(u32 cause) {
+        pi_interrupt_cause = cause;
+        log_interrupt("InterruptController: set interrupt cause to %08x", cause);
+        recalculate_processor_interface_interrupt();
+    }
+
+    void set_hollywood_interrupt_mask(u32 mask) {
+        hollywood_interrupt_mask = mask;
+        log_interrupt("InterruptController: set Hollywood interrupt mask to %08x", mask);
+        recalculate_hollywood_interrupt();
+    }
+
+    void set_hollywood_interrupt_flag(u32 flag) {
+        hollywood_interrupt_flag = flag;
+        log_interrupt("InterruptController: set Hollywood interrupt flag to %08x", flag);
+        recalculate_hollywood_interrupt();
     }
 
     int fifo_base_start;
@@ -195,5 +214,9 @@ final class InterruptController {
 
     void write_FIFO_WRITE_PTR(int target_byte, u8 value) {
         fifo_write_ptr = fifo_write_ptr.set_byte(target_byte, value);
+    }
+
+    void connect_ipc(IPC ipc) {
+        this.ipc = ipc;
     }
 }

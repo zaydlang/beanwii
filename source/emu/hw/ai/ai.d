@@ -120,8 +120,6 @@ final class AudioInterface {
     }
 
     u8 read_AISCNT(int target_byte) {
-        // TODO:
-        aiscnt++;
         return aiscnt.get_byte(target_byte);
     }
 

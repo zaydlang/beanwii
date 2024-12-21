@@ -6,6 +6,7 @@ import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
 import emu.hw.broadway.state;
 import emu.hw.broadway.jit.jit;
+import emu.hw.ipc.ipc;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import util.bitop;
@@ -95,6 +96,20 @@ final class Broadway {
     bool shitter = false;
     int cunt = 0;
 
+    bool is_sussy(u64 foat) {
+        return (foat & 0x0000_ffff_ffff_0000) == 0x0000_0000_7fff_0000 || foat == 0x4330000000000000;
+    }
+
+    void sussy_floats() {
+        for (int i = 0; i < 32; i++) {
+            if (is_sussy(state.ps[i].ps0) || is_sussy(state.ps[i].ps1)) {
+                log_function("BIG CHANGE: %x %x\n", mem.read_be_u32(state.pc - 4), 0);
+                // log_state(&state);
+                error_function("sussy float!\n");
+            }
+        }
+    }
+
     public void cycle(u32 num_cycles) {
         if (state.halted) {
             log_function("CPU is halted, not running\n");
@@ -116,8 +131,10 @@ final class Broadway {
                 // }
             // }
             // if (cunt == 8)
-            log_state(&state);
+            // log_state(&state);
         }
+if (state.pc == 0x8027bea4) log_function("FUNCTION: __dvd_stateready");
+if (state.pc == 0x8027b5a0) log_function("FUNCTION: __dvd_statebusy");
 if (state.pc == 0x802d97b0) log_bluetooth("FUNCTION: WUDGetStatus");
 
         // if (bazinga == 9shi) {
@@ -129,7 +146,7 @@ if (state.pc == 0x8029e23c) log_function("intrblkmsgcb: %x", state.lr);
 //         if (state.pc == 0x802ca114) {
 //             log_broadway("BLUETOOTH LR: %08X\n", state.lr);
 //         }
-
+// sussy_floats();
 //         if (state.pc == 0x8029ec00) {
 //             log_broadway("BLUETOOTH RETURN: %08X\n", state.gprs[3]);
 //         }
@@ -186,7 +203,30 @@ if (state.pc == 0x8029e23c) log_function("intrblkmsgcb: %x", state.lr);
 
             // bool old = state.msr.bit(15);
             auto old_penis = state.dec;
+            // auto old_f1 =  state.ps[1].ps0;
+            PairedSingle[32] oldps;
+            for (int i = 0; i < 32; i++) oldps[i] = state.ps[i];
+            // u64 old_f1 = mem.paddr_read_u64(0x0596268 + 8);
             auto delta = jit.run(&state);
+
+            bool changed = false;
+            for (int i = 0; i < 32; i++) {
+                if (oldps[i] != state.ps[i]) changed = true;
+            }
+
+            if (changed) {
+                auto opcode = mem.read_be_u32(state.pc - 4);
+    log_function("Unimplemented opcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", opcode, 0, opcode.bits(26, 31), opcode.bits(1, 10));
+                log_function("BIG CHANGE: %x %x\n", mem.read_be_u32(state.pc - 4), mem.read_be_u64(0x80596268 + 8));
+                // log_state(&state);
+            }
+            if (state.pc == 0x802535dc) log_function("ROUND_THE_DUDE(%f)", *(cast(double*)&state.ps[0].ps0));
+            if (state.pc == 0x80253634) log_function("ROUND_THE_DUDE = %x", state.gprs[3]);
+
+            // if ((old_f1 & 0x0000FFFFFFFF0000) != 0x000000007fff0000 && 
+            // ( state.ps[1].ps0 & 0x0000FFFFFFFF0000) == 0x000000007fff0000 ) {
+            // }
+
             if (old_penis != state.dec) {
                 log_function("Decrementer changed from %x to %x\n", old_penis, state.dec);
             }
@@ -281,27 +321,27 @@ if (state.pc == 0x8026b40c) log_function("FUNCTION: PPCSetFpNonIEEEMode");
 if (state.pc == 0x8026b48c) log_function("FUNCTION: __DBExceptionDestinationAux");
 if (state.pc == 0x8026b4d4) log_function("FUNCTION: __DBExceptionDestination");
 if (state.pc == 0x8026b4e4) log_function("FUNCTION: __DBIsExceptionMarked");
-if (state.pc == 0x8026b54c) log_function("FUNCTION: __OSFPRInit");
-if (state.pc == 0x8026b674) log_function("FUNCTION: __OSGetIOSRev");
+ if (state.pc == 0x8026b54c) log_function("FUNCTION: __OSFPRInit");
+ if (state.pc == 0x8026b674) log_function("FUNCTION: __OSGetIOSRev");
 if (state.pc == 0x8026b950) log_function("FUNCTION: ClearArena");
 if (state.pc == 0x8026bb2c) log_function("FUNCTION: ClearMEM2Arena");
 if (state.pc == 0x8026bd10) log_function("FUNCTION: InquiryCallback");
-if (state.pc == 0x8026c3e0) log_function("FUNCTION: OSExceptionInit");
-if (state.pc == 0x8026c688) log_function("FUNCTION: __OSSetExceptionHandler");
-if (state.pc == 0x8026c69c) log_function("FUNCTION: __OSGetExceptionHandler");
-if (state.pc == 0x8026c6ac) log_function("FUNCTION: OSExceptionVector");
-if (state.pc == 0x8026c748) log_function("FUNCTION: OSDefaultExceptionHandler");
-if (state.pc == 0x8026c7a0) log_function("FUNCTION: __OSPSInit");
-if (state.pc == 0x8026c7f4) log_function("FUNCTION: __OSGetDIConfig");
-if (state.pc == 0x8026c880) log_function("FUNCTION: __OSInitAlarm");
+ if (state.pc == 0x8026c3e0) log_function("FUNCTION: OSExceptionInit");
+ if (state.pc == 0x8026c688) log_function("FUNCTION: __OSSetExceptionHandler");
+ if (state.pc == 0x8026c69c) log_function("FUNCTION: __OSGetExceptionHandler");
+ if (state.pc == 0x8026c6ac) log_function("FUNCTION: OSExceptionVector");
+ if (state.pc == 0x8026c748) log_function("FUNCTION: OSDefaultExceptionHandler");
+ if (state.pc == 0x8026c7a0) log_function("FUNCTION: __OSPSInit");
+ if (state.pc == 0x8026c7f4) log_function("FUNCTION: __OSGetDIConfig");
+ if (state.pc == 0x8026c880) log_function("FUNCTION: __OSInitAlarm");
 if (state.pc == 0x8026c8e8) log_function("FUNCTION: InsertAlarm");
-if (state.pc == 0x8026cb38) log_function("FUNCTION: OSSetAlarm");
-if (state.pc == 0x8026cba8) log_function("FUNCTION: OSSetPeriodicAlarm");
-if (state.pc == 0x8026cc2c) log_function("FUNCTION: OSCancelAlarm");
+ if (state.pc == 0x8026cb38) log_function("FUNCTION: OSSetAlarm");
+ if (state.pc == 0x8026cba8) log_function("FUNCTION: OSSetPeriodicAlarm");
+ if (state.pc == 0x8026cc2c) log_function("FUNCTION: OSCancelAlarm");
 if (state.pc == 0x8026cd44) log_function("FUNCTION: DecrementerExceptionCallback");
 if (state.pc == 0x8026cfc0) log_function("FUNCTION: OnReset");
 if (state.pc == 0x8026d05c) log_function("FUNCTION: DLInsert");
-if (state.pc == 0x8026d200) log_function("FUNCTION: OSFreeToHeap");
+ if (state.pc == 0x8026d200) log_function("FUNCTION: OSFreeToHeap");
 if (state.pc == 0x8026d52c) log_function("FUNCTION: __OSInitAudioSystem");
 if (state.pc == 0x8026d7c0) log_function("FUNCTION: DCEnable");
 if (state.pc == 0x8026d7d4) log_function("FUNCTION: DCInvalidateRange");
@@ -390,7 +430,7 @@ if (state.pc == 0x8027497c) log_function("FUNCTION: UnsetRun");
 if (state.pc == 0x802749e4) log_function("FUNCTION: __OSGetEffectivePriority");
 if (state.pc == 0x80274a20) log_function("FUNCTION: SetEffectivePriority");
 if (state.pc == 0x80274bd4) log_function("FUNCTION: __OSPromoteThread");
-if (state.pc == 0x80274c24) log_function("FUNCTION: SelectThread");
+// if (state.pc == 0x80274c24) log_function("FUNCTION: SelectThread");
 if (state.pc == 0x80274e4c) log_function("FUNCTION: __OSReschedule");
 if (state.pc == 0x80274e64) log_function("FUNCTION: OSYieldThread");
 if (state.pc == 0x80274ea0) log_function("FUNCTION: OSCreateThread");
@@ -445,7 +485,16 @@ if (state.pc == 0x80278610) log_function("FUNCTION: C_MTXOrtho");
 if (state.pc == 0x802786a8) log_function("FUNCTION: PSMTX44Copy");
 if (state.pc == 0x802786ec) log_function("FUNCTION: PSMTX44MultVec");
 if (state.pc == 0x80278764) log_function("FUNCTION: PSMTX44MultVecArray");
-if (state.pc == 0x80278854) log_function("FUNCTION: PSVECAdd");
+if (state.pc == 0x80278854) { 
+    // dump stack
+    for (int i = 0; i < 0x500; i++) {
+        u32 addr = state.gprs[1] + i * 4;
+        u32 value = mem.read_be_u32(addr);
+        log_function("STACK: %08x: %08x", addr, value);
+    }
+    log_function("FUNCTION: PSVECAdd") ;
+}
+if (state.pc == 0x80122940) log_function("ASSHOLE3 %08X", state.lr); 
 if (state.pc == 0x80278878) log_function("FUNCTION: PSVECSubtract");
 if (state.pc == 0x8027889c) log_function("FUNCTION: PSVECScale");
 if (state.pc == 0x802788b8) log_function("FUNCTION: PSVECNormalize");
@@ -479,7 +528,7 @@ if (state.pc == 0x8027b8f0) log_function("FUNCTION: stateDownRotation");
 if (state.pc == 0x8027bc20) log_function("FUNCTION: cbForStateCoverClosed");
 if (state.pc == 0x8027bcf8) log_function("FUNCTION: cbForPrepareCoverRegister");
 if (state.pc == 0x8027cfec) log_function("FUNCTION: DVDInquiryAsync");
-if (state.pc == 0x8027d18c) log_function("FUNCTION: DVDGetDriveStatus");
+// if (state.pc == 0x8027d18c) log_function("FUNCTION: DVDGetDriveStatus");
 if (state.pc == 0x8027d238) log_function("FUNCTION: DVDResume");
 if (state.pc == 0x8027d6b8) log_function("FUNCTION: __DVDGetCoverStatus");
 if (state.pc == 0x8027d780) log_function("FUNCTION: __DVDPrepareResetAsync");
@@ -495,7 +544,7 @@ if (state.pc == 0x8027de30) log_function("FUNCTION: cbForNandCreateDir");
 if (state.pc == 0x8027e194) log_function("FUNCTION: doTransactionCallback");
 if (state.pc == 0x8027e24c) log_function("FUNCTION: doPrepareCoverRegisterCallback");
 if (state.pc == 0x802806b4) log_function("FUNCTION: __VIInit");
-if (state.pc == 0x80280e0c) log_function("FUNCTION: VIWaitForRetrace");
+// if (state.pc == 0x80280e0c) log_function("FUNCTION: VIWaitForRetrace");
 if (state.pc == 0x80281a3c) log_function("FUNCTION: VIConfigurePan");
 if (state.pc == 0x80281d90) log_function("FUNCTION: VIFlush");
 if (state.pc == 0x80281ea4) log_function("FUNCTION: VISetNextFrameBuffer");
@@ -553,7 +602,7 @@ if (state.pc == 0x80287c70) log_function("FUNCTION: AXGetLpfCoefs");
 if (state.pc == 0x8028809c) log_function("FUNCTION: AXFXReverbHiExpSettings");
 if (state.pc == 0x8028816c) log_function("FUNCTION: AXFXReverbHiExpShutdown");
 if (state.pc == 0x802886d8) log_function("FUNCTION: __AllocDelayLine");
-if (state.pc == 0x8028884c) log_function("FUNCTION: __BzeroDelayLines");
+if (state.pc == 0x8028884c) log_function("FUNCTION: __BzeroDelayLines %x", state.lr);
 if (state.pc == 0x80288970) log_function("FUNCTION: __FreeDelayLine");
 if (state.pc == 0x80288de0) { log_function("FUNCTION: DSPCheckMailToDSP %x", state.lr); 
 // dump stack
@@ -567,7 +616,15 @@ if (state.pc == 0x80288de0) { log_function("FUNCTION: DSPCheckMailToDSP %x", sta
 if (state.pc == 0x80288df0) log_function("FUNCTION: DSPCheckMailFromDSP");
 if (state.pc == 0x80288e00) log_function("FUNCTION: DSPReadMailFromDSP");
 if (state.pc == 0x80288e14) log_function("FUNCTION: DSPSendMailToDSP");
-if (state.pc == 0x80288e28) log_function("FUNCTION: DSPInit");
+if (state.pc == 0x80288e28) { log_function("FUNCTION: DSPInit %x", state.lr);
+// dump stack
+    for (int i = 0; i < 32; i++) {
+        auto reg = state.gprs[1] + i * 4;
+        u32 value = mem.read_be_u32(reg);
+        log_function("STACK: %08X: %08X", reg, value);
+
+    }
+}
 if (state.pc == 0x80288ef0) log_function("FUNCTION: DSPAddTask");
 if (state.pc == 0x802894a0) log_function("FUNCTION: __DSP_exec_task");
 if (state.pc == 0x80289644) log_function("FUNCTION: __DSP_boot_task");
@@ -615,9 +672,9 @@ if (state.pc == 0x8028cf04) log_function("FUNCTION: GXPokeDstAlpha");
 if (state.pc == 0x8028cf1c) log_function("FUNCTION: GXPokeDither");
 if (state.pc == 0x8028cf30) log_function("FUNCTION: GXPokeZMode");
 if (state.pc == 0x8028cf90) log_function("FUNCTION: GXTokenInterruptHandler");
-if (state.pc == 0x8028d058) log_function("FUNCTION: GXFinishInterruptHandler");
+// if (state.pc == 0x8028d058) log_function("FUNCTION: GXFinishInterruptHandler");
 if (state.pc == 0x8028d0d8) log_function("FUNCTION: __GXPEInit");
-if (state.pc == 0x8028d3b4) log_function("FUNCTION: GXBegin");
+if (state.pc == 0x8028d3b4) error_function("FUNCTION: GXBegin");
 if (state.pc == 0x8028d500) log_function("FUNCTION: __GXSendFlushPrim");
 if (state.pc == 0x8028d5d8) log_function("FUNCTION: GXSetLineWidth");
 if (state.pc == 0x8028d60c) log_function("FUNCTION: GXSetPointSize");
@@ -1715,13 +1772,65 @@ if (state.pc == 0x80319128) log_function("FUNCTION: isPlayingId__Q210homebutton9
 if (state.pc == 0x80319158) log_function("FUNCTION: isPlayReady__Q210homebutton9RemoteSpkCFl");
 if (state.pc == 0x80c2d4c4) log_function("FUNCTION: HBMFreeMem__FPv");
 if (state.pc == 0x80c6be0c) log_function("FUNCTION: gpiProfilesTableCompare");
+if (state.pc == 0x8028906c) log_function("FUNCTION: DSPInterruptHandler");
 if (state.pc == 0x8028901c) {
     log_function("DSP_PRINT");
             hle_os_report(cast(void*) &mem, &state);
 
 
 }
+if (state.pc == 0x802867f8) {
+    log_function("DSP INIT RETURN");}
             }
+
+if (state.pc >= 0x80235ce0 && state.pc <= 0x80235f74) {
+    log_function("DSP INIT P4: %x", state.pc);
+}
+if (state.pc >= 0x80235600 && state.pc <= 0x80235ae4) {
+    log_function("stuck: %x", state.pc);
+}
+if (state.pc >= 0x8027bea4 && state.pc <= 0x8027c1c8) {
+    // log_function("stucker: %x", state.pc);
+}
+if (state.pc >= 0x801a71a4 && state.pc <= 0x801a7734) {
+    log_function("stuckerst: %x", state.pc); 
+}
+if (state.pc >= 0x801832e4 && state.pc <= 0x801833c4) {
+    log_function("stuckerst2: %x", state.pc); 
+}
+if (state.pc >= 0x8019b030 && state.pc <= 0x8019b194) {
+    log_function("stuckerst22: %x", state.pc); 
+}
+if (state.pc >= 0x801a6850 && state.pc <= 0x801a68b4) {
+    log_function("stuckerst222: %x", state.pc); 
+}
+if (state.pc >= 0x801a6508 && state.pc <= 0x801a684c) {
+    log_function("stuckerst2222: %x", state.pc); 
+}
+if (state.pc >= 0x8025b144 && state.pc <= 0x8025bea0) {
+    log_function("stuckerst22222: %x", state.pc); 
+}
+if (state.pc >= 0x8025c420 && state.pc <= 0x8025d810) {
+    log_function("stuckerst222222: %x", state.pc); 
+}
+if (state.pc >= 0x80256e04 && state.pc <= 0x802575b0) {
+    log_function("stuckerst2222222: %x", state.pc); 
+    // log_state(&state);
+}
+if (state.pc >= 0x802535dc && state.pc <= 0x80253634) {
+    log_function("Current: %x", state.pc);
+    log_state(&state);
+}
+// if (scheduler.get_current_time_relative_to_cpu() > 0x00000001d7f6848) {
+    // writefln("opcode: %x", mem.read_be_u32(state.pc));
+    // log_state(&state);
+// }
+
+if (state.pc == 0x80288e10) { log_function("FUNCTION: DSPReadMailFromDSP() == %x", state.gprs[3]); }
+// if (state.pc == 0x8027d224) { log_function("FUNCTION: DVD STATUS: %x", state.gprs[3]); } 
+if ((state.gprs[1] & 0xFFFF0000) == 0xe21f0000) {
+    error_jit("HLE: %x", state.pc);
+}
             scheduler.tick(delta);
             scheduler.process_events();
 
@@ -1731,6 +1840,9 @@ if (state.pc == 0x8028901c) {
             state.tbu = cast(u32) (time_base >> 32);
             state.tbl = cast(u32) time_base;
 
+            if (state.pc == 0) {
+                error_jit("PC is zero, %x", old_pc);
+            }
 
             // check for decrementer interrupt
             auto old_dec = state.dec;
@@ -1782,6 +1894,7 @@ if (state.pc == 0x8028901c) {
 
         import util.dump;
         dump(this.mem.mem1, "mem1.bin");
+        dump(this.mem.mem2, "mem2.bin");
     }
 
     // here are the really annoying-to-write functions:
@@ -1911,13 +2024,17 @@ if (state.pc == 0x8028901c) {
         this.scheduler = scheduler;
     }
 
+    void connect_ipc(IPC ipc) {
+        this.interrupt_controller.connect_ipc(ipc);
+    }
+
     int pending_interrupts = 0;
     void handle_pending_interrupts() {
         if (pending_interrupts > 0) {
             if (state.msr.bit(15)) {
-                log_function("Handling pending interrupt: %x", pending_interrupts);
+                // log_function("Handling pending interrupt: %x", pending_interrupts);
                 auto exception_to_raise = core.bitop.bsf(pending_interrupts);
-                log_function("Raising exception: %s", exception_to_raise);
+                // log_function("Raising exception: %s", exception_to_raise);
                 handle_exception(cast(ExceptionType) exception_to_raise);
                 pending_interrupts &= ~(1 << exception_to_raise);
             } else {
@@ -1929,6 +2046,14 @@ if (state.pc == 0x8028901c) {
     void raise_exception(ExceptionType type) {
         log_interrupt("Raise exception: %s %d", type, state.msr.bit(15));
         pending_interrupts |= (1 << type);
+    }
+
+    void set_exception(ExceptionType type, bool value) {
+        if (value) {
+            pending_interrupts |= (1 << type);
+        } else {
+            pending_interrupts &= ~(1 << type);
+        }
     }
 }
  

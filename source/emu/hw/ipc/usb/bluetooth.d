@@ -1,4 +1,4 @@
-// module emu.hw.ipc.usb.bluetooth;
+module emu.hw.ipc.usb.bluetooth;
 
 // import emu.hw.ipc.ipc;
 // import emu.hw.memory.strategy.memstrategy;
