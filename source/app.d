@@ -8,6 +8,7 @@ import emu.hw.disk.readers.wbfs;
 import emu.hw.wii;
 import ui.cli;
 import ui.reng.device;
+import ui.sdl.device;
 import ui.runner;
 import util.file;
 import util.log;
@@ -22,21 +23,22 @@ void logger_on_error_callback(){
 version (unittest) {} else {
 	void main(string[] args) {
 		CliArgs cli_args = parse_cli_args(args);
+		
+		auto sdl = new SdlDevice(1, false);		
+		// auto reng = new RengMultimediaDevice(wii, 1, true);
 
 		auto disk_data = load_file_as_bytes(cli_args.rom_path);
 		log_wii("sysconf path: %s", cli_args.sysconf_path);
 		auto sysconf = load_file_as_bytes(cli_args.sysconf_path);
 
 		wii = new Wii(cli_args.ringbuffer_size);
-		
+		wii.connect_multimedia_device(sdl);
+
 		set_logger_on_error_callback(&logger_on_error_callback);
 
 		parse_and_load_file(wii, disk_data);
 		wii.load_sysconf(sysconf);
-		
-		auto reng = new RengMultimediaDevice(wii, 1, true);
-		wii.connect_multimedia_device(reng);
-		
-		new Runner(wii, reng).run();
+
+		new Runner(wii, sdl).run();
 	}
 }

@@ -47,7 +47,7 @@ final class SlowMem : MemStrategy {
     public u8[] hle_trampoline;
 
     private Mmio mmio;
-    private Broadway cpu;
+    public Broadway cpu;
     
     this() {
         this.mem1 = new u8[MEM1_SIZE];
@@ -174,7 +174,7 @@ final class SlowMem : MemStrategy {
                 break;
         }
 
-        // log_slowmem("Read from 0x%08x = 0x%08x", address, result);
+        log_slowmem("Read from 0x%08x = 0x%08x", address, result);
 
 
         if (cpu.state.pc == 0x802956f8) {

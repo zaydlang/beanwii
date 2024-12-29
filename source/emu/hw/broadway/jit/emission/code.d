@@ -222,4 +222,15 @@ final class Code {
             this.pop(reg);
         }
     }
+
+    void pop_caller_saved_registers_except(R64 except) {
+        foreach (reg; [r11, r10, r9, r8, rdi, rsi, rdx, rcx, rax]) {
+            if (reg != except) {
+                this.pop(reg);
+            } else {
+                this.add(rsp, 8);
+                stack_alignment += 8;
+            }
+        }
+    }
 }

@@ -12,7 +12,8 @@ enum Whitelist = [
     // LogSource.DSP,
     // LogSource.IPC,
     // LogSource.INTERRUPT,
-    LogSource.FUNCTION,
+    // LogSource.FUNCTION,
+    LogSource.HOLLYWOOD,
     // LogSource.OS_REPORT,
     // LogSource.SLOWMEM,
     // LogSource.SCHEDULER,
@@ -48,6 +49,7 @@ enum LogSource {
     DSP,
     BLUETOOTH,
     DOL,
+    FRONTEND
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

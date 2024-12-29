@@ -195,7 +195,7 @@ EmissionAction emit_lfsux(Code code, u32 opcode) {
     code.test(hid2, 1 << 29);
     code.jz(end);
 
-    code.vpbroadcastq(xmm0, xmm0);
+    code.vpbroadcastd(xmm0, xmm0);
 
 code.label(end);
     code.set_ps(guest_rd, xmm0);
@@ -445,7 +445,6 @@ EmissionAction emit_lfsx(Code code, u32 opcode) {
         code.call(rax);
     code.exit_stack_alignment_context();
     code.pop(rdi);
-    code.movq(xmm0, rax);
 
     auto end = code.fresh_label();
 
@@ -453,9 +452,10 @@ EmissionAction emit_lfsx(Code code, u32 opcode) {
     code.test(hid2, 1 << 29);
     code.jz(end);
 
-    code.vpbroadcastq(xmm0, xmm0);
+    code.vpbroadcastd(xmm0, xmm0);
 
 code.label(end);
+    code.movq(xmm0, rax);
     code.set_fpr(guest_rd, rax);
 
     return EmissionAction.CONTINUE;

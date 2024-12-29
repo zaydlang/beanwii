@@ -35,12 +35,12 @@ EmissionAction emit_psq_l(Code code, u32 opcode) {
         code.movq(rd, xmm0);
         code.set_fpr(guest_rd, rd);
     } else {
-        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
-        dequantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm2, true);
+        dequantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm2, false);
         code.cvtss2sd(xmm0, xmm0);
         code.cvtss2sd(xmm1, xmm1);
         code.punpcklqdq(xmm0, xmm1);
-        code.set_fpr(guest_rd, rd);
+        code.set_ps(guest_rd, xmm0);
     }
 
     return EmissionAction.CONTINUE;
@@ -378,7 +378,9 @@ EmissionAction emit_psq_st(Code code, u32 opcode) {
     } else {
         code.cvtsd2ss(xmm1, xmm0);
         quantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
-        code.shufpd(xmm0, xmm1, 0b00000001);
+        
+        code.get_ps(guest_rs, xmm0);
+        code.shufpd(xmm0, xmm0, 0b00000001);
         code.cvtsd2ss(xmm0, xmm0);
         quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
     }
@@ -601,7 +603,7 @@ void load_32(Code code, R32 address, R32 dest) {
         code.call(rax);
         code.mov(dest, eax);
     code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
+    code.pop_caller_saved_registers_except(dest.cvt64());
     code.pop(rdi);
 }
 
@@ -616,7 +618,7 @@ void load_16(Code code, R32 address, R32 dest) {
         code.call(rax);
         code.mov(dest, eax);
     code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
+    code.pop_caller_saved_registers_except(dest.cvt64());
     code.pop(rdi);
 }
 
@@ -631,7 +633,7 @@ void load_8(Code code, R32 address, R32 dest) {
         code.call(rax);
         code.mov(dest, eax);
     code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
+    code.pop_caller_saved_registers_except(dest.cvt64());
     code.pop(rdi);
 }
 

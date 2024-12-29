@@ -35,10 +35,6 @@ final class Runner {
     }
 
     void tick() {
-        if (WindowShouldClose) {
-            CloseWindow();
-        }
-
         fps++;
         
         if (stopwatch.peek.total!"msecs" > 1000) {

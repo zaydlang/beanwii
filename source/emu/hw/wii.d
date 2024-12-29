@@ -88,6 +88,7 @@ final class Wii {
         this.audio_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.dsp.connect_scheduler(this.scheduler);
         this.dsp.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.hollywood.connect_mem(this.mem);
 
         g_logger_scheduler = &this.scheduler;
 

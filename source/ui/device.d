@@ -34,6 +34,8 @@ abstract class MultiMediaDevice {
 
         // input stuffs
         void handle_input();
+
+        bool should_exit();
     }
 
     bool should_fast_forward();

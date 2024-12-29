@@ -24,7 +24,7 @@ final class Broadway {
     private Mem                 mem;
     private Jit                 jit;
     private HleContext          hle_context;
-    private InterruptController interrupt_controller;
+    public InterruptController interrupt_controller;
     private size_t              ringbuffer_size;
 
     public  bool                should_log;
@@ -119,119 +119,11 @@ final class Broadway {
         u32 elapsed = 0;
         while (elapsed < num_cycles && !state.halted) {
             exception_raised = false;
-        if (num_log > 0) {
-            num_log--;
-            // log_function("PC: %08X\n", state.pc);
-            // if (state.pc == 0x80016cdc) {
-                // dump stack
-                // auto sp = state.gprs[1];
-                // log_function("LR: %08X\n", state.lr);
-                // for (int i = 0; i < 32; i++) {
-                    // log_function("SP[%d]: %08X\n", i, mem.read_be_u32(sp + i * 4));
-                // }
-            // }
-            // if (cunt == 8)
-            // log_state(&state);
-        }
-if (state.pc == 0x8027bea4) log_function("FUNCTION: __dvd_stateready");
-if (state.pc == 0x8027b5a0) log_function("FUNCTION: __dvd_statebusy");
-if (state.pc == 0x802d97b0) log_bluetooth("FUNCTION: WUDGetStatus");
+            u32 old_pc = state.pc;
 
-        // if (bazinga == 9shi) {
-            // log_state(&state);
-        // }
-// if (state.pc == 0x8029f8e4) log_function("FUNCTION: BTA_Init");
-// if (state.pc == 0x802a2a00) log_function("FUNCTION: BTA_DmIsDeviceUp");
-if (state.pc == 0x8029e23c) log_function("intrblkmsgcb: %x", state.lr);
-//         if (state.pc == 0x802ca114) {
-//             log_broadway("BLUETOOTH LR: %08X\n", state.lr);
-//         }
-// sussy_floats();
-//         if (state.pc == 0x8029ec00) {
-//             log_broadway("BLUETOOTH RETURN: %08X\n", state.gprs[3]);
-//         }
-
-//         if (state.pc == 0x8029ce7c) {
-//             log_broadway("BLUETOOTH biobuffer: %08X\n", state.gprs[3]);
-//         }
-
-//         if (state.pc == 0x8029ee58 || state.pc == 0x8029ee40) {
-//             log_broadway("BLUETOOTH bioret: %08X\n", state.gprs[3]);
-//         }
-
-//         if (state.pc == 0x8029f8cc) {
-//             log_function("cb: %08X\n", state.gprs[3]);
-//             shitter=true;
-//         }
-
-//         if (state.pc == 0x80297c3c) {
-//             string output = "";
-//             u32 string_ptr = state.gprs[3];
-//             for (int i = 0; i < 0x100; i++) {
-//                 u8 c = mem.read_be_u8(string_ptr + i);
-//                 if (c == 0) break;
-//                 output ~= cast(char) c;
-//             }
-
-//             log_function("nandopen(%s, %x, %x, %x)\n", output, state.gprs[4], state.gprs[5], state.gprs[6]);
-//         }
-
-
-//         if (state.pc == 0x8029a244) {
-//             log_function("callback nand(%x)\n", state.gprs[3]);
-//         }
-
-//         if (state.pc == 0x8026b4fc) {
-//             // exit real mode
-//             int old = state.msr;
-//             state.msr |= (3 << 4);
-//             log_function("msr: %08X\n", state.msr);
-//             hle_os_report(cast(void*) &mem, &state);
-//             state.msr = old;
-//         }
-//         if (state.pc == 0x8026d894) {
-//             log_function("memclear(%x, %x) %x", state.gprs[3], state.gprs[4], state.lr);
-//         }
-//         if (state.pc == 0x80268410) {
-//             log_function("exi function thing(%x %x %x %x); %x", state.gprs[3], state.gprs[4], state.gprs[5], state.gprs[6], state.lr);
-//         }
-
-        u32 old_pc = state.pc;
-
-            // log_state(&state);
-            // log_function("PC: %08X\n", state.pc);
-
-            // bool old = state.msr.bit(15);
-            auto old_penis = state.dec;
-            // auto old_f1 =  state.ps[1].ps0;
-            PairedSingle[32] oldps;
-            for (int i = 0; i < 32; i++) oldps[i] = state.ps[i];
-            // u64 old_f1 = mem.paddr_read_u64(0x0596268 + 8);
             auto delta = jit.run(&state);
 
-            bool changed = false;
-            for (int i = 0; i < 32; i++) {
-                if (oldps[i] != state.ps[i]) changed = true;
-            }
-
-            if (changed) {
-                auto opcode = mem.read_be_u32(state.pc - 4);
-    log_function("Unimplemented opcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", opcode, 0, opcode.bits(26, 31), opcode.bits(1, 10));
-                log_function("BIG CHANGE: %x %x\n", mem.read_be_u32(state.pc - 4), mem.read_be_u64(0x80596268 + 8));
-                // log_state(&state);
-            }
-            if (state.pc == 0x802535dc) log_function("ROUND_THE_DUDE(%f)", *(cast(double*)&state.ps[0].ps0));
-            if (state.pc == 0x80253634) log_function("ROUND_THE_DUDE = %x", state.gprs[3]);
-
-            // if ((old_f1 & 0x0000FFFFFFFF0000) != 0x000000007fff0000 && 
-            // ( state.ps[1].ps0 & 0x0000FFFFFFFF0000) == 0x000000007fff0000 ) {
-            // }
-
-            if (old_penis != state.dec) {
-                log_function("Decrementer changed from %x to %x\n", old_penis, state.dec);
-            }
-            if (state.pc != old_pc + 4) {
-                // printf("BRANCH: %08X -> %08X\n", old_pc, state.pc);
+            if (state.pc != old_pc + 4 && false) {
                 if (state.pc == 0x80034afc) log_function("FUNCTION: __opPA4_Cf__Q34nw4r4math5MTX34CFv");
 if (state.pc == 0x8005f924) log_function("FUNCTION: SetMainSend__Q34nw4r3snd11SoundPlayerFf");
 if (state.pc == 0x800954dc) log_function("FUNCTION: GXInitLightAttnA");
@@ -1783,44 +1675,44 @@ if (state.pc == 0x802867f8) {
     log_function("DSP INIT RETURN");}
             }
 
-if (state.pc >= 0x80235ce0 && state.pc <= 0x80235f74) {
-    log_function("DSP INIT P4: %x", state.pc);
-}
-if (state.pc >= 0x80235600 && state.pc <= 0x80235ae4) {
-    log_function("stuck: %x", state.pc);
-}
-if (state.pc >= 0x8027bea4 && state.pc <= 0x8027c1c8) {
-    // log_function("stucker: %x", state.pc);
-}
-if (state.pc >= 0x801a71a4 && state.pc <= 0x801a7734) {
-    log_function("stuckerst: %x", state.pc); 
-}
-if (state.pc >= 0x801832e4 && state.pc <= 0x801833c4) {
-    log_function("stuckerst2: %x", state.pc); 
-}
-if (state.pc >= 0x8019b030 && state.pc <= 0x8019b194) {
-    log_function("stuckerst22: %x", state.pc); 
-}
-if (state.pc >= 0x801a6850 && state.pc <= 0x801a68b4) {
-    log_function("stuckerst222: %x", state.pc); 
-}
-if (state.pc >= 0x801a6508 && state.pc <= 0x801a684c) {
-    log_function("stuckerst2222: %x", state.pc); 
-}
-if (state.pc >= 0x8025b144 && state.pc <= 0x8025bea0) {
-    log_function("stuckerst22222: %x", state.pc); 
-}
-if (state.pc >= 0x8025c420 && state.pc <= 0x8025d810) {
-    log_function("stuckerst222222: %x", state.pc); 
-}
-if (state.pc >= 0x80256e04 && state.pc <= 0x802575b0) {
-    log_function("stuckerst2222222: %x", state.pc); 
-    // log_state(&state);
-}
-if (state.pc >= 0x802535dc && state.pc <= 0x80253634) {
-    log_function("Current: %x", state.pc);
-    log_state(&state);
-}
+// if (state.pc >= 0x80235ce0 && state.pc <= 0x80235f74) {
+//     log_function("DSP INIT P4: %x", state.pc);
+// }
+// if (state.pc >= 0x80235600 && state.pc <= 0x80235ae4) {
+//     log_function("stuck: %x", state.pc);
+// }
+// if (state.pc >= 0x8027bea4 && state.pc <= 0x8027c1c8) {
+//     // log_function("stucker: %x", state.pc);
+// }
+// if (state.pc >= 0x801a71a4 && state.pc <= 0x801a7734) {
+//     log_function("stuckerst: %x", state.pc); 
+// }
+// if (state.pc >= 0x801832e4 && state.pc <= 0x801833c4) {
+//     log_function("stuckerst2: %x", state.pc); 
+// }
+// if (state.pc >= 0x8019b030 && state.pc <= 0x8019b194) {
+//     log_function("stuckerst22: %x", state.pc); 
+// }
+// if (state.pc >= 0x801a6850 && state.pc <= 0x801a68b4) {
+//     log_function("stuckerst222: %x", state.pc); 
+// }
+// if (state.pc >= 0x801a6508 && state.pc <= 0x801a684c) {
+//     log_function("stuckerst2222: %x", state.pc); 
+// }
+// if (state.pc >= 0x8025b144 && state.pc <= 0x8025bea0) {
+//     log_function("stuckerst22222: %x", state.pc); 
+// }
+// if (state.pc >= 0x8025c420 && state.pc <= 0x8025d810) {
+//     log_function("stuckerst222222: %x", state.pc); 
+// }
+// if (state.pc >= 0x80256e04 && state.pc <= 0x802575b0) {
+//     log_function("stuckerst2222222: %x", state.pc); 
+//     // log_state(&state);
+// }
+// if (state.pc >= 0x802535dc && state.pc <= 0x80253634) {
+//     // log_function("Current: %x", state.pc);
+//     // log_state(&state);
+// }
 // if (scheduler.get_current_time_relative_to_cpu() > 0x00000001d7f6848) {
     // writefln("opcode: %x", mem.read_be_u32(state.pc));
     // log_state(&state);

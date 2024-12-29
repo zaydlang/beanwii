@@ -112,6 +112,10 @@ class RengMultimediaDevice : MultiMediaDevice {
         bool should_fast_forward() {
             return fast_foward;
         }
+
+        bool should_exit() {
+            return WindowShouldClose();
+        }
     }
 
     void redraw_title() {
@@ -133,4 +137,4 @@ class RengMultimediaDevice : MultiMediaDevice {
             if (fast_foward) buffer_cursor = 0;
         }
     }
-}
+} 

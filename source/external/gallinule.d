@@ -2372,7 +2372,7 @@ import std.stdio;
     // auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src, imm8);
     auto vshufpd(XMM dst, XMM src1, XMM src2, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src1, src2, imm8);
     auto vpbroadcastq(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x59, dst, src);
-
+    auto vpbroadcastd(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x58, dst, src);
     auto vaddpd(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x58, dst, src, stor);
     auto vaddpd(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x58, dst, src, stor);
      

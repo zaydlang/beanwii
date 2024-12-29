@@ -71,73 +71,14 @@ final class Jit {
             
             cached_func(state);
         } else {
-        code.init();
-            // biglog = true;
-            biglog = false;
-        dicksinmyass = false;
+            code.init();
             emit(code, mem, state.pc);
             u8[] bytes = code.get();
-            // log_jit("Generated %d bytes of code for 0x%08x", bytes.length, state.pc);
-            for (int i = 0; i < bytes.length - 8; i+= 8) {
-                import std.stdio;
-                // writefln("%02x %02x %02x %02x %02x %02x %02x %02x", bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
-            }
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
-            auto func = cast(JitFunction) ptr;
-                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                // auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. bytes.length], 0);
-                // foreach (instr; res) {
-                    // import std.stdio;
-                    
-                    // writefln("0x%08x | %s\t\t%s", instr.address + cast(ulong) func, instr.mnemonic, instr.opStr);
-                // }
-if (instrument && biglog) {
-            // import std.stdio;
-            // log_state(state);
-            // auto opcode = mem.read_be_u32(state.pc);
-// log_jit("Unimplemented opcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", opcode, state.pc, opcode.bits(26, 31), opcode.bits(1, 10));
-            // writefln("Opcode: %08x. Before. Paused emulation. >", mem.read_be_u32(state.pc));
-            // readln;
-            
-            }
-                
 
-        if (state.pc == 0x800050f8) {
-            int x = 2;
-        }
-
-        if (!dicksinmyass) 
-        jit_hash_map[state.pc] = func;
-        // log_state(state);
-        // func(state);
-        // log_instruction(mem.read_be_u32(state.pc), state.pc);
-        if (dicksinmyass) {
-            log_function("dicksinmyass");log_function("poopcode: 0x%08x (at PC 0x%08x) (Primary: %x, Secondary: %x)", mem.read_be_u32(state.pc), state.pc, mem.read_be_u32(state.pc).bits(26, 31), mem.read_be_u32(state.pc).bits(1, 10));
-            log_instruction(mem.read_be_u32(state.pc), state.pc);
-            // log_state(state);
-        }
+            auto func = cast(JitFunction) ptr;            
+            jit_hash_map[state.pc] = func;
             func(state);
-        if (dicksinmyass) {
-            // log_state(state);
-        }
-
-        if (instrument && biglog) {
-            // import std.stdio;
-            // log_state(state);
-            // writefln("Opcode: %08x. After. Paused emulation. >", mem.read_be_u32(state.pc));
-            // readln;
-
-            // jit_hash_map = JitHashMap();
-        }
-        }
-
-        // make sure none of the ps are NaN
-        for (int i = 0; i < 64; i++) {
-            // float ps0 = *(cast(float*)&state.ps[i].ps0);
-            // if (ps0 != ps0) {
-                // error_broadway("NaN detected in PS[%d].ps0", i);
-            // }
-
         }
 
         if (state.icache_flushed) {
