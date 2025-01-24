@@ -150,6 +150,7 @@ final class ExternalInterface {
 
         bool start_transfer = exi_cr[x].bit(0);
         if (start_transfer) {
+            log_hollywood("EXI%d transfer start", x);
             log_exi("EXI%d transfer start", x);
 
             bool is_dma = exi_cr[x].bit(1);

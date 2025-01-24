@@ -2,6 +2,7 @@ module emu.hw.hollywood.texture;
 
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.strategy.memstrategy;
+import util.bitop;
 import util.log;
 import util.number;
 
@@ -15,6 +16,8 @@ struct TextureDescriptor {
 }
 
 enum TextureType {
+    I4 = 0,
+    IA8 = 3,
     Compressed = 14,
 }
 
@@ -22,18 +25,96 @@ struct Color {
     u8 b;
     u8 g;
     u8 r;
+    u8 a;
 }
 
-Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
-    auto type = descriptor.type;
+Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
+    auto width = descriptor.width;
+    auto height = descriptor.height;
+    auto base_address = descriptor.base_address;
+
+    auto texture = new Color[width * height];
+
+    int tiles_x = cast(int) width  / 8;
+    int tiles_y = cast(int) height / 8;
+
+    u32 current_address = base_address;
+    for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+    for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+        for (int fine_y = 0; fine_y < 8; fine_y++) {
+        for (int fine_x = 0; fine_x < 8; fine_x++) {
+            auto x = tile_x * 8 + fine_x;
+            auto y = tile_y * 8 + fine_y;
+
+            auto value = mem.paddr_read_u8(cast(u32) current_address);
+
+            if (x % 2 == 0) {
+                texture[x * height + y] = Color(
+                    ((value & 0xf0) >> 4) * 0x11,
+                    ((value & 0xf0) >> 4) * 0x11,
+                    ((value & 0xf0) >> 4) * 0x11,
+                    255
+                );
+            } else {
+                texture[x * height + y] = Color(
+                    (value & 0x0f) * 0x11,
+                    (value & 0x0f) * 0x11,
+                    (value & 0x0f) * 0x11,
+                    255
+                );
+    
+                current_address += 1;
+            }
+        }
+        }
+    }
+    }
+
+    return texture;
+}
+
+Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
+    auto width = descriptor.width;
+    auto height = descriptor.height;
+    auto base_address = descriptor.base_address;
+
+    auto texture = new Color[width * height];
+
+    int tiles_x = cast(int) width  / 4;
+    int tiles_y = cast(int) height / 4;
+
+    u32 current_address = base_address;
+    for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+    for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int fine_x = 0; fine_x < 4; fine_x++) {
+        for (int fine_y = 0; fine_y < 4; fine_y++) {
+            auto value = mem.paddr_read_u16(current_address);
+            current_address += 2;
+
+            u8 intensity = cast(u8) value.bits(0, 7);
+            u8 alpha     = cast(u8) value.bits(8, 15);
+            
+            auto x = tile_x * 4 + fine_x;
+            auto y = tile_y * 4 + fine_y;
+
+            texture[x * height + y] = Color(
+                intensity,
+                intensity,
+                intensity,
+                alpha
+            );
+        }
+        }
+    }
+    }
+
+    return texture;
+}
+Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
     auto width = descriptor.width;
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
     
-    if (type != TextureType.Compressed) {
-        log_hollywood("Unsupported texture type: %d", type);
-    }
-
     auto texture = new Color[width * height];
 
     int tiles_x = cast(int) width  / 8;
@@ -70,7 +151,16 @@ Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
             int x = tile_x * 8 + texel_number % 2 * 4;
             int y = tile_y * 8 + texel_number / 2 * 4;
 
-            int[4][4] colors = [
+            bool has_transparency = mem.paddr_read_u16(texel_address) <= mem.paddr_read_u16(texel_address + 2);
+            int[4][4] colors = has_transparency ? 
+            [
+                color1,
+                color2,
+                interpolate(color1, color2, 0.5),
+                [0, 0, 0, 0]
+            ]
+            :
+            [
                 color1,
                 color2,
                 interpolate(color1, color2, 0.33),
@@ -110,6 +200,7 @@ Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
                     cast(u8) colors[bits[i + j * 4]][2],
                     cast(u8) colors[bits[i + j * 4]][1],
                     cast(u8) colors[bits[i + j * 4]][0],
+                    255
                 );
             }
             }
@@ -120,4 +211,20 @@ Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
     // if (texture.length > 100)
     // log_hollywood("SHIT: %s", texture[0..100]);
     return texture;
+}
+
+Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
+    log_hollywood("Loading texture: %s", descriptor);
+
+    switch (descriptor.type) {
+        case TextureType.I4:
+            return load_texture_i4(descriptor, mem);
+        case TextureType.IA8:
+            return load_texture_ia8(descriptor, mem);
+        case TextureType.Compressed:
+            return load_texture_compressed(descriptor, mem);
+        default:
+            error_hollywood("Unsupported texture type: %d", descriptor.type);
+            return [];
+    }
 }

@@ -37,8 +37,9 @@ class SdlDevice : MultiMediaDevice {
     this(int screen_scale, bool start_debugger) {
         loadSDL();
 
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
         if (start_debugger) {
             error_frontend("SDL device does not support debugger");
@@ -147,7 +148,6 @@ class SdlDevice : MultiMediaDevice {
             // glDrawArrays(GL_TRIANGLES, 0, 3);	// draw first object
 
             // glBindVertexArray(0);
-            SDL_GL_SwapWindow(window);
         }
 
         void draw() {
@@ -170,6 +170,7 @@ class SdlDevice : MultiMediaDevice {
             // }
 
             // SDL_UpdateWindowSurface(window);
+            SDL_GL_SwapWindow(window);
         }
    
         void set_fps(int fps) {

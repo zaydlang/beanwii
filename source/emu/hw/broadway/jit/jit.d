@@ -77,12 +77,12 @@ final class Jit {
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
 
             auto func = cast(JitFunction) ptr;            
-            jit_hash_map[state.pc] = func;
             func(state);
         }
 
         if (state.icache_flushed) {
-            assert(state.icbi_address % 32 == 0);
+            // assert(state.icbi_address % 32 == 0);
+            state.icbi_address &= ~31;
             
             for (u32 i = 0; i < 32; i += 4) {
                 jit_hash_map.remove(state.icbi_address + i);    

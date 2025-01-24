@@ -1,7 +1,8 @@
 module emu.hw.vi.vi;
 
-import emu.hw.memory.strategy.memstrategy;
 import emu.hw.broadway.interrupt;
+import emu.hw.hollywood.hollywood;
+import emu.hw.memory.strategy.memstrategy;
 import emu.hw.vi.vi;
 import ui.device;
 import util.bitop;
@@ -622,28 +623,29 @@ final class VideoInterface {
     }
 
     public void scanout() {
-        for (int field = 0; field < 2; field++) {
-            auto field_address = (field == 0) ? bottom_field_fbb_address : top_field_fbb_address;
-            u32 base_address = (field_address << 9) + (field * XBFR_WIDTH * 2);
-            if (field == 0 && base_address > 256) base_address += (256);
-            log_vi("Scanning out field %d from base address %08x", field, base_address);
-            for (int y = field; y < XBFR_HEIGHT; y += 2) {
-            for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
-                u32 ycbycr = mem.paddr_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
+        // for (int field = 0; field < 2; field++) {
+        //     auto field_address = (field == 0) ? bottom_field_fbb_address : top_field_fbb_address;
+        //     u32 base_address = (field_address << 9) + (field * XBFR_WIDTH * 2);
+        //     if (field == 0 && base_address > 256) base_address += (256);
+        //     log_vi("Scanning out field %d from base address %08x", field, base_address);
+        //     for (int y = field; y < XBFR_HEIGHT; y += 2) {
+        //     for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
+        //         u32 ycbycr = mem.paddr_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
 
-                float cr = ycbycr.get_byte(0);
-                float y2 = ycbycr.get_byte(1);
-                float cb = ycbycr.get_byte(2);
-                float y1 = ycbycr.get_byte(3);
+        //         float cr = ycbycr.get_byte(0);
+        //         float y2 = ycbycr.get_byte(1);
+        //         float cb = ycbycr.get_byte(2);
+        //         float y1 = ycbycr.get_byte(3);
 
-                video_buffer[x + 0][y] = ycbycr_to_rgb(y1, cr, cb);
-                video_buffer[x + 1][y] = ycbycr_to_rgb(y2, cr, cb);
-            }
-            }
-        }
+        //         video_buffer[x + 0][y] = ycbycr_to_rgb(y1, cr, cb);
+        //         video_buffer[x + 1][y] = ycbycr_to_rgb(y2, cr, cb);
+        //     }
+        //     }
+        // }
 
-        log_vi("Presenting VideoBuffer");
+        // log_vi("Presenting VideoBuffer");
 
+        hollywood.draw_shapes();
         this.present_videobuffer_callback(video_buffer);
 
         if (interrupt_enable[0]) {
@@ -673,5 +675,10 @@ final class VideoInterface {
 
     public void connect_interrupt_controller(InterruptController ic) {
         this.interrupt_controller = ic;
+    }
+
+    Hollywood hollywood;
+    public void connect_hollywood(Hollywood hollywood) {
+        this.hollywood = hollywood;
     }
 }

@@ -120,7 +120,22 @@ final class Broadway {
         while (elapsed < num_cycles && !state.halted) {
             exception_raised = false;
             u32 old_pc = state.pc;
-
+            
+            if (state.pc == 0x801a1018) {
+                log_hollywood("magic shithole: %x", state.gprs[3]);
+            }
+if (state.pc == 0x8027cfec) log_hollywood("FUNCTION: DVDInquiryAsync");
+// if (state.pc == 0x8027d18c) log_function("FUNCTION: DVDGetDriveStatus");
+if (state.pc == 0x8027d238) log_hollywood("FUNCTION: DVDResume");
+if (state.pc == 0x8027d6b8) log_hollywood("FUNCTION: __DVDGetCoverStatus");
+if (state.pc == 0x8027d780) log_hollywood("FUNCTION: __DVDPrepareResetAsync");
+if (state.pc == 0x8027d8a8) log_hollywood("FUNCTION: __DVDPrepareReset");
+if (state.pc == 0x8027d9dc) log_hollywood("FUNCTION: __DVDTestAlarm");
+if (state.pc == 0x8027da40) log_hollywood("FUNCTION: __DVDPushWaitingQueue");
+if (state.pc == 0x8027daa8) log_hollywood("FUNCTION: __DVDPopWaitingQueue");
+if (state.pc == 0x8027db48) log_hollywood("FUNCTION: __DVDCheckWaitingQueue");
+if (state.pc == 0x8027dba0) log_hollywood("FUNCTION: __DVDGetNextWaitingQueue");
+if (state.pc == 0x8027dc00) log_hollywood("FUNCTION: __DVDDequeueWaitingQueue");
             auto delta = jit.run(&state);
 
             if (state.pc != old_pc + 4 && false) {
@@ -624,9 +639,9 @@ if (state.pc == 0x8028fa20) log_function("FUNCTION: GXSetIndTexMtx");
 if (state.pc == 0x8028fb74) log_function("FUNCTION: GXSetIndTexCoordScale");
 if (state.pc == 0x8028fc78) log_function("FUNCTION: GXSetIndTexOrder");
 if (state.pc == 0x8028fd44) log_function("FUNCTION: GXSetNumIndStages");
+if (state.pc == 0x8028fe04) log_function("FUNCTION: __GXSetIndirectMask");
 if (state.pc == 0x8028fd64) log_function("FUNCTION: GXSetTevDirect");
 if (state.pc == 0x8028fdac) log_function("FUNCTION: GXSetTevIndWarp");
-if (state.pc == 0x8028fe04) log_function("FUNCTION: __GXSetIndirectMask");
 if (state.pc == 0x8028feec) log_function("FUNCTION: GXSetTevColorIn");
 if (state.pc == 0x8028ff2c) log_function("FUNCTION: GXSetTevAlphaIn");
 if (state.pc == 0x8028ff6c) log_function("FUNCTION: GXSetTevColorOp");
@@ -638,9 +653,9 @@ if (state.pc == 0x8029013c) log_function("FUNCTION: GXSetTevKColorSel");
 if (state.pc == 0x8029018c) log_function("FUNCTION: GXSetTevKAlphaSel");
 if (state.pc == 0x802901dc) log_function("FUNCTION: GXSetTevSwapMode");
 if (state.pc == 0x80290218) log_function("FUNCTION: GXSetTevSwapModeTable");
+if (state.pc == 0x80290358) log_function("FUNCTION: GXSetTevOrder");
 if (state.pc == 0x80290294) log_function("FUNCTION: GXSetAlphaCompare");
 if (state.pc == 0x802902cc) log_function("FUNCTION: GXSetZTexture");
-if (state.pc == 0x80290358) log_function("FUNCTION: GXSetTevOrder");
 if (state.pc == 0x80290704) log_function("FUNCTION: GXSetFogRangeAdj");
 if (state.pc == 0x80290828) log_function("FUNCTION: GXSetBlendMode");
 if (state.pc == 0x80290878) log_function("FUNCTION: GXSetColorUpdate");

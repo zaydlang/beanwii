@@ -51,7 +51,7 @@ final class IPC {
                 log_ipc("IPC: Finalizing new response");
                 IPCResponse response = responses.front;
                 responses.removeFront();
-                ipc.finalize_command(response.paddr, response.return_value);
+                ipc.scheduler.add_event_relative_to_clock(() => finalize_command(response.paddr, response.return_value), 10000);
             }
         }
 
@@ -111,7 +111,7 @@ final class IPC {
         assert(offset == 0, "IPC: PPCCTRL offset is not 0");
         assert(T.sizeof == 4, "IPC: PPCCTRL write size is not 4");
 
-        log_ipc("IPC: Writing to HW_IPC_PPCCTRL = %x", value);
+        log_ipc("IPC: Writing to HW_IPC_PPCCTRL = %x %x", hw_ipc_ppcctrl , value);
         if (value.bit(1)) hw_ipc_ppcctrl &= ~(1 << 1);
         if (value.bit(2)) hw_ipc_ppcctrl &= ~(1 << 2);
         
@@ -144,6 +144,13 @@ final class IPC {
 
             process_command_event_id = scheduler.add_event_relative_to_clock(() => process_command(command, paddr), 10000);
         }
+
+        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1) && !interrupt_controller.ipc_interrupt_pending()) {
+            log_ipc("IPC: Interrupt acknowledged");
+            
+            waiting_for_cpu_to_get_response = false;
+            response_queue.maybe_finalize_new_response();
+        }   
     }
 
     T read_HW_IPC_PPCCTRL(T)(int offset) {
@@ -157,7 +164,7 @@ final class IPC {
     u32 hw_ipc_armmsg;
 
     u8 read_HW_IPC_ARMMSG(int target_byte) {
-        log_ipc("IPC: Reading from HW_IPC_ARMMSG[%d] = %x", target_byte, hw_ipc_armmsg.get_byte(target_byte));
+        log_ipc("IPC: Reading from hw_ipc_armmsg[%d] = %x", target_byte, hw_ipc_armmsg.get_byte(target_byte));
         return hw_ipc_armmsg.get_byte(target_byte);
     }
 
@@ -283,10 +290,12 @@ final class IPC {
 
         log_ipc("Finalizing command %x with return value %x", paddr, return_value);
         hw_ipc_ppcctrl |= 1 << 2;
+
+        log_ipc("Set hw_ipc_armmsg to %x", paddr);
         hw_ipc_armmsg = paddr;
 
         if (hw_ipc_ppcctrl.bit(4)) {
-            log_ipc("Raising IPCIRQ");
+            log_ipc("Raising IPCIRQ: %x", interrupt_controller.ipc_interrupt_pending());
             interrupt_controller.raise_hollywood_interrupt(HollywoodInterruptCause.IPC);
         }
     }
@@ -304,6 +313,7 @@ final class IPC {
     }
 
     void interrupt_acknowledged() {
+        log_hollywood("ipc: %x ", hw_ipc_ppcctrl);
         if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1)) {
             waiting_for_cpu_to_get_response = false;
             response_queue.maybe_finalize_new_response();

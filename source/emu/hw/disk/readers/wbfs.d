@@ -173,6 +173,7 @@ final class WbfsReader : FileReader {
 
                     wii.load_disk(this, decrypted_data, cast(u64) partition_header.ticket.title_id);
                     wii_loaded = true;
+                    return;
                 }
             }
         }

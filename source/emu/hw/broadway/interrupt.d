@@ -49,7 +49,7 @@ final class InterruptController {
     }
 
     void write_HW_PPCIRQFLAG(int target_byte, u8 value) {
-        log_interrupt("HW_PPCIRQFLAG[%d] = %02x", target_byte, value);
+        log_hollywood("HW_PPCIRQFLAG[%d] = %02x", target_byte, value);
 
         bool was_ipc_raised = (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
         set_hollywood_interrupt_flag(hollywood_interrupt_flag.set_byte(
@@ -57,8 +57,13 @@ final class InterruptController {
         
         bool is_ipc_raised = (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
         if (was_ipc_raised && !is_ipc_raised) {
+            log_hollywood("InterruptController: IPC interrupt acknowledged %x", broadway.state.pc);
             ipc.interrupt_acknowledged();
         }
+    }
+
+    bool ipc_interrupt_pending() {
+        return (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
     }
 
     u32 hollywood_interrupt_mask;
@@ -156,6 +161,7 @@ final class InterruptController {
     void set_hollywood_interrupt_flag(u32 flag) {
         hollywood_interrupt_flag = flag;
         log_interrupt("InterruptController: set Hollywood interrupt flag to %08x", flag);
+        log_hollywood("InterruptController: set Hollywood interrupt flag to %08x", flag);
         recalculate_hollywood_interrupt();
     }
 

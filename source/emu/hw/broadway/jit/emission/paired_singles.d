@@ -110,6 +110,7 @@ EmissionAction emit_ps_sum0(Code code, u32 opcode) {
     code.get_ps(guest_ra, xmm0);
     code.get_ps(guest_rb, xmm1);
     code.get_ps(guest_rc, xmm2);
+    code.shufpd(xmm1, xmm1, 1);
     code.addpd(xmm0, xmm1);
     code.blendpd(xmm0, xmm2, 2);
     code.set_ps(guest_rd, xmm0);
@@ -269,7 +270,23 @@ EmissionAction emit_ps_merge01(Code code, u32 opcode) {
 
     code.get_ps(guest_ra, xmm0);
     code.get_ps(guest_rb, xmm1);
-    code.punpcklqdq(xmm0, xmm1);
+    code.shufpd(xmm0, xmm1, 0b0010);
+
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
+EmissionAction emit_ps_merge00(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.shufpd(xmm0, xmm1, 0b0000);
 
     code.set_ps(guest_rd, xmm0);
 
@@ -285,7 +302,7 @@ EmissionAction emit_ps_merge10(Code code, u32 opcode) {
 
     code.get_ps(guest_ra, xmm0);
     code.get_ps(guest_rb, xmm1);
-    code.punpcklqdq(xmm1, xmm0);
+    code.shufpd(xmm0, xmm1, 0b0001);
 
     code.set_ps(guest_rd, xmm1);
 

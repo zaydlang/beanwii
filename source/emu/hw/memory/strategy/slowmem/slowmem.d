@@ -184,28 +184,6 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
-        if (address == 0x80000500) {
-            log_function("WRITE TO BIGBOY 0X500: %x", value);
-        }
-
-        if ((address & 0xFFF_FFFF) == 0x004f0c7c && value == 0xe2) {
-            error_disk("HELLO! Big baller biswadev dev roy back at it again: %x", value);
-        }
-
-        // log_slowmem("Write to 0x%08x = 0x%08x", address, value);
-        if (address == 0x933e2160) {
-            // if (value == 0x133e2380) error_slowmem("Write to 0x933e2160 = 0x133e2380");
-        }
-        if (address == 0x80557866) {
-            log_slowmem("Write to wtf = 0x%08x", value);
-        }
-
-        if (address == 0x8056d3d0) {
-            import std.stdio;
-            
-            log_function("_ipc_mailboxack = 0x%08x", value);
-        }
-
         static if (translate) {
             auto memory_access = this.translate_vaddr_to_paddr(address);
         } else {

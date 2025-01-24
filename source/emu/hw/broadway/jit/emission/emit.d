@@ -1946,6 +1946,38 @@ private EmissionAction emit_stw(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
+private EmissionAction emit_stbux(Code code, u32 opcode) {
+    code.reserve_register(edi);
+    code.reserve_register(esi);
+    code.reserve_register(edx);
+    code.reserve_register(eax);
+
+    auto guest_rs = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+
+    assert(guest_ra != GuestReg.R0);
+
+    auto ra = code.get_reg(guest_ra);
+    auto rs = code.get_reg(guest_rs);
+    auto rb = code.get_reg(guest_rb);
+
+    code.mov(esi, ra);
+    code.add(esi, rb);
+    code.set_reg(guest_ra, esi);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(edx, rs);
+
+        code.mov(rax, cast(u64) code.config.write_handler8);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    return EmissionAction.CONTINUE;
+}
 private EmissionAction emit_stbx(Code code, u32 opcode) {
     code.reserve_register(edi);
     code.reserve_register(esi);
@@ -2359,9 +2391,9 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
     secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
-        case PrimaryOp04SecondaryOpcode.PS_ABSX:   return emit_ps_absx   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_CMPO0:  instrument = true;  return emit_ps_cmpo0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MR:     instrument = true;  return emit_ps_mr     (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MERGE00:instrument = true;  return emit_ps_merge00(code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE01:instrument = true;  return emit_ps_merge01(code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE10:instrument = true;  return emit_ps_merge10(code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE11:instrument = true;  return emit_ps_merge11(code, opcode);
@@ -2448,6 +2480,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.SRAW:    return emit_sraw   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.SRAWI:   return emit_srawi  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.SRW:     return emit_srw    (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.STBUX:   return emit_stbux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STBX:    return emit_stbx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFSX:   return emit_stfsx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHBRX:  return emit_sthbrx (code, opcode);
@@ -2539,7 +2572,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.LBZ:    return emit_lbz   (code, opcode);
         case PrimaryOpcode.LBZU:   return emit_lbzu  (code, opcode);
         case PrimaryOpcode.LFD:    return emit_lfd   (code, opcode);
-        case PrimaryOpcode.LFS:    instrument = true; return emit_lfs   (code, opcode);
+        case PrimaryOpcode.LFS:    return emit_lfs   (code, opcode);
         case PrimaryOpcode.LHA:    return emit_lha   (code, opcode);
         case PrimaryOpcode.LHZ:    return emit_lhz   (code, opcode);
         case PrimaryOpcode.LHZU:   return emit_lhzu  (code, opcode);
@@ -2549,8 +2582,8 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.MULLI:  return emit_mulli (code, opcode);
         case PrimaryOpcode.ORI:    return emit_ori   (code, opcode);
         case PrimaryOpcode.ORIS:   return emit_oris  (code, opcode);
-        case PrimaryOpcode.PSQ_L:  instrument = true; return emit_psq_l (code, opcode);
-        case PrimaryOpcode.PSQ_ST: instrument = true; return emit_psq_st(code, opcode);
+        case PrimaryOpcode.PSQ_L:  return emit_psq_l (code, opcode);
+        case PrimaryOpcode.PSQ_ST: return emit_psq_st(code, opcode);
         case PrimaryOpcode.RLWIMI: return emit_rlwimi(code, opcode);
         case PrimaryOpcode.RLWINM: return emit_rlwinm(code, opcode);
         case PrimaryOpcode.RLWNM:  return emit_rlwnm (code, opcode);

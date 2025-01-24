@@ -195,7 +195,7 @@ EmissionAction emit_lfsux(Code code, u32 opcode) {
     code.test(hid2, 1 << 29);
     code.jz(end);
 
-    code.vpbroadcastd(xmm0, xmm0);
+    code.vpbroadcastq(xmm0, xmm0);
 
 code.label(end);
     code.set_ps(guest_rd, xmm0);
@@ -423,7 +423,7 @@ EmissionAction emit_frspx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_lfsx(Code code, u32 opcode) {
-    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_ps;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     assert(opcode.bit(0) == 0);
@@ -446,17 +446,19 @@ EmissionAction emit_lfsx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
+    code.movq(xmm0, rax);
+    code.cvtss2sd(xmm0, xmm0);
+
     auto end = code.fresh_label();
 
     auto hid2 = code.get_reg(GuestReg.HID2);
     code.test(hid2, 1 << 29);
     code.jz(end);
 
-    code.vpbroadcastd(xmm0, xmm0);
+    code.vpbroadcastq(xmm0, xmm0);
 
 code.label(end);
-    code.movq(xmm0, rax);
-    code.set_fpr(guest_rd, rax);
+    code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.CONTINUE;
 }
@@ -586,7 +588,9 @@ EmissionAction emit_frsqrtex(Code code, u32 opcode) {
     assert(rc == 0);
 
     code.get_ps(guest_rb, xmm0);
-    code.rsqrtsd(xmm0, xmm0);
+    code.cvtsd2ss(xmm0, xmm0);
+    code.rsqrtss(xmm0, xmm0);
+    code.cvtss2sd(xmm0, xmm0);
     code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.CONTINUE;

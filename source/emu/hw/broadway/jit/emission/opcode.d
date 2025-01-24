@@ -52,13 +52,13 @@ enum PrimaryOpcode {
 
 enum PrimaryOp04SecondaryOpcode {
     PS_ADD     = 0x015,
-    PS_ABSX    = 0x210,
     PS_CMPO0   = 0x020,
     PS_NMADDX  = 0x01F,
     PS_MADDS0X = 0x00E,
     PS_MADDS1X = 0x00F,
     PS_MADDX   = 0x01D,
     PS_MR      = 0x048,
+    PS_MERGE00 = 0x210,
     PS_MERGE01 = 0x230,
     PS_MERGE10 = 0x250,
     PS_MERGE11 = 0x270,
@@ -137,6 +137,7 @@ enum PrimaryOp1FSecondaryOpcode {
     SRAW    = 0x318,
     SRAWI   = 0x338,
     SRW     = 0x218,
+    STBUX   = 0x0F7,
     STBX    = 0x0D7,
     STFSX   = 0x297,
     STHBRX  = 0x396,

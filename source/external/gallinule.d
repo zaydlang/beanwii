@@ -2361,7 +2361,7 @@ import std.stdio;
     auto movupd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x10, dst, src);
     auto movupd(RM)(RM dst, XMM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x11, src, dst);
 
-    auto rsqrtsd(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf3, 0x0f, 0x52, dst, src);
+    auto rsqrtss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf3, 0x0f, 0x52, dst, src);
     /* ====== SSE3 ====== */
 
     auto addsubps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0xf2, 0x0f, 0xd0, dst, src);
