@@ -2385,6 +2385,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_MULS0:   return emit_ps_muls0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MSUBX:   return emit_ps_msubx  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUM0:    return emit_ps_sum0   (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_SUM1:    return emit_ps_sum1   (code, opcode);
         default: break;
     }
 

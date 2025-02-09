@@ -1,11 +1,11 @@
 module emu.hw.hollywood.texture;
 
+import dklib.khash;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.strategy.memstrategy;
 import util.bitop;
 import util.log;
 import util.number;
-
 struct TextureDescriptor {
     size_t width;
     size_t height;
@@ -13,6 +13,14 @@ struct TextureDescriptor {
     TextureType type;
     u32 base_address;
     Color* texture;
+
+    TextureWrap wrap_s;
+    TextureWrap wrap_t;
+
+    int dualtex_matrix_slot;
+    bool dualtex_normal_enable;
+
+    int tex_matrix_slot;
 }
 
 enum TextureType {
@@ -26,6 +34,41 @@ struct Color {
     u8 g;
     u8 r;
     u8 a;
+}
+
+enum TextureWrap {
+    Clamp = 0,
+    Repeat = 1,
+    Mirror = 2,
+}
+
+alias TextureCache = khash!(u64, Color[]);
+TextureCache texture_cache;
+
+size_t size_of_texture(TextureDescriptor descriptor) {
+    final switch (descriptor.type) {
+        case TextureType.I4:
+            return descriptor.width * descriptor.height / 2;
+        case TextureType.IA8:
+            return descriptor.width * descriptor.height * 2;
+        case TextureType.Compressed:
+            return descriptor.width * descriptor.height / 2;
+    }
+}
+
+u64 calculate_texture_hash(TextureDescriptor descriptor, Mem mem) {
+    auto width = descriptor.width;
+    auto height = descriptor.height;
+    auto base_address = descriptor.base_address;
+
+    u64 hash = 0;
+
+    hash ^= width;
+    hash ^= height;
+    hash ^= base_address;
+    hash ^= cast(u64) descriptor.type;
+
+    return hash;
 }
 
 Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
@@ -50,17 +93,17 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
 
             if (x % 2 == 0) {
                 texture[x * height + y] = Color(
-                    ((value & 0xf0) >> 4) * 0x11,
-                    ((value & 0xf0) >> 4) * 0x11,
-                    ((value & 0xf0) >> 4) * 0x11,
-                    255
+                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
+                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
+                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
+                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
                 );
             } else {
                 texture[x * height + y] = Color(
-                    (value & 0x0f) * 0x11,
-                    (value & 0x0f) * 0x11,
-                    (value & 0x0f) * 0x11,
-                    255
+                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
+                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
+                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
+                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
                 );
     
                 current_address += 1;
@@ -84,10 +127,10 @@ Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
     int tiles_y = cast(int) height / 4;
 
     u32 current_address = base_address;
-    for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
-        for (int fine_x = 0; fine_x < 4; fine_x++) {
+    for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
         for (int fine_y = 0; fine_y < 4; fine_y++) {
+        for (int fine_x = 0; fine_x < 4; fine_x++) {
             auto value = mem.paddr_read_u16(current_address);
             current_address += 2;
 
@@ -200,7 +243,7 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
                     cast(u8) colors[bits[i + j * 4]][2],
                     cast(u8) colors[bits[i + j * 4]][1],
                     cast(u8) colors[bits[i + j * 4]][0],
-                    255
+                    cast(u8) colors[bits[i + j * 4]][3]
                 );
             }
             }
@@ -216,15 +259,24 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
 Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
     log_hollywood("Loading texture: %s", descriptor);
 
+    u64 hash = calculate_texture_hash(descriptor, mem);
+    auto cache = texture_cache.require(hash, null);
+    if (cache != null) {
+        return cache;
+    }
+
+    Color[] result;
     switch (descriptor.type) {
         case TextureType.I4:
-            return load_texture_i4(descriptor, mem);
+            result = load_texture_i4(descriptor, mem); break;
         case TextureType.IA8:
-            return load_texture_ia8(descriptor, mem);
+            result = load_texture_ia8(descriptor, mem); break;
         case TextureType.Compressed:
-            return load_texture_compressed(descriptor, mem);
+            result = load_texture_compressed(descriptor, mem); break;
         default:
             error_hollywood("Unsupported texture type: %d", descriptor.type);
-            return [];
     }
+
+    texture_cache[hash] = result;
+    return result;
 }

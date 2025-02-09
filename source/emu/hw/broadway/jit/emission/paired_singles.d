@@ -118,6 +118,24 @@ EmissionAction emit_ps_sum0(Code code, u32 opcode) {
     return EmissionAction.CONTINUE;
 }
 
+EmissionAction emit_ps_sum1(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    auto guest_rc = opcode.bits(6, 10).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.shufpd(xmm1, xmm1, 1);
+    code.addpd(xmm0, xmm1);
+    code.blendpd(xmm0, xmm2, 1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.CONTINUE;
+}
+
 EmissionAction emit_ps_mulx(Code code, u32 opcode) {
     abort_if_no_pse(code);
 

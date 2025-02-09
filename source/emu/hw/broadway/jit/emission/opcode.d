@@ -68,6 +68,7 @@ enum PrimaryOp04SecondaryOpcode {
     PS_NEGX    = 0x028,
     PS_SUBX    = 0x014,
     PS_SUM0    = 0x00A,
+    PS_SUM1    = 0x00B,
 }
 
 enum PrimaryOp13SecondaryOpcode {

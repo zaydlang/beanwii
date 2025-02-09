@@ -6,10 +6,16 @@ import emu.hw.ipc.ipc;
 import emu.hw.ipc.usb.usb;
 import emu.hw.memory.strategy.memstrategy;
 import std.conv;
+import std.file;
 import std.format;
 import util.bitop;
 import util.log;
 import util.number;
+
+extern(C) {
+    extern int errno;
+    int mkdir(const char *path, int mode);
+}
 
 alias FileDescriptor = int;
 
@@ -343,6 +349,15 @@ final class FileManager {
     final class DevFS : File {
         this() {
             super("/dev/fs");
+            
+            // go and fuck yourself
+            try { "/home/zaydq/wii/tmp".rmdirRecurse(); } catch (Exception e) {}
+            assert_ipc(mkdir("/home/zaydq/wii/tmp", std.conv.octal!"777") == 0, "failed to create /tmp: %d", errno);
+        }
+
+        void set_title_id(u64 title_id) {
+            string title_dir = "/home/zaydq/wii/title/%08x/%08x/data".format(cast(u32) (title_id >> 32), cast(u32) title_id);
+            try { title_dir.mkdirRecurse(); } catch (Exception e) {}
         }
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
@@ -363,6 +378,7 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::CreateDir(%s, %d, %d)", filename, owner_id, group_id);
+                // std.file.mkdir("/home/zaydq/wii" ~ filename);
             } else if (ioctl == 0x9) {
                 // CreateFile
                 auto owner_id = mem.paddr_read_u32(input_buffer + 0);
@@ -379,14 +395,78 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::CreateFile(%s, %d, %d)", filename, owner_id, group_id);
-                files ~= new DataFile(filename, new ubyte[100000]);
+                try { std.file.write("/home/zaydq/wii" ~ filename, new ubyte[0]); } catch (Exception e) {}
             } else if (ioctl == 0x5) {
                 log_ipc("Who knows");
+            } else if (ioctl == 0x6) {
+                string filename = "";
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    if (c == 0) {
+                        break;
+                    }
+                
+                    filename ~= cast(char) c;
+                }
+
+                log_ipc("DevFS::Dipshit(%s)", filename);
+                return cast(int) IPCError.ENOENT;
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }
 
             return 0;
+        }
+
+        override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
+            log_ipc("DevFS::ioctlv(%d, %d, %d, %d)", ioctl, argcin, argcio, data_paddr);
+
+            if (ioctl == 0x4) {
+                if (argcin != 1) {
+                    error_ipc("Invalid argcin %d", argcin);
+                }
+
+                if (argcio != 1) {
+                    error_ipc("Invalid argcio %d", argcio);
+                }
+
+                // ReadDir
+                u32 file_addr = mem.paddr_read_u32(data_paddr);
+
+                string filename;
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(file_addr + i);
+                    if (c == 0) {
+                        break;
+                    }
+
+                    filename ~= cast(char) c;
+                }
+
+                if (!std.file.dirEntries("/home/zaydq/wii" ~ filename, SpanMode.shallow).empty) {
+                    error_ipc("handle this dipshit");
+                }
+
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), 0);
+            } else if (ioctl == 0xc) {
+                u32 file_addr = mem.paddr_read_u32(data_paddr);
+
+                string filename;
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(file_addr + i);
+                    if (c == 0) {
+                        break;
+                    }
+
+                    filename ~= cast(char) c;
+                }
+
+                log_ipc("DevFS::DipshitGetUsage(%s)", filename);
+            } else {
+                error_ipc("Unknown ioctlv %d", ioctl);
+            }
+
+            ipc_response_queue.push_later(request_paddr, 0, 40_000);
         }
     }
 
@@ -643,6 +723,7 @@ final class FileManager {
     }
 
     DevES dev_es;
+    DevFS dev_fs;
 
     alias IPCResponseQueue = IPC.IPCResponseQueue;
     IPCResponseQueue ipc_response_queue;
@@ -651,13 +732,14 @@ final class FileManager {
         this.ipc_response_queue = ipc_response_queue;
         
         dev_es = new DevES();
+        dev_fs = new DevFS();
 
         generate_settings_txt();
 
         files = [
             dev_es,
+            dev_fs,
             new UsbDev57e305(this.ipc_response_queue),
-            new DevFS(),
             new DevStmImmediate(),
             new DevNetKdTime(),
             new DevNetKdRequest(),
@@ -805,5 +887,6 @@ final class FileManager {
 
     void set_title_id(u64 title_id) {
         dev_es.set_title_id(title_id);
+        dev_fs.set_title_id(title_id);
     }
 }

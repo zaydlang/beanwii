@@ -1,38 +1,37 @@
 module ui.sdl.device;
 
+import bindbc.freetype;
 import bindbc.opengl;
 import bindbc.sdl;
 import emu.hw.wii;
+import std.file;
 import std.format;
 import std.string;
 import ui.device;
-import ui.reng.rengcore;
-import ui.reng.wiivideo;
+import ui.sdl.button;
+import ui.sdl.color;
+import ui.sdl.drawable;
+import ui.sdl.font;
+import ui.sdl.shaders.shader;
+import ui.sdl.updatable;
 import util.log;
 import util.number;
-
-// two vertex array objects, one for each object drawn
-uint[2] vertexArrayObjID;
-// three vertex buffer objects in this example
-uint[3] vertexBufferObjID;
-
-// Globals
-// Real programs don't use globals :-D
-// Data would normally be read from files
-GLfloat[9] vertices = [-416.0f,228.0f,0.0f,
-						-416.0f,-228.0f,0.0f,
-                    416.0f,228.0f,0.0f ];
-GLfloat[9] colours = [	1.0f, 0.0f, 0.0f,
-						0.0f, 1.0f, 0.0f,
-						0.0f, 0.0f, 1.0f ];
-GLfloat[9] vertices2 = [416.0f,-228.0f,0.0f,
-						-416.0f,-228.0f,0.0f,
-                    416.0f,228.0f,0.0f ];
-	GLuint p, f, v;
                 
 class SdlDevice : MultiMediaDevice {
     SDL_Window* window;
     SDL_Color* frame_buffer;
+    SDL_Renderer* renderer;
+
+    bool debugging;
+
+    Drawable[] drawables;
+    Updatable[] updatables;
+
+    enum SCREEN_BORDER_WIDTH    = 10;
+    enum DEBUGGER_PANEL_WIDTH   = 250;
+    enum DEBUGGER_PANEL_HEIGHT  = WII_SCREEN_HEIGHT;
+    enum DEBUGGER_SCREEN_WIDTH  = WII_SCREEN_WIDTH  + SCREEN_BORDER_WIDTH * 3 + DEBUGGER_PANEL_WIDTH;
+    enum DEBUGGER_SCREEN_HEIGHT = WII_SCREEN_HEIGHT + SCREEN_BORDER_WIDTH * 2;
 
     this(int screen_scale, bool start_debugger) {
         loadSDL();
@@ -41,23 +40,25 @@ class SdlDevice : MultiMediaDevice {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
-        if (start_debugger) {
-            error_frontend("SDL device does not support debugger");
-        }
-
         if (SDL_Init(SDL_INIT_VIDEO) < 0) {
             error_frontend("SDL_Init returned an error: %s\n", SDL_GetError());
         }
 
-        window = SDL_CreateWindow("beanwii", 
+        if (start_debugger) {
+            window = SDL_CreateWindow("beanwii", 
+                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
+                DEBUGGER_SCREEN_WIDTH, DEBUGGER_SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+        } else {
+            window = SDL_CreateWindow("beanwii", 
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
             WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-
+        }
+    
         if (!window) {
             error_frontend("SDL_CreateWindow returned an error: %s\n", SDL_GetError());
         }
         
-        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
+        renderer = SDL_CreateRenderer(window, -1, 0);
 
         if (!renderer) {
             error_frontend("SDL_CreateRenderer returned an error: %s\n", SDL_GetError());
@@ -79,98 +80,105 @@ class SdlDevice : MultiMediaDevice {
 
         loadOpenGL();
 
-        // Would load objects from file here - but using globals in this example	
-        // Allocate Vertex Array Objects
-        glGenVertexArrays(2, vertexArrayObjID.ptr);
-        // Setup first Vertex Array Object
-        glBindVertexArray(vertexArrayObjID[0]);
-        glGenBuffers(2, vertexBufferObjID.ptr);
-        
-        // VBO for vertex data
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObjID[0]);
-        glBufferData(GL_ARRAY_BUFFER, 9 * GLfloat.sizeof, vertices.ptr, GL_STATIC_DRAW);
-        glVertexAttribPointer(cast(GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, null); 
-        glEnableVertexAttribArray(0);
-
-        // VBO for colour data
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObjID[1]);
-        glBufferData(GL_ARRAY_BUFFER, 9 * GLfloat.sizeof, colours.ptr, GL_STATIC_DRAW);
-        glVertexAttribPointer(cast(GLuint)1, 3, GL_FLOAT, GL_FALSE, 0, null);
-        glEnableVertexAttribArray(1);
-
-        // Setup second Vertex Array Object
-        glBindVertexArray(vertexArrayObjID[1]);
-        glGenBuffers(1, &vertexBufferObjID[2]);
-
-        // VBO for vertex data
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObjID[2]);
-        glBufferData(GL_ARRAY_BUFFER, 9 * GLfloat.sizeof, vertices2.ptr, GL_STATIC_DRAW);
-        glVertexAttribPointer(cast(GLuint)0, 3, GL_FLOAT, GL_FALSE, 0, null); 
-        glEnableVertexAttribArray(0);
-
-        glBindVertexArray(0);
-
-    // // Create one OpenGL texture
-    // glGenTextures(1, &textureID);
-
-    // // "Bind" the newly created texture : all future texture functions will modify this texture
-    // glBindTexture(GL_TEXTURE_2D, textureID);
-
-    // // Give the image to OpenGL
-    // glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 456, 832, 0, GL_BGR, GL_UNSIGNED_BYTE, sexture);
-
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-
         glViewport(0, 0, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);
+
+        debugging = start_debugger;
+        if (debugging) {
+            loadFreeType();
+
+            FT_Library ft;
+            if (FT_Init_FreeType(&ft)) {
+                error_frontend("Could not init freetype library.");
+            }
+
+            int major, minor, patch;
+            FT_Library_Version(ft, &major, &minor, &patch);
+            log_frontend("FT_Library_Version: %d.%d.%d", major, minor, patch);
+
+            GLint widget_shader = load_shader("source/ui/sdl/shaders/widget");
+            GLint font_shader   = load_shader("source/ui/sdl/shaders/font");
+            
+            auto font_code_squared = new Font("source/ui/sdl/font/code_squared.ttf", ft, font_shader);
+
+            auto button = new SdlButton(0, DEBUGGER_PANEL_HEIGHT - 100, DEBUGGER_PANEL_WIDTH, 100, from_hex(0xCAF0F8), from_hex(0x0077b6), font_code_squared, "test", widget_shader);
+            drawables ~= button;
+            updatables ~= button;
+
+            float[16] projection_matrix = [
+                2.0 / DEBUGGER_PANEL_WIDTH, 0, 0, 0,
+                0, 2.0 / DEBUGGER_PANEL_HEIGHT, 0, 0,
+                0, 0, 0, 0,
+                -1, -1, 0, 1
+            ];
+
+            glUseProgram(widget_shader);
+            glUniformMatrix4fv(glGetUniformLocation(widget_shader, "MVP"), 1, GL_FALSE, projection_matrix.ptr);
+            glUseProgram(font_shader);
+            glUniformMatrix4fv(glGetUniformLocation(font_shader, "MVP"), 1, GL_FALSE, projection_matrix.ptr);
+        }
     }
     
     override {
         void update() {
-            // glUseProgram(p);
-            // GLuint MatrixID = glGetUniformLocation(p, "MVP");
-            // GLfloat[16] MVP = [
-            //     0.0024038462434, 0, 0, 0,
-            //     0, 0.0043859649, 0, 0,
-            //     0, 0, 0, 0,
-            //     0, 0, 0, 1
-            // ];
+            if (debugging) {
+                SDL_PumpEvents();
 
-            // glUniformMatrix4fv(MatrixID, 1, GL_TRUE, &(MVP[0]));
+                int mouse_x, mouse_y;
+                int mouse_state = SDL_GetMouseState(&mouse_x, &mouse_y);
+                mouse_x -= SCREEN_BORDER_WIDTH * 2 + WII_SCREEN_WIDTH;
+                mouse_y -= SCREEN_BORDER_WIDTH;
+                mouse_y = DEBUGGER_PANEL_HEIGHT - mouse_y;
 
-            // clear the screen
-            // glClear(GL_COLOR_BUFFER_BIT);
-
-            // glBindVertexArray(vertexArrayObjID[0]);	// First VAO
-            // glDrawArrays(GL_TRIANGLES, 0, 3);	// draw first object
-            // glBindVertexArray(vertexArrayObjID[1]);	// First VAO
-            // glDrawArrays(GL_TRIANGLES, 0, 3);	// draw first object
-
-            // glBindVertexArray(0);
+                foreach (Updatable updatable; updatables) {
+                    updatable.update(mouse_x, mouse_y, mouse_state);
+                }
+            }
         }
 
         void draw() {
-
         }
 
         void update_rom_title(string title) {
 
         }
 
-        // video stuffs
         void present_videobuffer(VideoBuffer buffer) {
-            // for (int y = 0; y < WII_SCREEN_HEIGHT; y++) {
-            // for (int x = 0; x < WII_SCREEN_WIDTH;  x++) {
-            //     frame_buffer[x + y * WII_SCREEN_WIDTH].r = cast(u8) buffer[x][y].r;
-            //     frame_buffer[x + y * WII_SCREEN_WIDTH].g = cast(u8) buffer[x][y].g;
-            //     frame_buffer[x + y * WII_SCREEN_WIDTH].b = cast(u8) buffer[x][y].b;
-            //     frame_buffer[x + y * WII_SCREEN_WIDTH].a = 0xFF;
-            // }
-            // }
+            if (debugging) {
+                glDisable(GL_SCISSOR_TEST);
 
-            // SDL_UpdateWindowSurface(window);
-            SDL_GL_SwapWindow(window);
+                glViewport(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, SCREEN_BORDER_WIDTH, 
+                    DEBUGGER_PANEL_WIDTH, DEBUGGER_PANEL_HEIGHT);
+    
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(GL_ALWAYS);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                foreach (Drawable drawable; drawables) {
+                    drawable.draw();
+                }
+
+                SDL_GL_SwapWindow(window);
+
+                Color clear_color = from_hex(0x0077b6);
+                glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
+
+                glEnable(GL_SCISSOR_TEST);
+                glScissor(0, 0, DEBUGGER_SCREEN_WIDTH, SCREEN_BORDER_WIDTH);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+                glScissor(0, 0, SCREEN_BORDER_WIDTH, DEBUGGER_SCREEN_HEIGHT);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+                glScissor(SCREEN_BORDER_WIDTH + WII_SCREEN_WIDTH, 0, SCREEN_BORDER_WIDTH * 2 + DEBUGGER_PANEL_WIDTH, DEBUGGER_SCREEN_HEIGHT);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+                glScissor(0, SCREEN_BORDER_WIDTH + WII_SCREEN_HEIGHT, DEBUGGER_SCREEN_WIDTH, SCREEN_BORDER_WIDTH);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+                glViewport(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH, 
+                    WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);
+                glScissor(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);
+            } else {
+                SDL_GL_SwapWindow(window);
+            }
         }
    
         void set_fps(int fps) {

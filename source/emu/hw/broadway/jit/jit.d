@@ -75,8 +75,9 @@ final class Jit {
             emit(code, mem, state.pc);
             u8[] bytes = code.get();
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
-
+            
             auto func = cast(JitFunction) ptr;            
+            jit_hash_map[state.pc] = func;
             func(state);
         }
 

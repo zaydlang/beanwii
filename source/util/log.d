@@ -10,10 +10,10 @@ enum Whitelist = [
     // LogSource.AI,
     // LogSource.DISK,
     // LogSource.DSP,
-    // LogSource.IPC,
+    LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
-    LogSource.HOLLYWOOD,
+    // LogSource.HOLLYWOOD,
     // LogSource.OS_REPORT,
     // LogSource.SLOWMEM,
     // LogSource.SCHEDULER,
@@ -158,6 +158,14 @@ static string generate_prettier_logging_functions() {
         mixed_in ~= "
             public void error_%s(Char, A...)(scope const(Char)[] fmt, A args) {
                 log!(LogSource.%s, true, Char, A)(fmt, args);
+            }
+        ".format(source_name.toLower(), source_name);
+
+        mixed_in ~= "
+            public void assert_%s(Char, A...)(bool condition, scope const(Char)[] fmt, A args) {
+                if (!condition) {
+                    log!(LogSource.%s, true, Char, A)(fmt, args);
+                }
             }
         ".format(source_name.toLower(), source_name);
     }
