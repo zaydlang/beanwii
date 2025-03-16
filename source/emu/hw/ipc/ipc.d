@@ -26,15 +26,17 @@ final class IPC {
         }
 
         DList!IPCResponse responses;
+        int num_outstanding_responses = 0;
 
         void push_later(u32 paddr, int return_value, int cycles) {
+            num_outstanding_responses++;
             log_ipc("FUCK MY ASS!\n");
             ipc.scheduler.add_event_relative_to_clock(() => push(paddr, return_value), cycles);
         }
 
         void push(u32 paddr, int return_value) {
-            log_ipc("IPC: Pushing response %x with return value %x", paddr, return_value);
-            
+            log_ipc("OUTSTANDING: %x", num_outstanding_responses);
+
             if (ipc.waiting_for_cpu_to_get_response) {
                 IPCResponse response;
                 response.paddr = paddr;
@@ -43,15 +45,20 @@ final class IPC {
                 log_ipc("IPC: Waiting for CPU to get response");
             } else {
                 ipc.finalize_command(paddr, return_value);
+                log_ipc("IPC: Waiting for CPU to get response");
+                num_outstanding_responses--;
             }
         }
 
         void maybe_finalize_new_response() {
+            log_ipc("OUTSTANDING: %x", num_outstanding_responses);
+            
             if (!ipc.waiting_for_cpu_to_get_response && !responses.empty) {
                 log_ipc("IPC: Finalizing new response");
                 IPCResponse response = responses.front;
                 responses.removeFront();
                 ipc.scheduler.add_event_relative_to_clock(() => finalize_command(response.paddr, response.return_value), 10000);
+                num_outstanding_responses--;
             }
         }
 
@@ -135,7 +142,7 @@ final class IPC {
             // log_ipc("Relaunching IOS");
             return;
         } 
-
+if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
         if (x1) {
             log_ipc("Sending command");
 

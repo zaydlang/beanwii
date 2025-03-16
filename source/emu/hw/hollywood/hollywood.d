@@ -11,6 +11,9 @@ import util.force_cast;
 import util.log;
 import util.number;
 
+alias Shape = Hollywood.Shape;
+alias ShapeGroup = Hollywood.ShapeGroup;
+
 final class Hollywood {
     enum GXFifoCommand {
         BlittingProcessor = 0x61,
@@ -94,14 +97,18 @@ final class Hollywood {
         bool dualtex_normal_enable;
     }
 
-    struct Shape {
-        Vertex[] vertices;
+    struct ShapeGroup {    
         float[12] position_matrix;
         float[16] projection_matrix;
-
-        bool textured;
         Texture[8] texture;
         TevConfig tev_config;
+        bool textured;
+
+        Shape[] shapes;
+    }
+
+    struct Shape {
+        Vertex[3] vertices;
     }
 
     enum ProjectionMode {
@@ -180,7 +187,7 @@ final class Hollywood {
 
     ProjectionMode projection_mode;
 
-    Shape[] shapes;
+    ShapeGroup[] shape_groups;
     VertexDescriptor[8] vertex_descriptors;
     TextureDescriptor[8] texture_descriptors;
 
@@ -213,55 +220,13 @@ final class Hollywood {
 
     private GlObjectManager gl_object_manager;
     
-    this() {
+    void init_opengl() {
         blitting_processor = new BlittingProcessor();
         gl_object_manager = new GlObjectManager();
 
         state = State.WaitingForCommand;
 
-        auto vertex_shader   = glCreateShader(GL_VERTEX_SHADER);
-        auto fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);	
-
-        string vertex_text   = readText("source/emu/hw/hollywood/shaders/vertex.glsl");
-        string fragment_text = readText("source/emu/hw/hollywood/shaders/fragment.glsl");
-        GLint vertex_text_length = cast(GLint) vertex_text.length;
-        GLint fragment_text_length = cast(GLint) fragment_text.length;
-
-        auto vertex_text_const_char  = cast(const char*) vertex_text.ptr;
-        auto fragment_text_const_char = cast(const char*) fragment_text.ptr;
-        glShaderSource(vertex_shader,   1, &vertex_text_const_char,   &vertex_text_length);
-        glShaderSource(fragment_shader, 1, &fragment_text_const_char, &fragment_text_length);
-        
-        GLint compiled;
-
-        glCompileShader(vertex_shader);
-        glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compiled);
-        if (!compiled) {
-            error_hollywood("Vertex shader compilation error.");
-        } 
-
-        glCompileShader(fragment_shader);
-        glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
-        if (!compiled) {
-            import core.stdc.stdlib;
-            import std.string;
-            
-            char* info_log = cast(char*) malloc(10000000);
-            int info_log_length;
-
-            glGetShaderInfoLog(fragment_shader, 10000000, &info_log_length, cast(char*) info_log);
-            error_hollywood("Fragment shader compilation error: %s", info_log.fromStringz);
-        } 
-        
-        gl_program = glCreateProgram();
-
-        glBindAttribLocation(gl_program, 0, "in_Position");
-            
-        glAttachShader(gl_program, vertex_shader);
-        glAttachShader(gl_program, fragment_shader);
-        
-        glLinkProgram(gl_program);
-        glUseProgram(gl_program);
+        load_shaders();
 
         projection_matrix[15] = 1;
 
@@ -428,12 +393,6 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawQuads;
                 current_vat = (cast(int) command).bits(0, 2);
                 state = State.WaitingForNumberOfVertices;
-
-
-// if (state.pc == 0x80278854) {
-    // dump stack
-// }
-
                 break;
         
             default:
@@ -830,6 +789,7 @@ final class Hollywood {
         
         switch (register) {
             case 0x1018:
+                log_hollywood("geometry_matrix: %08x", value);
                 // TODO: wtf is a geometry matrix
                 texture_descriptors[0].tex_matrix_slot = value.bits(6, 11);
                 texture_descriptors[1].tex_matrix_slot = value.bits(12, 17);
@@ -870,10 +830,12 @@ final class Hollywood {
                 log_hollywood("BIGREG %x: %08x", register, value);
                 break;
             case 0x0000: .. case 0x00ff:
+                log_hollywood("Sexy matrix %04x: %08x %08x", register, value, mem.cpu.state.pc);
                 general_matrix_ram[register] = force_cast!float(value);
                 break;
             
             case 0x0500: .. case 0x05ff:
+                log_hollywood("Sexture matrix %04x: %08x", register, value);
                 dt_texture_matrix_ram[register - 0x500] = force_cast!float(value);
                 break;
             
@@ -1013,22 +975,19 @@ final class Hollywood {
     private void process_new_shape() {
         glUseProgram(gl_program);
 
-        Shape shape;
-        shape.vertices = [];
-        shape.textured = false;
-        shape.position_matrix = general_matrix_ram[0 .. 12]; // ????
-        shape.projection_matrix = projection_matrix;
+        ShapeGroup shape_group;
+        shape_group.shapes = [];
+        shape_group.textured = false;
+        shape_group.position_matrix = general_matrix_ram[0 .. 12]; // ????
+        shape_group.projection_matrix = projection_matrix;
 
-        log_hollywood("produced Shape! %s", shape_data);
         int offset = 0;
+        Vertex[] vertices;
         for (int i = 0; i < number_of_expected_vertices; i++) {
             Vertex v;
             
             auto vcd = &vertex_descriptors[current_vat];
             auto vat = &vats[current_vat];
-        log_hollywood("fatvcd: %s", *vcd);
-        log_hollywood("fatvat: %s", *vat);
-
 
             if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
                 error_hollywood("Matrix location not implemented");
@@ -1041,10 +1000,8 @@ final class Hollywood {
             }
             
             if (vcd.position_location != VertexAttributeLocation.NotPresent) {
-                log_hollywood("produced position data: %s %x", shape_data[offset], offset);
                 for (int j = 0; j < vat.position_count; j++) {
                     v.position[j] = dequantize_coord(shape_data[offset], vat.position_format, vat.position_shift);
-                    log_hollywood("produced position data: %f", v.position[j]);
                     offset++;
                 }
             }
@@ -1056,7 +1013,6 @@ final class Hollywood {
             for (int j = 0; j < 2; j++) {
                 if (vcd.color_location[j] != VertexAttributeLocation.NotPresent) {
                     v.color[j] = dequantize_color(shape_data[offset], vat.color_format[j], 0);
-                    if (shapes.length == 0)  log_hollywood("produced color data: %s", v.color[j]);
 
                     if (vat.color_count[j] == 3) {
                         v.color[j][3] = 1.0;
@@ -1079,52 +1035,72 @@ final class Hollywood {
                         offset++;
                     }
 
-                    shape.texture[j].data = load_texture(texture_descriptors[j], mem).ptr;
-                    shape.texture[j].width = texture_descriptors[j].width;
-                    shape.texture[j].height = texture_descriptors[j].height;
-                    shape.texture[j].wrap_s = texture_descriptors[j].wrap_s;
-                    shape.texture[j].wrap_t = texture_descriptors[j].wrap_t;
-                    shape.texture[j].dualtex_matrix = 
-                        dt_texture_matrix_ram[texture_descriptors[j].dualtex_matrix_slot * 4 + 0 .. 
-                        texture_descriptors[j].dualtex_matrix_slot * 4 + 12];
-                    shape.texture[j].tex_matrix = 
-                        general_matrix_ram[texture_descriptors[j].tex_matrix_slot * 4 + 0 ..
-                        texture_descriptors[j].tex_matrix_slot * 4 + 12];
+                    if (i == 0) {
+                        shape_group.texture[j].data = load_texture(texture_descriptors[j], mem).ptr;
+                        shape_group.texture[j].width = texture_descriptors[j].width;
+                        shape_group.texture[j].height = texture_descriptors[j].height;
+                        shape_group.texture[j].wrap_s = texture_descriptors[j].wrap_s;
+                        shape_group.texture[j].wrap_t = texture_descriptors[j].wrap_t;
+                        shape_group.texture[j].dualtex_matrix = 
+                            dt_texture_matrix_ram[texture_descriptors[j].dualtex_matrix_slot * 4 + 0 .. 
+                            texture_descriptors[j].dualtex_matrix_slot * 4 + 12];
+                        shape_group.texture[j].tex_matrix = 
+                            general_matrix_ram[texture_descriptors[j].tex_matrix_slot * 4 + 0 ..
+                            texture_descriptors[j].tex_matrix_slot * 4 + 12];
 
-                    shape.texture[j].dualtex_normal_enable = texture_descriptors[j].dualtex_normal_enable;
+                        shape_group.texture[j].dualtex_normal_enable = texture_descriptors[j].dualtex_normal_enable;
 
-                    shape.textured = true;
+                        shape_group.textured = true;
+                    }
                 }
             }
 
-            if (mem.cpu.interrupt_controller.ipc.scheduler.get_current_time_relative_to_cpu() >= 0x000000077545116) {
-                // error_hollywood("produced Vertex: %s", v);
-            }
-
-            log_hollywood("produced Vertex: %s", v);
-            shape.vertices ~= v;
+            vertices ~= v;
         }
 
-        shape.tev_config = tev_config;
+        shape_group.tev_config = tev_config;
 
         for (int i = 0; i < 16; i++) {
             switch (ras_color[i]) {
-                case RasChannelId.Color0: shape.tev_config.ras[i] = color_0_global; break;
+                case RasChannelId.Color0: shape_group.tev_config.ras[i] = color_0_global; break;
                 default: log_hollywood("unimpelmented ras: %x", ras_color[i]); break;
             }
         }
-        shape.tev_config.konst_a = [1.0f, 1.0f, 0.0f, 1.0f];
-        log_hollywood("Shape[%d]: %s ", shapes.length, shape);
-        shapes ~= shape;
+        shape_group.tev_config.konst_a = [1.0f, 1.0f, 0.0f, 1.0f];
+
+        switch (current_draw_command) {
+            case GXFifoCommand.DrawQuads:
+                for (int i = 0; i < vertices.length; i += 4) {
+                    Shape shape;
+                    shape.vertices = vertices[i .. i + 3];
+                    shape_group.shapes ~= shape;
+                }
+
+                for (int i = 0; i < vertices.length; i += 4) {
+                    Shape shape;
+                    shape.vertices = [vertices[i + 0], vertices[i + 2], vertices[i + 3]];
+                    shape_group.shapes ~= shape;
+                }
+                break;
+            
+            default: error_hollywood("Unimplemented draw command: %s", current_draw_command);
+        }
+        
+        shape_groups ~= shape_group;
     }
 
     bool shit = false;
 
-    public void draw_shapes() {
-        if (shapes.length == 0) {
+    public void draw() {
+        draw_shape_groups(shape_groups);
+    }
+
+    void draw_shape_groups(ShapeGroup[] shape_groups) {
+        if (shape_groups.length == 0) {
             return;
         }
-        // clear framebuffer
+
+        glUseProgram(gl_program);
         glClearColor(0, 0, 0, 1); 
         // glClearDepth(1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -1148,164 +1124,178 @@ final class Hollywood {
         // shit = false;
         
         int texnum = 0; int i = 0;
-        log_hollywood("Rendering %d shapes", shapes.length);
+        log_hollywood("Rendering %d shape groups", shape_groups.length);
         log_hollywood("Amongus projection matrix: %s", projection_matrix);
-        foreach (Shape shape; shapes) {
-            int a = i++;
-            // if (a != 5 && a != 3 && a != 1) continue;
-            // if (a == 8) error_hollywood("");
-            log_hollywood("Amongus shape #%d", texnum);
-            log_hollywood("Amongus matrix %s", shape.position_matrix);
-            log_hollywood("Amongus matrix proj %s", shape.projection_matrix);
-            log_hollywood("Amongus matrix dualsex %s", shape.texture[0].dualtex_matrix);
-                log_hollywood("Amongus tev: %s", shape.tev_config);
-            foreach (vertex; shape.vertices) {
-            log_hollywood("    Amongus matrix tex %s", vertex.texcoord);
-                log_hollywood("    Amongus vertex: %s", vertex.position);
-            }
-
-            // if (projection_mode != ProjectionMode.Perspective) continue;
-
-            log_hollywood("projection_matrix: %s %d", projection_matrix, glGetUniformLocation(gl_program, "wiiscreen"));
-            // GLfloat[16] projection_matrix = [
-            //     0, 0, 0, 0,
-            //     0, 0, 0, 0,
-            //     0, 0, 0, 0,
-            //     0, 0, 0, 0
-            // ];
-
-            // add depth testing
-
-            // auto p = gl_program;
-            // glUseProgram(p);
-            // GLuint MatrixID = glGetUniformLocation(p, "MVP");
-            // GLfloat[16] MVP = [0.00240385, 0, 0, 0, 0, 0.00438596, 0, 0, -0, -0, 0, 0, 0, 0, 0, 1];
-            // auto sex = [
-
-            // glUniformMatrix4fv(MatrixID, 1, GL_TRUE, MVP.ptr);
-
-            // wireframe
-            // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);  
-
-            
-            if (shape.textured) {
-                GLuint texture_id;
-                glGenTextures(1, &texture_id);
-
-                // "Bind" the newly created texture : all future texture functions will modify this texture
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-
-                // Give the image to OpenGL
-                // log_hollywood("projection color: %s", shape.texture[0]);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) shape.texture[0].height, cast(GLint) shape.texture[0].width, 0, GL_BGRA, GL_UNSIGNED_BYTE, shape.texture[0].data);
-
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-                // final switch (shape.texture[0].wrap_s) {
-                //     case TextureWrap.Clamp:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                //         break;
-                    
-                //     case TextureWrap.Repeat:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                //         break;
-                    
-                //     case TextureWrap.Mirror:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                //         break;
-                // }
-
-                // final switch (shape.texture[0].wrap_t) {
-                //     case TextureWrap.Clamp:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                //         break;
-                    
-                //     case TextureWrap.Repeat:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                //         break;
-                    
-                //     case TextureWrap.Mirror:
-                //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-                //         break;
-                // }
-
-                glUniform1i(glGetUniformLocation(gl_program, "wiiscreen"), texnum);
-                glActiveTexture(GL_TEXTURE0 + texnum);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                
-                texnum++;
-            } else {
-                continue;
-            }
-        
-            // TODO: figure out how to generalize this
-            if (shape.vertices.length != 4) {
-                error_hollywood("Only quads are supported");
-            }
-            for (int ass = 0; ass < 4; ass++) {
-                log_hollywood("cccolor: %s", shape.vertices[ass].color[0]);
-            }
-
-            float[] vertex_data = shape.vertices[0].position ~ shape.vertices[0].texcoord ~ shape.vertices[0].color[0] ~
-                                  shape.vertices[1].position ~ shape.vertices[1].texcoord ~ shape.vertices[1].color[0] ~
-                                  shape.vertices[2].position ~ shape.vertices[2].texcoord ~ shape.vertices[2].color[0];
-
-            uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
-            uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
-            glBindVertexArray(vertex_array_object);
-            glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
-            glBufferData(GL_ARRAY_BUFFER, 27 * GLfloat.sizeof, vertex_data.ptr, GL_STATIC_DRAW);
-
-            auto position_location = glGetAttribLocation(gl_program, "in_Position");
-            glEnableVertexAttribArray(position_location);
-            glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) 0);
-
-            auto texcoord_location = glGetAttribLocation(gl_program, "texcoord");
-            glEnableVertexAttribArray(texcoord_location);
-            glVertexAttribPointer(texcoord_location, 2, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) (3 * float.sizeof));
-
-            auto color_location = glGetAttribLocation(gl_program, "in_color");
-            glEnableVertexAttribArray(color_location);
-            glVertexAttribPointer(color_location, 4, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) (5 * float.sizeof));
-
-            glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "position_matrix"), 1, GL_TRUE, shape.position_matrix.ptr);
-            log_hollywood("Amongus matrix: %s", shape.texture[0].tex_matrix);
-            glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "texture_matrix"), 1, GL_TRUE, shape.texture[0].tex_matrix.ptr);
-            glUniformMatrix4fv(glGetUniformLocation(gl_program, "MVP"), 1, GL_FALSE, shape.projection_matrix.ptr);
-            uint ubo = gl_object_manager.allocate_uniform_buffer_object();
-            glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-            glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, &shape.tev_config, GL_STATIC_DRAW);
-            glUniformBlockBinding(gl_program, glGetUniformBlockIndex(gl_program, "TevConfig"), 0);
-    
-            glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
-            glDrawArrays(GL_TRIANGLES, 0, 4);
-            glBufferData(GL_ARRAY_BUFFER, 0, vertex_data.ptr, GL_STATIC_DRAW);
-
-            vertex_data = shape.vertices[2].position ~ shape.vertices[2].texcoord ~ shape.vertices[2].color[0] ~
-                          shape.vertices[3].position ~ shape.vertices[3].texcoord ~ shape.vertices[3].color[0] ~
-                          shape.vertices[0].position ~ shape.vertices[0].texcoord ~ shape.vertices[0].color[0];
-            uint vertex_array_object2 = gl_object_manager.allocate_vertex_array_object();
-            uint vertex_buffer_object2 = gl_object_manager.allocate_vertex_buffer_object();
-            glBindVertexArray(vertex_array_object2);
-            glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object2);
-            glBufferData(GL_ARRAY_BUFFER, 27 * GLfloat.sizeof, vertex_data.ptr, GL_STATIC_DRAW);
-
-            glEnableVertexAttribArray(position_location);
-            glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) 0);
-
-            glEnableVertexAttribArray(texcoord_location);
-            glVertexAttribPointer(texcoord_location, 2, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) (3 * float.sizeof));
-
-            glEnableVertexAttribArray(color_location);
-            glVertexAttribPointer(color_location, 4, GL_FLOAT, GL_FALSE, 9 * float.sizeof, cast(void*) (5 * float.sizeof));
-
-            glDrawArrays(GL_TRIANGLES, 0, 4);
-            glBufferData(GL_ARRAY_BUFFER, 0, vertex_data.ptr, GL_STATIC_DRAW);
-
-            log_hollywood("Drawing shape");
+        foreach (ShapeGroup shape_group; shape_groups) {
+            draw_shape_group(shape_group, texnum);
+            debug_drawn_shape_groups ~= shape_group;
         }
 
-        shapes = [];
+        this.shape_groups = [];
+    }
+
+    void draw_shape_group(ShapeGroup shape_group, int texnum) {
+        if (shape_group.textured) {
+            GLuint texture_id = gl_object_manager.allocate_texture_object();
+
+            // "Bind" the newly created texture : all future texture functions will modify this texture
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+
+            // Give the image to OpenGL
+            // log_hollywood("projection color: %s", shape.texture[0]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) shape_group.texture[0].height, cast(GLint) shape_group.texture[0].width, 0, GL_BGRA, GL_UNSIGNED_BYTE, shape_group.texture[0].data);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+            // final switch (shape.texture[0].wrap_s) {
+            //     case TextureWrap.Clamp:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            //         break;
+                
+            //     case TextureWrap.Repeat:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            //         break;
+                
+            //     case TextureWrap.Mirror:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+            //         break;
+            // }
+
+            // final switch (shape.texture[0].wrap_t) {
+            //     case TextureWrap.Clamp:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            //         break;
+                
+            //     case TextureWrap.Repeat:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            //         break;
+                
+            //     case TextureWrap.Mirror:
+            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+            //         break;
+            // }
+
+            glUniform1i(glGetUniformLocation(gl_program, "wiiscreen"), texnum);
+            glActiveTexture(GL_TEXTURE0 + texnum);
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+            
+            texnum++;
+        } else {
+            return;
+        }
+    
+        submit_shape_group_to_opengl(shape_group);
+    }
+
+    void submit_shape_group_to_opengl(ShapeGroup shape_group) {
+        // log_hollywood("Submitting shape group to OpenGL (%d): %s", shape_group.shapes.length, shape_group);
+        // log_hollywood("pointer data: %x %x %x", shape_group.shapes.ptr, shape_group.shapes[0].vertices.ptr, shape_group.shapes[0].vertices[2].position.ptr);
+
+        uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
+        uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
+        glBindVertexArray(vertex_array_object);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
+        glBufferData(GL_ARRAY_BUFFER, 40 * shape_group.shapes.length * GLfloat.sizeof * 3, shape_group.shapes.ptr, GL_STATIC_DRAW);
+
+        auto position_location = glGetAttribLocation(gl_program, "in_Position");
+        glEnableVertexAttribArray(position_location);
+        glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) 0);
+
+        auto normal_location = glGetAttribLocation(gl_program, "normal");
+        glEnableVertexAttribArray(normal_location);
+        glVertexAttribPointer(normal_location, 3, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (3 * float.sizeof));
+
+        auto texcoord_location = glGetAttribLocation(gl_program, "texcoord");
+        glEnableVertexAttribArray(texcoord_location);
+        glVertexAttribPointer(texcoord_location, 2, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (6 * float.sizeof));
+
+        auto color_location = glGetAttribLocation(gl_program, "in_color");
+        glEnableVertexAttribArray(color_location);
+        glVertexAttribPointer(color_location, 4, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (8 * float.sizeof));
+
+        glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "position_matrix"), 1, GL_TRUE,  shape_group.position_matrix.ptr);
+        glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "texture_matrix"),  1, GL_TRUE,  shape_group.texture[0].tex_matrix.ptr);
+        glUniformMatrix4fv  (glGetUniformLocation(gl_program, "MVP"),             1, GL_FALSE, shape_group.projection_matrix.ptr);
+
+        uint ubo = gl_object_manager.allocate_uniform_buffer_object();
+        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, &shape_group.tev_config, GL_STATIC_DRAW);
+        glUniformBlockBinding(gl_program, glGetUniformBlockIndex(gl_program, "TevConfig"), 0);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+
+        glDrawArrays(GL_TRIANGLES, 0, cast(int) shape_group.shapes.length * 3);
+
+        log_hollywood("Drawing shape");
+    }
+
+    void load_shaders() {
+        auto vertex_shader   = glCreateShader(GL_VERTEX_SHADER);
+        auto fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);	
+
+        string vertex_text   = readText("source/emu/hw/hollywood/shaders/vertex.glsl");
+        string fragment_text = readText("source/emu/hw/hollywood/shaders/fragment.glsl");
+        GLint vertex_text_length = cast(GLint) vertex_text.length;
+        GLint fragment_text_length = cast(GLint) fragment_text.length;
+
+        auto vertex_text_const_char  = cast(const char*) vertex_text.ptr;
+        auto fragment_text_const_char = cast(const char*) fragment_text.ptr;
+        glShaderSource(vertex_shader,   1, &vertex_text_const_char,   &vertex_text_length);
+        glShaderSource(fragment_shader, 1, &fragment_text_const_char, &fragment_text_length);
+        
+        GLint compiled;
+
+        glCompileShader(vertex_shader);
+        glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            error_hollywood("Vertex shader compilation error.");
+        } 
+
+        glCompileShader(fragment_shader);
+        glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(fragment_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Fragment shader compilation error: %s", info_log.fromStringz);
+        } 
+        
+        gl_program = glCreateProgram();
+
+        glBindAttribLocation(gl_program, 0, "in_Position");
+            
+        glAttachShader(gl_program, vertex_shader);
+        glAttachShader(gl_program, fragment_shader);
+        
+        glLinkProgram(gl_program);
+        glUseProgram(gl_program);
+    }
+
+    ShapeGroup[] debug_drawn_shape_groups;
+
+    ShapeGroup[] debug_get_drawn_shape_groups() {
+        ShapeGroup[] return_value;
+        for (int i = 0; i < debug_drawn_shape_groups.length; i++) {
+            return_value ~= debug_drawn_shape_groups[i];
+        }
+    
+        debug_drawn_shape_groups = [];
+        return return_value;
+    }
+
+    void debug_draw_shape_group(ShapeGroup shape_group) {
+        submit_shape_group_to_opengl(shape_group);
+    }
+
+    void debug_redraw(ShapeGroup[] shape_groups) {
+        draw_shape_groups(shape_groups);
+    }
+
+    void debug_reload_shaders() {
+        load_shaders();
     }
 }

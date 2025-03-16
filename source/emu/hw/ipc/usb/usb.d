@@ -1,20 +1,19 @@
 module emu.hw.ipc.usb.usb;
 
 import emu.hw.ipc.ipc;
-import emu.hw.ipc.usb.passthrough;
+import emu.hw.ipc.usb.bluetooth;
 import emu.hw.memory.strategy.memstrategy;
 import util.bitop;
 import util.number;
 import util.log;
 
 final class USBManager {
-    BluetoothPassthrough bluetooth;
+    Bluetooth bluetooth;
 
     IPCResponseQueue ipc_response_queue;    
     this(IPCResponseQueue response_queue) {
         this.ipc_response_queue = response_queue;
-        bluetooth = new BluetoothPassthrough(response_queue);
-        bluetooth.connect();
+        bluetooth = new Bluetooth(response_queue);
     }
 
     Mem mem;
@@ -50,12 +49,16 @@ final class USBManager {
 
         if (direction == 1) {
             if (endpoint_number == 2) {
-                return bluetooth.acl_request(paddr, data);
+                return bluetooth.acl_request(cast(Direction) direction, paddr, data);
             } else {
                 log_usb("USBManager: bulk: unknown endpoint");
             }
         } else {
-            log_usb("USBManager: bulk: unknown direction");
+            if (endpoint_number == 2) {
+                return bluetooth.acl_request(cast(Direction) direction, paddr, data);
+            } else {
+                log_usb("USBManager: bulk: unknown endpoint");
+            }
         }
 
         return [];

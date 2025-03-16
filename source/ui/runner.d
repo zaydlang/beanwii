@@ -20,7 +20,6 @@ final class Runner {
 
     StopWatch stopwatch;
 
-    bool running;
     int fps = 0;
 
     this(Wii wii, MultiMediaDevice frontend) {
@@ -31,7 +30,6 @@ final class Runner {
         this.frontend = frontend;
 
         this.should_cycle_wii = true;
-        this.running          = true;
     }
 
     void tick() {
@@ -50,9 +48,12 @@ final class Runner {
     void run() {
         stopwatch = StopWatch(AutoStart.yes);
 
-        while (running) {
-            wii.cycle(33_513_982 / 60);
+        while (!frontend.should_exit()) {
+            if (frontend.is_running()) {
+                wii.cycle(729_000_000 / 60);
+            }
+            
             tick();
         }
-}
+    }
 }   

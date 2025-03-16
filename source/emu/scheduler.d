@@ -84,8 +84,10 @@ final class Scheduler {
         current_timestamp += num_cycles;
     }
 
-    pragma(inline, true) void tick_to_next_event() {
+    pragma(inline, true) ulong tick_to_next_event() {
+        auto fast_forward = events[0].timestamp - current_timestamp;
         current_timestamp = events[0].timestamp;
+        return fast_forward;
     }
 
     pragma(inline, true) void process_events() {

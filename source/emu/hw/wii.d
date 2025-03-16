@@ -278,4 +278,18 @@ final class Wii {
     public void load_sysconf(u8[] sysconf_data) {
         this.ipc.load_sysconf(sysconf_data);
     }
+
+    public void init_opengl() {
+        this.hollywood.init_opengl();
+    }
+
+    public Hollywood debug_get_hollywood() {
+        return this.hollywood;
+    }
+
+    public void debug_dump_memory() {
+        import util.dump;
+        dump(this.mem.mem1, "mem1.bin");
+        dump(this.mem.mem2, "mem2.bin");
+    }
 }

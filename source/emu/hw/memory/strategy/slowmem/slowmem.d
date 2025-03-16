@@ -190,6 +190,10 @@ final class SlowMem : MemStrategy {
             auto memory_access = get_memory_access_from_paddr(address);
         }
 
+        if (address >= 0x807aed9c && address <= 0x807aed9c + 12 * 4) {
+            log_broadway("SEXY WRITE: %x %x", address, value);
+        }
+
         auto region = memory_access.region;
 
         final switch (region) {
@@ -217,6 +221,8 @@ final class SlowMem : MemStrategy {
                 error_slowmem("Write to EXI boot code at 0x%08x", address);
                 break;
         }
+
+        log_slowmem("Write to 0x%08x = 0x%08x", address, value);
     }
 
     pragma(inline, true) override public u64 read_be_u64(u32 address) { return read_be!(u64, true)(address); }

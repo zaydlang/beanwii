@@ -97,7 +97,7 @@ void main(void) {
 
 	// last_alfa_dest = 1;
 	out_Color = vec4(last_color_dest, last_alfa_dest);
-	// out_Color = vec4(1,0,0,color_regs[1].a);
+	// out_Color = vec4(UV[0],UV[1],0,1);
 
 	// if (in_alfa_a[0] == 7 && in_alfa_b[0] == 7 && in_alfa_c[0] == 7 && in_alfa_d[0] == 6) {
 	// out_Color = vec4(1,0,0,1);

@@ -7,6 +7,7 @@ import emu.hw.broadway.jit.emission.helpers;
 import emu.hw.broadway.jit.emission.opcode;
 import emu.hw.broadway.jit.emission.floating_point;
 import emu.hw.broadway.jit.emission.paired_singles;
+import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import gallinule.x86;
@@ -16,11 +17,14 @@ import util.number;
 
 __gshared bool instrument = false; 
 __gshared bool dicksinmyass = false; 
-enum MAX_GUEST_OPCODES_PER_RECIPE = 1;
+enum MAX_GUEST_OPCODES_PER_RECIPE = 10;
 
 enum EmissionAction {
-    STOP,
-    CONTINUE,
+    Continue,
+    BranchTaken,
+    ICacheInvalidation,
+    CpuHalted,
+    DecrementerChanged
 }
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
@@ -41,7 +45,7 @@ private EmissionAction emit_addcx(Code code, u32 opcode) {
     
     set_flags(code, true, rc, oe, rd, rd, rb, ra, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addex(Code code, u32 opcode) {
@@ -67,7 +71,7 @@ private EmissionAction emit_addex(Code code, u32 opcode) {
     
     set_flags(code, true, rc, oe, rd, rd, ra, rb, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addi(Code code, u32 opcode) {
@@ -83,7 +87,7 @@ private EmissionAction emit_addi(Code code, u32 opcode) {
         code.set_reg(rd_guest, ra);
     }
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addic(Code code, u32 opcode) {
@@ -99,7 +103,7 @@ private EmissionAction emit_addic(Code code, u32 opcode) {
     
     set_flags(code, true, false, false, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addic_(Code code, u32 opcode) {
@@ -115,7 +119,7 @@ private EmissionAction emit_addic_(Code code, u32 opcode) {
 
     set_flags(code, true, true, false, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addis(Code code, u32 opcode) {
@@ -131,7 +135,7 @@ private EmissionAction emit_addis(Code code, u32 opcode) {
         code.set_reg(rd_guest, ra);
     }
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addmex(Code code, u32 opcode) {
@@ -153,7 +157,7 @@ private EmissionAction emit_addmex(Code code, u32 opcode) {
 
     set_flags(code, true, rc, oe, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addx(Code code, u32 opcode) {
@@ -175,7 +179,7 @@ private EmissionAction emit_addx(Code code, u32 opcode) {
     
     set_flags(code, false, rc, oe, rd, rd, ra, rb, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_addzex(Code code, u32 opcode) {
@@ -197,7 +201,7 @@ private EmissionAction emit_addzex(Code code, u32 opcode) {
     
     set_flags(code, true, rc, oe, ra, ra, code.allocate_register(), eax, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_and(Code code, u32 opcode) {
@@ -215,7 +219,7 @@ private EmissionAction emit_and(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_andc(Code code, u32 opcode) {
@@ -234,7 +238,7 @@ private EmissionAction emit_andc(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_andi(Code code, u32 opcode) {
@@ -250,7 +254,7 @@ private EmissionAction emit_andi(Code code, u32 opcode) {
     
     set_flags(code, false, true, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_andis(Code code, u32 opcode) {
@@ -266,7 +270,7 @@ private EmissionAction emit_andis(Code code, u32 opcode) {
     
     set_flags(code, false, true, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_b(Code code, u32 opcode) {
@@ -275,9 +279,11 @@ private EmissionAction emit_b(Code code, u32 opcode) {
     int  li             = opcode.bits(2, 25);
     u32  branch_address = sext_32(li, 24) << 2;
 
-    log_jit("asdf");
+    if (!lk && !aa && branch_address == 0) {
+        return EmissionAction.CpuHalted;
+    }
+
     auto pc = code.get_reg(GuestReg.PC);
-    log_jit("asdf");
     auto lr = code.allocate_register();
 
     if (lk) {
@@ -287,13 +293,13 @@ private EmissionAction emit_b(Code code, u32 opcode) {
 
     if (!aa) {
         code.add(pc, branch_address);
+    } else {
+        code.mov(pc, branch_address);
     }
 
-    log_jit("asdf");
     code.set_reg(GuestReg.PC, pc);
-    log_jit("asdf");
 
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_bc(Code code, u32 opcode) {
@@ -335,7 +341,7 @@ code.label(no_branch);
     code.set_reg(GuestReg.PC, pc);
 
 code.label(end);
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_bcctr(Code code, u32 opcode) {
@@ -371,7 +377,7 @@ code.label(no_branch);
     code.set_reg(GuestReg.PC, pc);
 
 code.label(end);
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_bclr(Code code, u32 opcode) {
@@ -408,7 +414,7 @@ code.label(no_branch);
     code.set_reg(GuestReg.PC, pc);
 
 code.label(end);
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_cntlzw(Code code, u32 opcode) {
@@ -426,7 +432,7 @@ private EmissionAction emit_cntlzw(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_cmp(Code code, u32 opcode) {
@@ -444,7 +450,7 @@ private EmissionAction emit_cmp(Code code, u32 opcode) {
 
     do_cmp(code, CmpType.Signed, ra, rb, crf_d);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_cmpl(Code code, u32 opcode) {
@@ -462,7 +468,7 @@ private EmissionAction emit_cmpl(Code code, u32 opcode) {
 
     do_cmp(code, CmpType.Unsigned, ra, rb, crf_d);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_cmpli(Code code, u32 opcode) {
@@ -478,7 +484,7 @@ private EmissionAction emit_cmpli(Code code, u32 opcode) {
 
     do_cmp(code, CmpType.Unsigned, ra, uimm, crf_d);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_cmpi(Code code, u32 opcode) {
@@ -494,7 +500,7 @@ private EmissionAction emit_cmpi(Code code, u32 opcode) {
 
     do_cmp(code, CmpType.Signed, ra, imm, crf_d);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_cror(Code code, u32 opcode) {
@@ -520,7 +526,7 @@ private EmissionAction emit_cror(Code code, u32 opcode) {
     code.and(code.get_address(GuestReg.CR), ~(1 << crbD));
     code.or(code.get_address(GuestReg.CR), cr);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_crxor(Code code, u32 opcode) {
@@ -546,19 +552,19 @@ private EmissionAction emit_crxor(Code code, u32 opcode) {
     code.and(code.get_address(GuestReg.CR), ~(1 << crbD));
     code.or(code.get_address(GuestReg.CR), cr);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_dcbf(Code code, u32 opcode) {
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_dcbi(Code code, u32 opcode) {
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_dcbst(Code code, u32 opcode) {
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_dcbz(Code code, u32 opcode) {
@@ -596,7 +602,7 @@ private EmissionAction emit_dcbz(Code code, u32 opcode) {
     // code.exit_stack_alignment_context();
     // code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_divwx(Code code, u32 opcode) {
@@ -639,7 +645,7 @@ code.label(bad_division);
 
 code.label(end);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_divwux(Code code, u32 opcode) {
@@ -682,7 +688,7 @@ code.label(bad_division);
 
 code.label(end);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_eqv(Code code, u32 opcode) {
@@ -701,7 +707,7 @@ private EmissionAction emit_eqv(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_extsb(Code code, u32 opcode) {
@@ -719,7 +725,7 @@ private EmissionAction emit_extsb(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_extsh(Code code, u32 opcode) {
@@ -737,7 +743,7 @@ private EmissionAction emit_extsh(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_hle(Code code, u32 opcode) {
@@ -755,7 +761,7 @@ private EmissionAction emit_hle(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_icbi(Code code, u32 opcode) {
@@ -775,21 +781,13 @@ private EmissionAction emit_icbi(Code code, u32 opcode) {
     code.mov(code.dwordPtr(rdi, cast(int) BroadwayState.icbi_address.offsetof), ra);
     code.mov(code.bytePtr(rdi, cast(int) BroadwayState.icache_flushed.offsetof), 1);
 
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-
-    return EmissionAction.STOP;
+    return EmissionAction.ICacheInvalidation;
 }
 
 private EmissionAction emit_isync(Code code, u32 opcode) {
     code.mov(code.bytePtr(rdi, cast(int) BroadwayState.icache_flushed.offsetof), 1);
 
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-
-    return EmissionAction.STOP;
+    return EmissionAction.ICacheInvalidation;
 }
 
 private EmissionAction emit_lbz(Code code, u32 opcode) {
@@ -823,7 +821,7 @@ private EmissionAction emit_lbz(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lbzu(Code code, u32 opcode) {
@@ -854,7 +852,7 @@ private EmissionAction emit_lbzu(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lbzx(Code code, u32 opcode) {
@@ -882,7 +880,7 @@ private EmissionAction emit_lbzx(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lha(Code code, u32 opcode) {
@@ -915,7 +913,7 @@ private EmissionAction emit_lha(Code code, u32 opcode) {
     
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lhz(Code code, u32 opcode) {
@@ -948,7 +946,7 @@ private EmissionAction emit_lhz(Code code, u32 opcode) {
     
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lhzu(Code code, u32 opcode) {
@@ -978,7 +976,7 @@ private EmissionAction emit_lhzu(Code code, u32 opcode) {
     
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lmw(Code code, u32 opcode) {
@@ -1020,7 +1018,7 @@ private EmissionAction emit_lmw(Code code, u32 opcode) {
         }
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lwz(Code code, u32 opcode) {
@@ -1052,7 +1050,7 @@ private EmissionAction emit_lwz(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lwzu(Code code, u32 opcode) {
@@ -1082,7 +1080,7 @@ private EmissionAction emit_lwzu(Code code, u32 opcode) {
     
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lhzx(Code code, u32 opcode) {
@@ -1117,7 +1115,7 @@ private EmissionAction emit_lhzx(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lwzx(Code code, u32 opcode) {
@@ -1151,7 +1149,7 @@ private EmissionAction emit_lwzx(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lwzux(Code code, u32 opcode) {
@@ -1183,7 +1181,7 @@ private EmissionAction emit_lwzux(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mfcr(Code code, u32 opcode) {
@@ -1195,7 +1193,7 @@ private EmissionAction emit_mfcr(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, msr);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mfmsr(Code code, u32 opcode) {
@@ -1207,7 +1205,7 @@ private EmissionAction emit_mfmsr(Code code, u32 opcode) {
 
     code.set_reg(guest_rd, msr);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mtfsf(Code code, u32 opcode) {/*
@@ -1227,9 +1225,9 @@ private EmissionAction emit_mtfsf(Code code, u32 opcode) {/*
 
     ir.set_reg(GuestReg.FPSR, (ir.get_reg(GuestReg.FPSR) & ~mask) | (ir.get_reg(frB).to_int() & mask));
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 */
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mfspr(Code code, u32 opcode) {
@@ -1246,7 +1244,7 @@ private EmissionAction emit_mfspr(Code code, u32 opcode) {
     auto pc = code.get_reg(GuestReg.PC);
     code.add(pc, 4);
     code.set_reg(GuestReg.PC, pc);
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_mftb(Code code, u32 opcode) {
@@ -1263,7 +1261,7 @@ private EmissionAction emit_mftb(Code code, u32 opcode) {
     auto reg = code.get_reg(tb_reg);
     code.set_reg(guest_rd, reg);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mtcrf(Code code, u32 opcode) {
@@ -1286,7 +1284,7 @@ private EmissionAction emit_mtcrf(Code code, u32 opcode) {
     code.and(reg, mask);
     code.or(code.get_address(GuestReg.CR), reg);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mtmsr(Code code, u32 opcode) {
@@ -1298,7 +1296,7 @@ private EmissionAction emit_mtmsr(Code code, u32 opcode) {
 
     code.set_reg(GuestReg.MSR, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mtspr(Code code, u32 opcode) {
@@ -1310,11 +1308,16 @@ private EmissionAction emit_mtspr(Code code, u32 opcode) {
     GuestReg sysreg = get_spr_from_encoding(spr);
     code.set_reg(sysreg, rd);
 
-    // TODO: make this not shit
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-    return EmissionAction.STOP;
+    if (sysreg == GuestReg.DEC) {
+        return EmissionAction.DecrementerChanged;
+    } else {
+        // TODO: make this not shit
+        auto pc = code.get_reg(GuestReg.PC);
+        code.add(pc, 4);
+        code.set_reg(GuestReg.PC, pc);
+
+        return EmissionAction.BranchTaken;
+    }
 }
 
 private EmissionAction emit_mtsr(Code code, u32 opcode) {
@@ -1328,7 +1331,7 @@ private EmissionAction emit_mtsr(Code code, u32 opcode) {
     auto rs = code.get_reg(guest_rs);
     code.mov(code.dwordPtr(rdi, (cast(int) BroadwayState.sr.offsetof + 4 * sr)), rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mulli(Code code, u32 opcode) {
@@ -1345,7 +1348,7 @@ private EmissionAction emit_mulli(Code code, u32 opcode) {
     code.imul(edx);
     code.set_reg(guest_rd, eax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mullwx(Code code, u32 opcode) {
@@ -1367,7 +1370,7 @@ private EmissionAction emit_mullwx(Code code, u32 opcode) {
 
     set_flags(code, false, rc, oe, eax, eax, ra, rb, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mulhw(Code code, u32 opcode) {
@@ -1389,7 +1392,7 @@ private EmissionAction emit_mulhw(Code code, u32 opcode) {
 
     set_flags(code, false, rc, oe, edx, edx, ra, rb, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_mulhwu(Code code, u32 opcode) {
@@ -1411,7 +1414,7 @@ private EmissionAction emit_mulhwu(Code code, u32 opcode) {
 
     set_flags(code, false, rc, oe, edx, edx, ra, rb, 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_nand(Code code, u32 opcode) {
@@ -1430,7 +1433,7 @@ private EmissionAction emit_nand(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_negx(Code code, u32 opcode) {
@@ -1449,7 +1452,7 @@ private EmissionAction emit_negx(Code code, u32 opcode) {
     
     set_flags(code, false, rc, oe, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_nor(Code code, u32 opcode) {
@@ -1468,7 +1471,7 @@ private EmissionAction emit_nor(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_or(Code code, u32 opcode) {
@@ -1486,7 +1489,7 @@ private EmissionAction emit_or(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_orc(Code code, u32 opcode) {
@@ -1506,7 +1509,7 @@ private EmissionAction emit_orc(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_ori(Code code, u32 opcode) {
@@ -1518,7 +1521,7 @@ private EmissionAction emit_ori(Code code, u32 opcode) {
     code.or(rs, uimm);
     code.set_reg(guest_ra, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_oris(Code code, u32 opcode) {
@@ -1532,7 +1535,7 @@ private EmissionAction emit_oris(Code code, u32 opcode) {
     code.or(rs, uimm);
     code.set_reg(guest_ra, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_rfi(Code code, u32 opcode) {
@@ -1547,7 +1550,7 @@ private EmissionAction emit_rfi(Code code, u32 opcode) {
     auto pc = code.get_reg(GuestReg.SRR0);
     code.set_reg(GuestReg.PC, pc);
 
-    return EmissionAction.STOP;
+    return EmissionAction.BranchTaken;
 }
 
 private EmissionAction emit_rlwimi(Code code, u32 opcode) {
@@ -1572,7 +1575,7 @@ private EmissionAction emit_rlwimi(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_rlwinm(Code code, u32 opcode) {
@@ -1594,7 +1597,7 @@ private EmissionAction emit_rlwinm(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_rlwnm(Code code, u32 opcode) {
@@ -1618,11 +1621,11 @@ private EmissionAction emit_rlwnm(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sc(Code code, u32 opcode) {
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_slw(Code code, u32 opcode) {
@@ -1646,7 +1649,7 @@ private EmissionAction emit_slw(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sraw(Code code, u32 opcode) {
@@ -1684,7 +1687,7 @@ private EmissionAction emit_sraw(Code code, u32 opcode) {
     code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
     code.or(code.get_address(GuestReg.XER), tmp);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_srawi(Code code, u32 opcode) {
@@ -1714,7 +1717,7 @@ private EmissionAction emit_srawi(Code code, u32 opcode) {
     code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
     code.or(code.get_address(GuestReg.XER), tmp);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_srw(Code code, u32 opcode) {
@@ -1738,7 +1741,7 @@ private EmissionAction emit_srw(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stb(Code code, u32 opcode) {
@@ -1770,7 +1773,7 @@ private EmissionAction emit_stb(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stbu(Code code, u32 opcode) {
@@ -1802,7 +1805,7 @@ private EmissionAction emit_stbu(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sth(Code code, u32 opcode) {
@@ -1834,7 +1837,7 @@ private EmissionAction emit_sth(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sthu(Code code, u32 opcode) {
@@ -1868,7 +1871,7 @@ private EmissionAction emit_sthu(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stmw(Code code, u32 opcode) {
@@ -1911,7 +1914,7 @@ private EmissionAction emit_stmw(Code code, u32 opcode) {
         loop_ofs += 4;
     }
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stw(Code code, u32 opcode) {
@@ -1943,7 +1946,7 @@ private EmissionAction emit_stw(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stbux(Code code, u32 opcode) {
@@ -1976,7 +1979,7 @@ private EmissionAction emit_stbux(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 private EmissionAction emit_stbx(Code code, u32 opcode) {
     code.reserve_register(edi);
@@ -2008,7 +2011,7 @@ private EmissionAction emit_stbx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sthbrx(Code code, u32 opcode) {
@@ -2044,7 +2047,7 @@ private EmissionAction emit_sthbrx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sthx(Code code, u32 opcode) {
@@ -2077,7 +2080,7 @@ private EmissionAction emit_sthx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stwux(Code code, u32 opcode) {
@@ -2110,7 +2113,7 @@ private EmissionAction emit_stwux(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stwx(Code code, u32 opcode) {
@@ -2143,7 +2146,7 @@ private EmissionAction emit_stwx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_stwu(Code code, u32 opcode) {
@@ -2175,7 +2178,7 @@ private EmissionAction emit_stwu(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_subfx(Code code, u32 opcode) {
@@ -2200,7 +2203,7 @@ private EmissionAction emit_subfx(Code code, u32 opcode) {
 
     set_flags(code, false, rc, oe, ra, ra, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_subfcx(Code code, u32 opcode) {
@@ -2225,7 +2228,7 @@ private EmissionAction emit_subfcx(Code code, u32 opcode) {
 
     set_flags(code, true, rc, oe, ra, ra, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_subfex(Code code, u32 opcode) {
@@ -2251,7 +2254,7 @@ private EmissionAction emit_subfex(Code code, u32 opcode) {
 
     set_flags(code, true, rc, oe, ra, ra, rb, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_subfic(Code code, u32 opcode) {
@@ -2272,7 +2275,7 @@ private EmissionAction emit_subfic(Code code, u32 opcode) {
 
     set_flags(code, true, false, false, ra, ra, code.allocate_register(), code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;    
+    return EmissionAction.Continue;    
 }
 
 private EmissionAction emit_subfmex(Code code, u32 opcode) {
@@ -2299,7 +2302,7 @@ private EmissionAction emit_subfmex(Code code, u32 opcode) {
 
     set_flags(code, true, rc, oe, ra, ra, eax, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_subfzex(Code code, u32 opcode) {
@@ -2325,11 +2328,11 @@ private EmissionAction emit_subfzex(Code code, u32 opcode) {
 
     set_flags(code, true, rc, oe, ra, ra, eax, code.allocate_register(), 0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_sync(Code code, u32 opcode) {
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_xor(Code code, u32 opcode) {
@@ -2345,7 +2348,7 @@ private EmissionAction emit_xor(Code code, u32 opcode) {
 
     set_flags(code, false, rc, false, rs, rs, rb, code.allocate_register(), 0);
     
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_xori(Code code, u32 opcode) {
@@ -2357,7 +2360,7 @@ private EmissionAction emit_xori(Code code, u32 opcode) {
     code.xor(rs, uimm);
     code.set_reg(guest_ra, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_xoris(Code code, u32 opcode) {
@@ -2369,7 +2372,7 @@ private EmissionAction emit_xoris(Code code, u32 opcode) {
     code.xor(rs, uimm);
     code.set_reg(guest_ra, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_op_04(Code code, u32 opcode) {
@@ -2401,7 +2404,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_NEGX:   instrument = true;  return emit_ps_negx   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUBX:  instrument = true;   return emit_ps_subx   (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
@@ -2416,7 +2419,7 @@ private EmissionAction emit_op_13(Code code, u32 opcode) {
         case PrimaryOp13SecondaryOpcode.CRXOR: return emit_crxor(code, opcode);
         case PrimaryOp13SecondaryOpcode.ISYNC: return emit_isync(code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
@@ -2501,7 +2504,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.SYNC:    return emit_sync   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.XOR:     return emit_xor    (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
@@ -2519,7 +2522,7 @@ instrument = true;
         // case PrimaryOp3BSecondaryOpcode.FRESX:    return emit_fresx   (code, opcode);
         case PrimaryOp3BSecondaryOpcode.FSUBSX:   return emit_fsubsx  (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
@@ -2552,7 +2555,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FRSQRTEX: return emit_frsqrtex(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
@@ -2608,14 +2611,14 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.OP_3B:  return emit_op_3B (code, opcode);
         case PrimaryOpcode.OP_3F:  return emit_op_3F (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.STOP;
+        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
     }
 }
 
 public size_t emit(Code code, Mem mem, u32 address) {
     size_t num_opcodes_processed = 0;
     instrument = false;    
-    // import capstone;
+    import capstone;
 
     // auto cs = create(Arch.ppc, ModeFlags(Mode.bit32));
     // auto opcode = mem.read_be_u32(address);
@@ -2625,43 +2628,44 @@ public size_t emit(Code code, Mem mem, u32 address) {
     //     log_jit("[GUEST] 0x%08x | %s\t\t%s", address, instr.mnemonic, instr.opStr);
     // }
     // log_jit("Opcode: 0x%08x", opcode);
-
+    // log_jit("Disassembling at 0x%08x", address);
     while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
+
+        // auto cs = create(Arch.ppc, ModeFlags(Mode.bit32));
+        // auto opcode = mem.read_be_u32(address);
+        // log_jit("Disassembling opcode 0x%08x", address);
+        // auto res = cs.disasm((cast(ubyte*) &opcode)[0 .. 4], 0);
+        // foreach (instr; res) {
+            // log_jit("[GUEST] 0x%08x | %s\t\t%s", address, instr.mnemonic, instr.opStr);
+        // }
+        // log_jit("Opcode: 0x%08x", opcode);
+        code.set_guest_pc(address);
         EmissionAction action = disassemble(code, mem.read_be_u32(address));
 
-        num_opcodes_processed++;
-        if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE && action != EmissionAction.STOP) {
-            
-
+        if (action != EmissionAction.BranchTaken && action != EmissionAction.CpuHalted) {
             auto pc = code.get_reg(GuestReg.PC);
-            
-            // log_jit("caUTIONDFOIKJSDF;AKSDFMASOKDIJFDSF");
-            // log_jit("%s", pc);
             code.add(pc, 4);
             code.set_reg(GuestReg.PC, pc);
         }
 
-        if (action == EmissionAction.STOP) {
+        num_opcodes_processed++;
+        if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE || action != EmissionAction.Continue) {
+            final switch (action) {
+                case EmissionAction.Continue:           code.mov(rax, BlockReturnValue.GuestBlockEnd); break;
+                case EmissionAction.BranchTaken:        code.mov(rax, BlockReturnValue.BranchTaken); break;
+                case EmissionAction.ICacheInvalidation: code.mov(rax, BlockReturnValue.ICacheInvalidation); break;
+                case EmissionAction.CpuHalted:          code.mov(rax, BlockReturnValue.CpuHalted); break;
+                case EmissionAction.DecrementerChanged: code.mov(rax, BlockReturnValue.DecrementerChanged); break;
+            }
+
             break;
         }
 
+        address += 4;
         code.free_all_registers();
     }
-    
-        // ctx.pc += 4;
-        // address += 4;
-        // num_opcodes_processed++;
-        
-        // if (action == EmissionAction.STOP) {
-            // break;
-        // }
 
-        // if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE) {
-            // ir.set_reg(GuestReg.PC, ctx.pc);
-        // }
-    // }
-
-    return 1;
+    return num_opcodes_processed;
 }
 
 private void unimplemented_opcode(u32 opcode) {

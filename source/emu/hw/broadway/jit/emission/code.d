@@ -94,7 +94,6 @@ final class Code {
         auto offset = get_reg_offset(reg);
         auto host_reg = allocate_register().cvt64();
 
-        log_jit("get_fpr: %s %s, %d", reg, host_reg, offset);
         this.mov(host_reg, qwordPtr(rdi, cast(int) offset));
         return host_reg;
     }
@@ -232,5 +231,14 @@ final class Code {
                 stack_alignment += 8;
             }
         }
+    }
+
+    u32 guest_pc;
+    u32 get_guest_pc() {
+        return guest_pc;
+    }
+
+    void set_guest_pc(u32 pc) {
+        guest_pc = pc;
     }
 }

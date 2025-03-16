@@ -645,9 +645,10 @@ final class VideoInterface {
 
         // log_vi("Presenting VideoBuffer");
 
-        hollywood.draw_shapes();
-        this.present_videobuffer_callback(video_buffer);
+        hollywood.draw();
+        this.present_videobuffer_callback(&video_buffer);
 
+        log_hollywood("interupt_enable: %s", interrupt_enable);
         if (interrupt_enable[0]) {
             interrupt_status[0] = true;
             log_vi("Raising VI interrupt");

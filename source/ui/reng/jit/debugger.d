@@ -3,10 +3,7 @@ module ui.reng.jit.debugger;
 version (linux) {
 import core.stdc.string;
 import emu.hw.wii;
-import nuklear;
-import nuklear_ext;
 import raylib;
-import raylib_nuklear;
 import re;
 import re.gfx;
 import re.math;
@@ -24,14 +21,14 @@ import util.number;
 final class JitDebugger {
     private size_t current_pass_index = 0;
     private bool button_clicked = false;
-    void unimplemented(nk_context* ctx) {
+    // void unimplemented(nk_context* ctx) {
 
-    }
+    // }
 
-    void setup() {
-    }
+    // void setup() {
+    // }
 
-    void update(nk_context* ctx) {
-    }
+    // void update(nk_context* ctx) {
+    // }
 }
 }

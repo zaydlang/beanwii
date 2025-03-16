@@ -594,11 +594,8 @@ final class FileManager {
             log_ipc("UsbDev57e305::ioctlv(%x, %x, %x, %x)", ioctl, argcin, argcio, data_paddr);
             u32 addr = data_paddr;
 
-            log_bluetooth("FUNNY: %d\n", ioctl);
-
             switch (ioctl) {
             case 0: {
-                log_bluetooth("TYPE CONTROL");
                 // control
                 u8 bm_request_type = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
                 u8 b_request = mem.paddr_read_u8(mem.paddr_read_u32(addr + 8));
@@ -607,22 +604,12 @@ final class FileManager {
                 u16 w_value = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 16)));
                 u16 w_index = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 24)));
                 u16 w_length = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 32)));
-                log_bluetooth("addr: %x", addr);
-                log_bluetooth("addresses: %x(%d) %x(%d) %x(%d) %x(%d) %x(%d) %x(%d) %x(%d)",
-                mem.paddr_read_u32(addr + 0), mem.paddr_read_u32(addr + 4),
-                mem.paddr_read_u32(addr + 8), mem.paddr_read_u32(addr + 12),
-                mem.paddr_read_u32(addr + 16), mem.paddr_read_u32(addr + 20),
-                mem.paddr_read_u32(addr + 24), mem.paddr_read_u32(addr + 28),
-                mem.paddr_read_u32(addr + 32), mem.paddr_read_u32(addr + 36),
-                mem.paddr_read_u32(addr + 40), mem.paddr_read_u32(addr + 44),
-                mem.paddr_read_u32(addr + 48), mem.paddr_read_u32(addr + 52));
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
                     data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 48) + i);
                 }
 
-                log_bluetooth("FULL: usb_manager.control_request(%x, %x, %x, %x, %x, %x, %s)", request_paddr, bm_request_type, b_request, w_value, w_index, w_length, data);
                 u8[] response = usb_manager.control_request(request_paddr, bm_request_type, b_request, w_value, w_index, w_length, data);
                 
                 break;
@@ -631,18 +618,12 @@ final class FileManager {
                 // bulk
                 u8 endpoint = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
                 u16 w_length = mem.paddr_read_u16(mem.paddr_read_u32(addr + 8)); 
-                log_bluetooth("addresses: %x(%d) %x(%d) %x(%d)", 
-                mem.paddr_read_u32(addr + 0), mem.paddr_read_u32(addr + 4), 
-                mem.paddr_read_u32(addr + 8), mem.paddr_read_u32(addr + 12),
-                mem.paddr_read_u32(addr + 16), mem.paddr_read_u32(addr + 20));
-                log_bluetooth("w_length as u32: %x", mem.paddr_read_u32(mem.paddr_read_u32(addr + 8)));
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
                     data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 16) + i);
                 }
 
-                log_bluetooth("FULL: usb_manager.bulk_request(%x, %x, %s)", request_paddr, endpoint, data);
                 u8[] response = usb_manager.bulk_request(request_paddr, endpoint, data);
                 // for (int i = 0; i < response.length; i++) {
                 //     mem.paddr_write_u8(mem.paddr_read_u32(addr + 16) + i, response[i]);
@@ -651,24 +632,15 @@ final class FileManager {
                 break;
             }
             case 2: {
-                log_bluetooth("UsbDev57e305::ioctlv(%x, %x, %x, %x)", ioctl, argcin, argcio, data_paddr);
-                log_bluetooth("addresses: %x(%d) %x(%d) %x(%d)", 
-                mem.paddr_read_u32(addr + 0), mem.paddr_read_u32(addr + 4), 
-                mem.paddr_read_u32(addr + 8), mem.paddr_read_u32(addr + 12),
-                mem.paddr_read_u32(addr + 16), mem.paddr_read_u32(addr + 20));
-                log_bluetooth("w_length as u32: %x", mem.paddr_read_u32(mem.paddr_read_u32(addr + 8)));
-
                 // interrupt
                 u8 endpoint = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
                 u16 w_length = mem.paddr_read_u16(mem.paddr_read_u32(addr + 8));     
-                log_bluetooth("endpoint: %x, w_length: %d", endpoint, w_length);
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
                     data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 16) + i);
                 }
 
-                log_bluetooth("FULL: usb_manager.interrupt_request(%x, %x, %s)", request_paddr, endpoint, data);
                 u8[] response = usb_manager.interrupt_request(request_paddr, endpoint, data);
                 // for (int i = 0; i < response.length; i++) {
                     // mem.paddr_write_u8(mem.paddr_read_u32(addr + 16) + i, response[i]);

@@ -9,11 +9,14 @@ final class GlObjectManager {
     int vertex_buffer_objects_count;
     uint[] uniform_buffer_objects;
     int uniform_buffer_objects_count;
+    uint[] texture_objects;
+    int texture_objects_count;
 
     void deallocate_all_objects() {
         vertex_array_objects_count = 0;
         vertex_buffer_objects_count = 0;
         uniform_buffer_objects_count = 0;
+        texture_objects_count = 0;
     }
 
     uint allocate_vertex_array_object() {
@@ -50,5 +53,17 @@ final class GlObjectManager {
         }
 
         return uniform_buffer_objects[uniform_buffer_objects_count++];
+    }
+
+    uint allocate_texture_object() {
+        if (texture_objects_count == texture_objects.length) {
+            uint new_texture_object;
+            glGenTextures(1, &new_texture_object);
+            texture_objects ~= new_texture_object;
+
+            return new_texture_object;
+        }
+
+        return texture_objects[texture_objects_count++];
     }
 }

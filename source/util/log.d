@@ -6,17 +6,21 @@ __gshared Scheduler* g_logger_scheduler;
 
 enum Whitelist = [
     // LogSource.USB,
-    // LogSource.BLUETOOTH,
+    LogSource.BLUETOOTH,
     // LogSource.AI,
+    LogSource.BROADWAY,
     // LogSource.DISK,
     // LogSource.DSP,
-    LogSource.FRONTEND,
+    // LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
+    LogSource.IPC,
+    // LogSource.JIT,
     // LogSource.HOLLYWOOD,
     // LogSource.OS_REPORT,
     // LogSource.SLOWMEM,
     // LogSource.SCHEDULER,
+    LogSource.USB,
     // LogSource.WBFS,
     // LogSource.WII,
 ];

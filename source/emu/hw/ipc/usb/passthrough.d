@@ -74,11 +74,10 @@ final class BluetoothPassthrough {
 
         auto ogf = data[1] >> 2;
         auto ocf = ((data[1] & 0x03) << 8) | data[0];
-        log_bluetooth("HCI control request: ogf=%d ocf=%04x", ogf, ocf);
 
         log_bluetooth("hci_send_cmd(%x, %x, %x, %x, %s)", this.dd, ogf, ocf, cast(int) data.length - 3, data[3..$]);
         auto result = hci_send_cmd(this.dd, ogf, ocf, cast(int) data.length - 3, data[3..$].ptr);
-        log_bluetooth("hci_send_cmd result: %d", result);
+        log_bluetooth("hci_send_cmd result: %d %s", result, data);
         trivial_success(data);
 
         // is this correct? legitimately what the fuck is going on anymore
@@ -91,14 +90,12 @@ final class BluetoothPassthrough {
         }
 
         u32 ioctl_vector = mem.paddr_read_u32(paddr + 0x18);
-        log_bluetooth("pushing to paddr: %x", ioctl_vector);
         ipc_response_queue.push_later(paddr, cast(int)  mem.paddr_read_u32(ioctl_vector + 52), 40_000);
 
         return [];
     }
 
     void copy_to_user_buf(u32 user_buf_addr, u8[] data, size_t user_buf_len) {
-        log_bluetooth("copy_to_user_buf: %x %s %x", user_buf_addr, data, user_buf_len);
         if (data.length > user_buf_len) error_bluetooth("fuck");
 
         for (int i = 0; i < data.length; i++) {

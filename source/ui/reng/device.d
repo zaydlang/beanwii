@@ -42,15 +42,15 @@ class RengMultimediaDevice : MultiMediaDevice {
 
     override {
         // video stuffs
-        void present_videobuffer(VideoBuffer buffer) {
+        void present_videobuffer(VideoBuffer* buffer) {
         import std.stdio;
         // writefln("presenting video buffer");
             for (int y = 0; y < WII_SCREEN_HEIGHT; y++) {
             for (int x = 0; x < WII_SCREEN_WIDTH;  x++) {
                     wii_video.videobuffer[y * WII_SCREEN_WIDTH + x] = 
-                        (buffer[x][y].r <<  0) |
-                        (buffer[x][y].g <<  8) |
-                        (buffer[x][y].b << 16) |
+                        ((*buffer)[x][y].r <<  0) |
+                        ((*buffer)[x][y].g <<  8) |
+                        ((*buffer)[x][y].b << 16) |
                         0xFF000000;
             }
             }
@@ -115,6 +115,10 @@ class RengMultimediaDevice : MultiMediaDevice {
 
         bool should_exit() {
             return WindowShouldClose();
+        }
+
+        bool is_running() {
+            return true;
         }
     }
 

@@ -24,14 +24,15 @@ version (unittest) {} else {
 	void main(string[] args) {
 		CliArgs cli_args = parse_cli_args(args);
 		
-		auto device = new SdlDevice(1, cli_args.start_debugger);		
+		wii = new Wii(cli_args.ringbuffer_size);
+		auto device = new SdlDevice(wii, 1, cli_args.start_debugger);
+		wii.init_opengl();	
 		// auto device = new RengMultimediaDevice(wii, 1, true);
 
 		auto disk_data = load_file_as_bytes(cli_args.rom_path);
 		log_wii("sysconf path: %s", cli_args.sysconf_path);
 		auto sysconf = load_file_as_bytes(cli_args.sysconf_path);
 
-		wii = new Wii(cli_args.ringbuffer_size);
 		wii.connect_multimedia_device(device);
 
 		set_logger_on_error_callback(&logger_on_error_callback);

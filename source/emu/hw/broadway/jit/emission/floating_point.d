@@ -25,7 +25,7 @@ EmissionAction emit_fcmpo(Code code, u32 opcode) {
     code.comisd(xmm0, xmm1);
     emit_fp_flags_helper(code, crfd, ra.cvt32());
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fcmpu(Code code, u32 opcode) {
@@ -43,7 +43,7 @@ EmissionAction emit_fcmpu(Code code, u32 opcode) {
     code.ucomisd(xmm0, xmm1);
     emit_fp_flags_helper(code, crfd, ra.cvt32());
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmr(Code code, u32 opcode) {
@@ -53,7 +53,7 @@ EmissionAction emit_fmr(Code code, u32 opcode) {
     auto rs = code.get_fpr(guest_rs);
     code.set_fpr(guest_rd, rs);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_lfd(Code code, u32 opcode) {
@@ -80,7 +80,7 @@ EmissionAction emit_lfd(Code code, u32 opcode) {
 
     code.set_fpr(guest_rd, rax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_stfd(Code code, u32 opcode) {
@@ -108,7 +108,7 @@ EmissionAction emit_stfd(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_stfdu(Code code, u32 opcode) {
@@ -133,7 +133,7 @@ EmissionAction emit_stfdu(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_stfsx(Code code, u32 opcode) {
@@ -164,7 +164,7 @@ EmissionAction emit_stfsx(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_lfsux(Code code, u32 opcode) {
@@ -200,7 +200,7 @@ EmissionAction emit_lfsux(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_mftsb1(Code code, u32 opcode) {
@@ -216,7 +216,7 @@ EmissionAction emit_mftsb1(Code code, u32 opcode) {
 
     code.or(code.get_address(GuestReg.FPSCR), 1 << crbD);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_lfs(Code code, u32 opcode) {
@@ -255,7 +255,7 @@ EmissionAction emit_lfs(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_stfs(Code code, u32 opcode) {
@@ -286,7 +286,7 @@ EmissionAction emit_stfs(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
     
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmulsx(Code code, u32 opcode) {
@@ -316,7 +316,7 @@ code.label(paired_single);
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fdivsx(Code code, u32 opcode) {
@@ -332,7 +332,7 @@ EmissionAction emit_fdivsx(Code code, u32 opcode) {
     code.divsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fsub(Code code, u32 opcode) {
@@ -348,7 +348,7 @@ EmissionAction emit_fsub(Code code, u32 opcode) {
     code.subsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_faddsx(Code code, u32 opcode) {
@@ -366,7 +366,7 @@ EmissionAction emit_faddsx(Code code, u32 opcode) {
 
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fsubsx(Code code, u32 opcode) {
@@ -384,7 +384,7 @@ EmissionAction emit_fsubsx(Code code, u32 opcode) {
 
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fctiwzx(Code code, u32 opcode) {
@@ -400,7 +400,7 @@ EmissionAction emit_fctiwzx(Code code, u32 opcode) {
 
     code.set_fpr(guest_rd, rb);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_frspx(Code code, u32 opcode) {
@@ -419,7 +419,7 @@ EmissionAction emit_frspx(Code code, u32 opcode) {
     code.movq(rb, xmm0);
     code.set_fpr(guest_rd, rb);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_lfsx(Code code, u32 opcode) {
@@ -460,7 +460,7 @@ EmissionAction emit_lfsx(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fabsx(Code code, u32 opcode) {
@@ -475,12 +475,12 @@ EmissionAction emit_fabsx(Code code, u32 opcode) {
 
     code.get_ps(guest_rb, xmm0);
     code.movq(tmp.cvt64(), xmm0);
-    code.mov(tmp2.cvt64(), 0x80000000_00000000);
+    code.mov(tmp2.cvt64(), ~0x80000000_00000000);
     code.and(tmp.cvt64(), tmp2.cvt64());
     code.movq(xmm0, tmp.cvt64());
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_lfdx(Code code, u32 opcode) {
@@ -509,7 +509,7 @@ EmissionAction emit_lfdx(Code code, u32 opcode) {
 
     code.set_fpr(guest_rd, rax);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_faddx(Code code, u32 opcode) {
@@ -525,7 +525,7 @@ EmissionAction emit_faddx(Code code, u32 opcode) {
     code.addsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmsubx(Code code, u32 opcode) {
@@ -544,7 +544,7 @@ EmissionAction emit_fmsubx(Code code, u32 opcode) {
     code.subsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmsubsx(Code code, u32 opcode) {
@@ -578,7 +578,7 @@ code.label(paired_single);
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_frsqrtex(Code code, u32 opcode) {
@@ -593,7 +593,7 @@ EmissionAction emit_frsqrtex(Code code, u32 opcode) {
     code.cvtss2sd(xmm0, xmm0);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fdivx(Code code, u32 opcode) {
@@ -609,7 +609,7 @@ EmissionAction emit_fdivx(Code code, u32 opcode) {
     code.divsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmulx(Code code, u32 opcode) {
@@ -625,7 +625,7 @@ EmissionAction emit_fmulx(Code code, u32 opcode) {
     code.mulsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fnegx(Code code, u32 opcode) {
@@ -645,7 +645,7 @@ EmissionAction emit_fnegx(Code code, u32 opcode) {
     code.movq(xmm0, tmp.cvt64());
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fnmaddsx(Code code, u32 opcode) {
@@ -681,7 +681,7 @@ EmissionAction emit_fnmaddsx(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fnmsubsx(Code code, u32 opcode) {
@@ -717,7 +717,7 @@ EmissionAction emit_fnmsubsx(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_fmaddsx(Code code, u32 opcode) {
@@ -746,5 +746,5 @@ EmissionAction emit_fmaddsx(Code code, u32 opcode) {
 code.label(end);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }

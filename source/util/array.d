@@ -99,3 +99,13 @@ private auto get_shift(T)() {
     static if (is(T == u16)) return 1;
     static if (is(T == u8))  return 0;
 }
+
+public string to_hex_string(u8[] buf) {
+    import std.string;
+    import std.array;
+    import std.algorithm;
+    import std.range;
+    import std.conv;
+
+    return "[" ~ buf.map!(a => format("%02x", a)).join(", ") ~ "]";
+}

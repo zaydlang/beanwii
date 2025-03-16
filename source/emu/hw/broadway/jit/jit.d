@@ -5,6 +5,7 @@ import dklib.khash;
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.codeblocks;
 import emu.hw.broadway.jit.emission.emit;
+import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.cpu;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
@@ -21,6 +22,11 @@ alias HleHandler   = void function(int param);
 struct JitContext {
     u32 pc;
     bool pse;
+}
+
+struct JitReturnValue {
+    u32 num_instructions_executed;
+    BlockReturnValue block_return_value;
 }
 
 struct JitConfig {
@@ -44,8 +50,13 @@ final class Jit {
         u32 instruction;
     }
 
-    private alias JitFunction = void function(BroadwayState* state);
-    private alias JitHashMap = khash!(u32, JitFunction);
+    struct JitEntry {
+        JitFunction func;
+        u32         num_instructions;
+    }
+
+    private alias JitFunction = BlockReturnValue function(BroadwayState* state);
+    private alias JitHashMap = khash!(u32, JitEntry);
     private alias DebugRing  = RingBuffer!(DebugState);
     
     private Mem        mem;
@@ -63,48 +74,54 @@ final class Jit {
         this.codeblocks = new CodeBlockTracker();
     }
 
-    // returns the number of instructions executed
-    public u32 run(BroadwayState* state) {
-        auto cached_func = jit_hash_map.require(state.pc, null);
-        if (cached_func != null) {
-            import std.stdio;
+    BlockReturnValue process_jit_function(JitFunction func, BroadwayState* state) {
+        BlockReturnValue ret = func(state);
+
+        final switch (ret) {
+            case BlockReturnValue.Invalid: error_jit("Invalid return value"); break;
+            case BlockReturnValue.ICacheInvalidation: {
+                state.icbi_address &= ~31;
+                
+                for (u32 i = 0; i < 32 + MAX_GUEST_OPCODES_PER_RECIPE - 1; i += 4) {
+                    jit_hash_map.remove(state.icbi_address + i + MAX_GUEST_OPCODES_PER_RECIPE - 1);
+                }
+
+                break;
+            }
+
+            case BlockReturnValue.GuestBlockEnd:
+                break;
+
+            case BlockReturnValue.CpuHalted:
+                break;
             
-            cached_func(state);
+            case BlockReturnValue.BranchTaken:
+                break;
+            
+            case BlockReturnValue.DecrementerChanged:
+                break;
+        }
+
+        return ret;
+    }
+
+    // returns the number of instructions executed
+    public JitReturnValue run(BroadwayState* state) {
+        JitEntry invalid_entry = JitEntry(null, 0);
+        auto cached_func = jit_hash_map.require(state.pc, invalid_entry);
+
+        if (cached_func != invalid_entry) {
+            return JitReturnValue(cached_func.num_instructions, process_jit_function(cached_func.func, state));
         } else {
             code.init();
-            emit(code, mem, state.pc);
+            auto num_instructions = cast(int) emit(code, mem, state.pc);
             u8[] bytes = code.get();
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
             
             auto func = cast(JitFunction) ptr;            
-            jit_hash_map[state.pc] = func;
-            func(state);
+            jit_hash_map[state.pc] = JitEntry(func, num_instructions);
+            return JitReturnValue(num_instructions, process_jit_function(func, state));
         }
-
-        if (state.icache_flushed) {
-            // assert(state.icbi_address % 32 == 0);
-            state.icbi_address &= ~31;
-            
-            for (u32 i = 0; i < 32; i += 4) {
-                jit_hash_map.remove(state.icbi_address + i);    
-            }
-            
-            state.icache_flushed = false;
-        }
-
-        // auto func = code.get_function!JitFunction();
-                // auto x86_capstone = create(Arch.x86, ModeFlags(Mode.bit64));
-                // auto res = x86_capstone.disasm((cast(ubyte*) func)[0 .. code.getSize()], 0);
-                // foreach (instr; res) {
-                    // log_jit("0x%08x | %s\t\t%s", instr.address, instr.mnemonic, instr.opStr);
-                // }
-
-        // if (mem.read_be_u32(state.pc) == 0x4d820020) {
-            // int x = 2;
-        // }
-        // func(state);
-        
-        return 2;
     }
 
     private void log_instruction(u32 instruction, u32 pc) {

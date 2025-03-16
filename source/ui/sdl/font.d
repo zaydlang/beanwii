@@ -22,11 +22,17 @@ struct Character {
     int size_y;
 }
 
+enum Justify {
+    Left,
+    Center,
+    Right,
+}
+
 final class Font {
     Character[char] characters;
     GLint font_shader;
 
-    this(string path, FT_Library ft, GLint font_shader) {
+    this(string path, FT_Library ft, GLint font_shader, int font_size) {
         this.font_shader = font_shader;
 
         glUseProgram(font_shader);
@@ -44,7 +50,7 @@ final class Font {
             error_frontend("Could not open font.");
         }
 
-        FT_Set_Pixel_Sizes(face, 0, 18);
+        FT_Set_Pixel_Sizes(face, 0, font_size);
 
         for (char c = 'a'; c <= 'z'; c++) {
             load_char(face, c);
@@ -76,6 +82,7 @@ final class Font {
         load_char(face, '/');
         load_char(face, '[');
         load_char(face, ']');
+        load_char(face, '=');
 
         FT_Done_Face(face);
     }
@@ -121,18 +128,31 @@ final class Font {
         return RenderedTextHandle(vao, vbo);
     }
     
-    void set_string(RenderedTextHandle handle, Color color, string text, float x, float y, float w, float h) {
+    void set_string(RenderedTextHandle handle, Color color, Justify justify, string text, float x, float y, float w, float h) {
         int string_width = 0;
         int string_height = 0;
 
         foreach (char c; text) {
+            log_frontend("c: %s", c);
             Character character = characters[c];
             string_width += character.advance >> 6;
             string_height = max(string_height, character.size_y);
         }
 
-        x = x + (w - string_width) / 2;
-        y = y + (h - string_height) / 2;
+        final switch (justify) {
+            case Justify.Left:
+                x = x;
+                y = y + (h - string_height) / 2;
+                break;
+            case Justify.Center:
+                x = x + (w - string_width) / 2;
+                y = y + (h - string_height) / 2;
+                break;
+            case Justify.Right:
+                x = x + w - string_width;
+                y = y + (h - string_height) / 2;
+                break;
+        }
     
         foreach (char c; text) {
             glUseProgram(font_shader);
@@ -157,7 +177,7 @@ final class Font {
             float ypos = y - (character.size_y - character.bearing_y);
             float width = character.size_x;
             float height = character.size_y;
-            log_frontend("xpos: %f, ypos: %f, width: %f, height: %f", xpos, ypos, width, height);
+            // log_frontend("xpos: %f, ypos: %f, width: %f, height: %f", xpos, ypos, width, height);
 
             float[] buffer_data = [
                 xpos,         ypos + height, 0.0f, 0.0f,            

@@ -43,7 +43,7 @@ EmissionAction emit_psq_l(Code code, u32 opcode) {
         code.set_ps(guest_rd, xmm0);
     }
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_msubx(Code code, u32 opcode) {
@@ -62,7 +62,7 @@ EmissionAction emit_ps_msubx(Code code, u32 opcode) {
     code.subpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_subx(Code code, u32 opcode) {
@@ -78,7 +78,7 @@ EmissionAction emit_ps_subx(Code code, u32 opcode) {
     code.subpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_maddx(Code code, u32 opcode) {
@@ -97,7 +97,7 @@ EmissionAction emit_ps_maddx(Code code, u32 opcode) {
     code.addpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_sum0(Code code, u32 opcode) {
@@ -115,7 +115,7 @@ EmissionAction emit_ps_sum0(Code code, u32 opcode) {
     code.blendpd(xmm0, xmm2, 2);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_sum1(Code code, u32 opcode) {
@@ -128,12 +128,12 @@ EmissionAction emit_ps_sum1(Code code, u32 opcode) {
     code.get_ps(guest_ra, xmm0);
     code.get_ps(guest_rb, xmm1);
     code.get_ps(guest_rc, xmm2);
-    code.shufpd(xmm1, xmm1, 1);
+    code.shufpd(xmm0, xmm0, 1);
     code.addpd(xmm0, xmm1);
     code.blendpd(xmm0, xmm2, 1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_mulx(Code code, u32 opcode) {
@@ -149,7 +149,7 @@ EmissionAction emit_ps_mulx(Code code, u32 opcode) {
     code.mulpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
@@ -168,7 +168,7 @@ EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
     code.comisd(xmm0, xmm1);
     emit_fp_flags_helper(code, crfd, ra.cvt32());
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
@@ -188,7 +188,7 @@ EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
     code.addpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_madds1x(Code code, u32 opcode) {
@@ -208,7 +208,7 @@ EmissionAction emit_ps_madds1x(Code code, u32 opcode) {
     code.addpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_absx(Code code, u32 opcode) {
@@ -227,7 +227,7 @@ EmissionAction emit_ps_absx(Code code, u32 opcode) {
     code.andpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_negx(Code code, u32 opcode) {
@@ -247,7 +247,7 @@ EmissionAction emit_ps_negx(Code code, u32 opcode) {
     code.xorpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_mr(Code code, u32 opcode) {
@@ -260,7 +260,7 @@ EmissionAction emit_ps_mr(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm0);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_merge11(Code code, u32 opcode) {
@@ -276,7 +276,7 @@ EmissionAction emit_ps_merge11(Code code, u32 opcode) {
 
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_merge01(Code code, u32 opcode) {
@@ -292,7 +292,7 @@ EmissionAction emit_ps_merge01(Code code, u32 opcode) {
 
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_merge00(Code code, u32 opcode) {
@@ -308,7 +308,7 @@ EmissionAction emit_ps_merge00(Code code, u32 opcode) {
 
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_merge10(Code code, u32 opcode) {
@@ -322,9 +322,9 @@ EmissionAction emit_ps_merge10(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm1);
     code.shufpd(xmm0, xmm1, 0b0001);
 
-    code.set_ps(guest_rd, xmm1);
+    code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_muls0(Code code, u32 opcode) {
@@ -343,7 +343,7 @@ EmissionAction emit_ps_muls0(Code code, u32 opcode) {
     code.mulpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
@@ -369,7 +369,7 @@ EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
     code.xorpd(xmm1, xmm0);
     code.set_ps(guest_rd, xmm1);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_ps_add(Code code, u32 opcode) {
@@ -385,7 +385,7 @@ EmissionAction emit_ps_add(Code code, u32 opcode) {
     code.addpd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 EmissionAction emit_psq_st(Code code, u32 opcode) {
@@ -420,7 +420,7 @@ EmissionAction emit_psq_st(Code code, u32 opcode) {
         quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
     }
 
-    return EmissionAction.CONTINUE;
+    return EmissionAction.Continue;
 }
 
 void dequantize(Code code, XMM dest, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM tmp_xmm, bool increment_address) {
