@@ -4,6 +4,7 @@ import bindbc.freetype;
 import bindbc.opengl;
 import bindbc.sdl;
 import emu.hw.hollywood.hollywood;
+import emu.hw.ipc.usb.wiimote;
 import emu.hw.wii;
 import std.algorithm;
 import std.array;
@@ -64,6 +65,8 @@ class SdlDevice : MultiMediaDevice, Window {
     float[16] projection_matrix;
 
     this(Wii wii, int screen_scale, bool start_debugger) {
+        this.wii = wii;
+        
         loadSDL();
 
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -167,7 +170,6 @@ class SdlDevice : MultiMediaDevice, Window {
             glUseProgram(font_shader);
             glUniformMatrix4fv(glGetUniformLocation(font_shader, "MVP"), 1, GL_FALSE, projection_matrix.ptr);
 
-            this.wii = wii;
             this.hollywood = wii.debug_get_hollywood();
             this.paused = false;
             debug_tri_windows = [];
@@ -204,9 +206,10 @@ class SdlDevice : MultiMediaDevice, Window {
         }
 
         void update() {
-            if (debugging) {
-                SDL_PumpEvents();
+            SDL_PumpEvents();
+            handle_input();
 
+            if (debugging) {
                 SDL_Event event;
                 while(SDL_PollEvent(&event)) {
                     switch (event.type) {
@@ -334,7 +337,24 @@ class SdlDevice : MultiMediaDevice, Window {
         }
 
         void handle_input() {
+            enum KeyMapping = [
+                WiimoteButton.A : SDL_SCANCODE_A,
+                WiimoteButton.B : SDL_SCANCODE_B,
+                WiimoteButton.Plus : SDL_SCANCODE_P,
+                WiimoteButton.Minus : SDL_SCANCODE_L,
+                WiimoteButton.Home : SDL_SCANCODE_H,
+                WiimoteButton.One : SDL_SCANCODE_1,
+                WiimoteButton.Two : SDL_SCANCODE_2,
+                WiimoteButton.Up : SDL_SCANCODE_UP,
+                WiimoteButton.Down : SDL_SCANCODE_DOWN,
+                WiimoteButton.Left : SDL_SCANCODE_LEFT,
+                WiimoteButton.Right : SDL_SCANCODE_RIGHT,
+            ];
 
+            foreach (wiimote_key, host_key; KeyMapping) {
+                u8* keyboard_state = SDL_GetKeyboardState(null);
+                wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
+            }
         }
 
         bool should_fast_forward() {

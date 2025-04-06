@@ -1,10 +1,28 @@
 module emu.hw.dsp.dsp;
 
 import emu.hw.broadway.interrupt;
+import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import util.bitop;
 import util.number;
 import util.log;
+
+// these two enums are mostly guesses from libogc source code so don't
+// assume they are correct
+
+enum CommandFromCpu {
+    TaskIncoming     = 0xcdd1_0001,
+    NoTasksLeft      = 0xcdd1_0002,
+    NoTasksToYieldTo = 0xcdd1_0003,
+}
+
+enum CommandToCpu {
+    TaskInitialized      = 0xdcd1_0000,
+    TaskResuming         = 0xdcd1_0001,
+    MaybeYieldToNewTask  = 0xdcd1_0002,
+    TaskComplete         = 0xdcd1_0003,
+    RequestInfo          = 0xdcd1_0004,
+}
 
 final class DSP {
     enum State {
@@ -15,6 +33,7 @@ final class DSP {
     State state;
     Scheduler scheduler;
     InterruptController interrupt_controller;
+    Mem mem;
 
     this() {
         state = State.Init;
@@ -27,6 +46,10 @@ final class DSP {
 
     void connect_interrupt_controller(InterruptController interrupt_controller) {
         this.interrupt_controller = interrupt_controller;
+    }
+
+    void connect_mem(Mem mem) {
+        this.mem = mem;
     }
 
     void send_command_to_cpu(u32 command) {
@@ -43,23 +66,108 @@ final class DSP {
         }
     }
 
+    int test = 0;
     int commands_left_to_process_at_init;
+    u32 dsp_microcode_address;
+    u32 dsp_microcode_size;
+
+    // void finish_task() {}
+
+    enum TASK_QUANTUM = 100_000;
+    void resume_task() {
+        log_dsp("Resuming task");
+        if (state == State.Ready) {
+            scheduler.add_event_relative_to_clock(&this.yield_task, TASK_QUANTUM);
+            send_command_to_cpu(CommandToCpu.TaskResuming);
+        } else {
+            error_dsp("DSP not ready to resume task");
+        }
+    }
+
+    void yield_task() {
+        log_dsp("Yielding task");
+        if (state == State.Ready) {
+            send_command_to_cpu(CommandToCpu.MaybeYieldToNewTask);
+        } else {
+            error_dsp("DSP not ready to yield task");
+        }
+    }
+
     void process_mailbox_command() {
-        log_dsp("Mailbox command: %04x %04x", mailbox_to_lo, mailbox_to_hi);
+        log_dsp("Mailbox command: %04x %04x %08x %08x", mailbox_to_lo, mailbox_to_hi,0,0);
         final switch (state) {
             case State.Init:
                 commands_left_to_process_at_init--;
                 if (commands_left_to_process_at_init == 0) {
                     state = State.Ready;
-                    scheduler.add_event_relative_to_clock(() => send_command_to_cpu(0xdcd1_0000), 10000);
-                    log_dsp("DSP init complete");
+                    scheduler.add_event_relative_to_clock(() => dipshit, 100_000);
+                    scheduler.add_event_relative_to_clock(() => send_command_to_cpu(0xdcd1_0000), 10_000);
+                    scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
+                    log_dsp("DSP init complete: %08x %08x", dsp_microcode_address, dsp_microcode_size);
+                    dump_dsp_microcode("dsp.bin");
+                } else if (commands_left_to_process_at_init == 8) {
+                    dsp_microcode_address = mailbox_to_hi << 16 | mailbox_to_lo;
+                } else if (commands_left_to_process_at_init == 4) {
+                    dsp_microcode_size = mailbox_to_hi << 16 | mailbox_to_lo;
                 }
 
                 break;
 
             case State.Ready:
+            if (test == 1) {
+                u32 address = mailbox_to_hi << 16 | mailbox_to_lo;
+                log_dsp("BABE DATA: %08x %08x %08x %08x %08x %08x %08x %08x", mem.read_be_u32(address),
+                    mem.read_be_u32(address + 4),
+                    mem.read_be_u32(address + 8),
+                    mem.read_be_u32(address + 12),
+                    mem.read_be_u32(address + 16),
+                    mem.read_be_u32(address + 20),
+                    mem.read_be_u32(address + 24),
+                    mem.read_be_u32(address + 28));
+            }
+                u32 mailbox_command = mailbox_to_hi << 16 | mailbox_to_lo;
+                switch (mailbox_command) {
+                    case CommandFromCpu.TaskIncoming:
+                        error_dsp("Task incoming");
+                        break;
+                    case CommandFromCpu.NoTasksLeft:
+                        error_dsp("No tasks left");
+                        break;
+                    case CommandFromCpu.NoTasksToYieldTo:
+                        log_dsp("No tasks to yield to");
+                        scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
+                        break;
+                    
+                    default: 
+                        log_dsp("Unknown mailbox command: %08x", mailbox_command);
+                        break;  
+                }
+            test++;
+                log_dsp("DSP mailbox command in ready state: %04x %04x", mailbox_to_lo, mailbox_to_hi);
                 break;
         }
+    }
+
+    void dump_dsp_microcode(string filename) {
+        import std.stdio;
+
+        auto file = File(filename, "wb");
+        log_dsp("Dumping DSP microcode to %s", filename);
+        for (int i = 0; i < dsp_microcode_size; i += 4) {
+            u32 value = mem.read_be_u32(dsp_microcode_address + i);
+            file.write(value);
+        }
+        file.close();
+    }
+
+    void dipshit() {
+        if (csr.bit(4)) {
+            log_dsp("Dipshit");
+            csr |= 1 << 3;
+            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
+        }
+
+        scheduler.add_event_relative_to_clock(() => dipshit, 100_000);
     }
 
     u16 mailbox_from_lo;
@@ -84,7 +192,8 @@ final class DSP {
     }
 
     void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
-        mailbox_to_lo = cast(u16) mailbox_from_lo.set_byte(target_byte, value);
+        mailbox_to_lo = cast(u16) mailbox_to_lo.set_byte(target_byte, value);
+        log_dsp("DSP MAILBOX TO LOW: %04x %04x", mailbox_to_lo, mailbox_to_hi);
 
         if (target_byte == 1) {
             process_mailbox_command();
@@ -102,7 +211,8 @@ final class DSP {
     }
 
     void write_DSP_MAILBOX_TO_HIGH(int target_byte, u8 value) {
-        mailbox_to_hi = cast(u16) mailbox_from_hi.set_byte(target_byte, value);
+        mailbox_to_hi = cast(u16) mailbox_to_hi.set_byte(target_byte, value);
+        log_dsp("DSP MAILBOX TO HI: %04x %04x", mailbox_to_lo, mailbox_to_hi);
     }
 
     u32 csr;
@@ -174,6 +284,7 @@ final class DSP {
         }
 
         if (value.bit(7)) {
+            log_dsp("DSP IRQ CLEAR: %04x", csr);
             csr &= ~(1 << 7);
         }
 

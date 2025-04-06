@@ -3,6 +3,7 @@ module emu.hw.ipc.ipc;
 import emu.hw.broadway.interrupt;
 import emu.hw.disk.readers.filereader;
 import emu.hw.ipc.filemanager;
+import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import util.bitop;
@@ -16,6 +17,7 @@ final class IPC {
     struct IPCResponse {
         u32 paddr;
         int return_value;
+        bool printme;
     }
 
     final class IPCResponseQueue {
@@ -28,24 +30,32 @@ final class IPC {
         DList!IPCResponse responses;
         int num_outstanding_responses = 0;
 
-        void push_later(u32 paddr, int return_value, int cycles) {
+        void push_later(u32 paddr, int return_value, int cycles, bool printme = false) {
             num_outstanding_responses++;
             log_ipc("FUCK MY ASS!\n");
-            ipc.scheduler.add_event_relative_to_clock(() => push(paddr, return_value), cycles);
+            ipc.scheduler.add_event_relative_to_clock(() => push(paddr, return_value, printme), cycles);
         }
 
-        void push(u32 paddr, int return_value) {
+        void push(u32 paddr, int return_value, bool printme) {
             log_ipc("OUTSTANDING: %x", num_outstanding_responses);
 
-            if (ipc.waiting_for_cpu_to_get_response) {
+            if (state != State.Idle) {
                 IPCResponse response;
                 response.paddr = paddr;
                 response.return_value = return_value;
+                response.printme = printme;
+                log_ipc("QUEUE PUSH %x", num_outstanding_responses);
                 responses.insertBack(response);
                 log_ipc("IPC: Waiting for CPU to get response");
             } else {
+                log_ipc("QUEUE PASS: %x", num_outstanding_responses);
+                if (printme) {
+                    log_ipc("printme2! %x %x", paddr, return_value);
+                }
+                log_ipc("IPC: Finalizing new resopnse");
+                log_ipc("state -> WillSendCpuResponseInSomeTime");
+                state = State.WillSendCpuResponseInSomeTime;
                 ipc.finalize_command(paddr, return_value);
-                log_ipc("IPC: Waiting for CPU to get response");
                 num_outstanding_responses--;
             }
         }
@@ -53,10 +63,17 @@ final class IPC {
         void maybe_finalize_new_response() {
             log_ipc("OUTSTANDING: %x", num_outstanding_responses);
             
-            if (!ipc.waiting_for_cpu_to_get_response && !responses.empty) {
+            if (state == State.Idle && !responses.empty) {
                 log_ipc("IPC: Finalizing new response");
                 IPCResponse response = responses.front;
+                if (response.printme) {
+                    log_ipc("printme1! %x %x", response.paddr, response.return_value);
+                }
+                log_ipc("QUEUE POP: %x", num_outstanding_responses);
                 responses.removeFront();
+                
+                log_ipc("state -> WillSendCpuResponseInSomeTime");
+                state = State.WillSendCpuResponseInSomeTime;
                 ipc.scheduler.add_event_relative_to_clock(() => finalize_command(response.paddr, response.return_value), 10000);
                 num_outstanding_responses--;
             }
@@ -68,8 +85,6 @@ final class IPC {
     }
 
     IPCResponseQueue response_queue;
-    bool waiting_for_cpu_to_get_response = false;
-
     Mem mem;
     InterruptController interrupt_controller;
 
@@ -79,6 +94,16 @@ final class IPC {
 
     FileManager file_manager;
 
+    enum State {
+        WillSendCpuResponseInSomeTime = 0,
+        WaitingForCpuToGetResponse    = 1,
+        Idle                          = 2,
+    }
+
+    State state;
+
+    ulong remote_is_dead_timeout;
+
     this() {
         response_queue = new IPCResponseQueue(this);
         file_manager = new FileManager(response_queue);
@@ -86,6 +111,8 @@ final class IPC {
         hw_ipc_ppcmsg = 0;
         hw_ipc_ppcctrl = 0;
         hw_ipc_armmsg = 0;
+
+        state = State.Idle;
     }
 
     void connect_mem(Mem mem) {
@@ -95,10 +122,15 @@ final class IPC {
 
     void connect_scheduler(Scheduler scheduler) {
         this.scheduler = scheduler;
+        this.file_manager.connect_scheduler(scheduler);
     }
 
     void connect_interrupt_controller(InterruptController ic) {
         this.interrupt_controller = ic;
+    }
+
+    void connect_wiimote(Wiimote wiimote) {
+        this.file_manager.connect_wiimote(wiimote);
     }
 
     u32 hw_ipc_ppcmsg;
@@ -115,6 +147,12 @@ final class IPC {
     u32 hw_ipc_ppcctrl;
 
     void write_HW_IPC_PPCCTRL(T)(T value, int offset) {
+        scheduler.remove_event(remote_is_dead_timeout);
+        remote_is_dead_timeout = scheduler.add_event_relative_to_self(() {
+            mem.cpu.dump_stack();
+            error_ipc("IPC: Remote is dead");
+        }, 100_000_000);
+
         assert(offset == 0, "IPC: PPCCTRL offset is not 0");
         assert(T.sizeof == 4, "IPC: PPCCTRL write size is not 4");
 
@@ -134,14 +172,14 @@ final class IPC {
         bool iy1 = hw_ipc_ppcctrl.bit(4);
         bool iy2 = hw_ipc_ppcctrl.bit(5);
 
-        if (x2) {
-            // hw_ipc_ppcctrl &= ~0xF;
-            // scheduler.remove_event(process_command_event_id);
-            // scheduler.remove_event(finalize_command_event_id);
+        // if (x2) {
+        //     // hw_ipc_ppcctrl &= ~0xF;
+        //     // scheduler.remove_event(process_command_event_id);
+        //     // scheduler.remove_event(finalize_command_event_id);
 
-            // log_ipc("Relaunching IOS");
-            return;
-        } 
+        //     // log_ipc("Relaunching IOS");
+        //     return;
+        // } 
 if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
         if (x1) {
             log_ipc("Sending command");
@@ -153,10 +191,16 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
         }
 
         if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1) && !interrupt_controller.ipc_interrupt_pending()) {
-            log_ipc("IPC: Interrupt acknowledged");
+            log_ipc("IPC: Interrupt acknowledged. State: %s", state);
+
+            if (state == State.WaitingForCpuToGetResponse) {
+                log_ipc("IPC: state -> Idle");
+                state = State.Idle;
+            }
             
-            waiting_for_cpu_to_get_response = false;
-            response_queue.maybe_finalize_new_response();
+            if (state == State.Idle) {
+                response_queue.maybe_finalize_new_response();
+            }
         }   
     }
 
@@ -289,7 +333,9 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     // }
 
     void finalize_command(u32 paddr, int return_value) {
-        waiting_for_cpu_to_get_response = true;
+                log_ipc("state -> WaitingForCpuToGetResponse");
+
+        state = State.WaitingForCpuToGetResponse;
         mem.paddr_write_u32(paddr + 4, *(cast(u32*) &return_value));
         for (int i = 0; i < 0x1c; i += 4) {
             log_ipc("COMMAND[%d]: %08x", i, mem.paddr_read_u32(paddr + i));
@@ -321,8 +367,13 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
 
     void interrupt_acknowledged() {
         log_hollywood("ipc: %x ", hw_ipc_ppcctrl);
-        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1)) {
-            waiting_for_cpu_to_get_response = false;
+        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1) && state == State.Idle) {
+            if (state == State.WaitingForCpuToGetResponse) {
+                log_ipc("IPC: state -> Idle");
+                state = State.Idle;
+            }
+
+            log_ipc("maybe_finalize_new_response");
             response_queue.maybe_finalize_new_response();
         }
     }

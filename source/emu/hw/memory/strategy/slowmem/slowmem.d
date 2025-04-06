@@ -174,7 +174,11 @@ final class SlowMem : MemStrategy {
                 break;
         }
 
-        log_slowmem("Read from 0x%08x = 0x%08x", address, result);
+        if (address == 0x8050b8a8 || address == 0x0050b8a8) {
+            log_slowmem("disker in use read: %x %x %x", address, result, cpu.state.pc);
+        }
+
+        // log_slowmem("Read from 0x%08x = 0x%08x", address, result);
 
 
         if (cpu.state.pc == 0x802956f8) {
@@ -190,8 +194,28 @@ final class SlowMem : MemStrategy {
             auto memory_access = get_memory_access_from_paddr(address);
         }
 
-        if (address >= 0x807aed9c && address <= 0x807aed9c + 12 * 4) {
-            log_broadway("SEXY WRITE: %x %x", address, value);
+        if (address == 0x8056dce0) {
+            log_slowmem("disker inUse index: %x %x", value, cpu.state.pc);
+        }
+
+        if (address == 0x804f1ff8) {
+            log_ipc("dipshit fd: %x %x", value, cpu.state.pc);
+        }
+
+        if (address == 0x056d1d0 + 0x16 || address == 0x056d1d0 + 0x14) {
+            log_ipc("dipshit fd: %x %x", value, cpu.state.pc);
+        }
+
+        if (address == 0x8050b8a8 || address == 0x0050b8a8) {
+            log_slowmem("disker in use: %x %x %x", address, value, cpu.state.pc);
+        }
+
+        if (address == 0x8056deb8) {
+            log_broadway("DSP STATE: %x %x", value, cpu.state.pc);
+        }
+
+        if (address == 0x8056df50) {
+            log_broadway("__dsp_rudetask_pend = %x %x", value, cpu.state.pc);
         }
 
         auto region = memory_access.region;
@@ -222,7 +246,7 @@ final class SlowMem : MemStrategy {
                 break;
         }
 
-        log_slowmem("Write to 0x%08x = 0x%08x", address, value);
+        // log_slowmem("Write to 0x%08x = 0x%08x", address, value);
     }
 
     pragma(inline, true) override public u64 read_be_u64(u32 address) { return read_be!(u64, true)(address); }

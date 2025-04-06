@@ -1,28 +1,43 @@
 module util.log;
 
 import emu.scheduler;
+import std.algorithm;
+import std.conv;
+import std.traits;
 
 __gshared Scheduler* g_logger_scheduler;
 
+enum LogColor : string {
+    RED     = "\033[31m",
+    GREEN   = "\033[32m",
+    YELLOW  = "\033[33m",
+    BLUE    = "\033[34m",
+    MAGENTA = "\033[35m",
+    CYAN    = "\033[36m",
+    WHITE   = "\033[37m",
+    BLACK   = "\033[30m",
+}
+
 enum Whitelist = [
-    // LogSource.USB,
-    LogSource.BLUETOOTH,
     // LogSource.AI,
+    // LogSource.USB,
+    // LogSource.BLUETOOTH,
     LogSource.BROADWAY,
     // LogSource.DISK,
     // LogSource.DSP,
-    // LogSource.FRONTEND,
+    LogSource.FRONTEND,
     // LogSource.INTERRUPT,
-    // LogSource.FUNCTION,
+    LogSource.FUNCTION,
     LogSource.IPC,
     // LogSource.JIT,
     // LogSource.HOLLYWOOD,
     // LogSource.OS_REPORT,
     // LogSource.SLOWMEM,
     // LogSource.SCHEDULER,
-    LogSource.USB,
+    // LogSource.USB,
     // LogSource.WBFS,
     // LogSource.WII,
+    // LogSource.WIIMOTE,
 ];
 
 enum LogSource {
@@ -53,16 +68,13 @@ enum LogSource {
     DSP,
     BLUETOOTH,
     DOL,
-    FRONTEND
+    FRONTEND,
+    WIIMOTE,
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
 
 static ulong get_largest_logsource_length()(){
-    import std.algorithm;
-    import std.conv;
-    import std.traits;
-
     ulong largest_logsource_length = 0;
     foreach (source; EnumMembers!LogSource) {
         largest_logsource_length = max(to!string(source).length, largest_logsource_length);
@@ -71,8 +83,21 @@ static ulong get_largest_logsource_length()(){
     return largest_logsource_length;
 }
 
+enum LogColor[LogSource] source_color_map = initialize_source_color_map!();
+
+static LogColor[LogSource] initialize_source_color_map()() {
+    LogColor[LogSource] source_color_map;
+    
+    static foreach (enum i; 0 .. Whitelist.length) {{
+        LogSource source = Whitelist[i];
+        source_color_map[source] = EnumMembers!LogColor[i];
+    }}
+
+    return source_color_map;
+}
+
 // thanks https://github.com/dlang/phobos/blob/4239ed8ebd3525206453784908f5d37c82d338ee/std/outbuffer.d
-private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)[] fmt, A args) {
+private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)[] fmt, LogColor color, A args) {
     import core.runtime;
     import core.stdc.stdlib;
     import std.array;
@@ -90,14 +115,13 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         }
 
         ulong timestamp = g_logger_scheduler ? g_logger_scheduler.get_current_time_relative_to_cpu() : 0;
-        string prefix = format("%016x [%s] : ", timestamp, pad_string_right!(to!string(log_source), logsource_padding));
+        string prefix = format("%016x [%s%s%s] : ", timestamp, cast(string) color, pad_string_right!(to!string(log_source), logsource_padding), "\033[0m");
         string written_string = format(fmt, args);
         written_string = written_string.replace("\n", "\n" ~ prefix);
 
         if (fatal && g_on_error_callback !is null) {
             g_on_error_callback();
         }
-
 
         if (fatal) {
             stderr.writef(prefix);
@@ -154,21 +178,21 @@ static string generate_prettier_logging_functions() {
 
                 version (quiet) {
                 } else {
-                    log!(LogSource.%s, false, Char, A)(fmt, args);
+                    log!(LogSource.%s, false, Char, A)(fmt, source_color_map[LogSource.%s], args);
                 }
             }
-        ".format(source_name.toLower(), source_name, source_name);
+        ".format(source_name.toLower(), source_name, source_name, source_name);
 
         mixed_in ~= "
             public void error_%s(Char, A...)(scope const(Char)[] fmt, A args) {
-                log!(LogSource.%s, true, Char, A)(fmt, args);
+                log!(LogSource.%s, true, Char, A)(fmt, LogColor.RED, args);
             }
         ".format(source_name.toLower(), source_name);
 
         mixed_in ~= "
             public void assert_%s(Char, A...)(bool condition, scope const(Char)[] fmt, A args) {
                 if (!condition) {
-                    log!(LogSource.%s, true, Char, A)(fmt, args);
+                    log!(LogSource.%s, true, Char, A)(fmt, LogColor.RED, args);
                 }
             }
         ".format(source_name.toLower(), source_name);

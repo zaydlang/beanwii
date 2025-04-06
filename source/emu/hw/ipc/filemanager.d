@@ -4,10 +4,13 @@ import emu.hw.disk.readers.filereader;
 import emu.hw.ipc.error;
 import emu.hw.ipc.ipc;
 import emu.hw.ipc.usb.usb;
+import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
+import emu.scheduler;
 import std.conv;
 import std.file;
 import std.format;
+import std.stdio;
 import util.bitop;
 import util.log;
 import util.number;
@@ -61,6 +64,44 @@ final class FileManager {
         void close() {}
     }
 
+    final class RealFile : File {
+        std.stdio.File file;
+
+        this(string path) {
+            super("/home/zaydq/wii" ~ path);
+            this.file = std.stdio.File("/home/zaydq/wii" ~ path, "r+");
+        }
+
+        override int read(u8[] buffer, int size) {
+            log_ipc("RealFile::read(%s, %d)", path, size);
+            
+            auto read_buffer = file.rawRead(buffer);
+            buffer[0 .. read_buffer.length] = read_buffer[0 .. read_buffer.length];
+
+            return cast(int) read_buffer.length;
+        }
+
+        override int write(u8* buffer, int size) {
+            file.rawWrite(buffer[0 .. size]);
+            return size;
+        }
+
+        override int seek(int offset, int whence) {
+            if (whence == 0) {
+                file.seek(offset, SEEK_SET);
+            } else if (whence == 1) {
+                file.seek(offset, SEEK_CUR);
+            } else if (whence == 2) {
+                file.seek(offset, SEEK_END);
+            } else {
+                error_ipc("Invalid whence %d", whence);
+            }
+
+            return cast(int) file.tell();
+        }
+    }
+
+    bool printme = false;
     final class DiskDi : File {
         FileReader file_reader;
         this(FileReader file_reader) {
@@ -72,6 +113,9 @@ final class FileManager {
         bool cover_irq_pending = false;
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
+            log_disk("DiskDi::ioctl(%x, %d, %d, %d)", ioctl, input_buffer, input_buffer_length, output_buffer);
+            printme = true;
+
             if (ioctl == 0x86) {
                 cover_irq_pending = false;
             } else if (ioctl == 0x12) {
@@ -101,7 +145,7 @@ final class FileManager {
                 
                 for (int i = 0; i < size; i++) {
                     if (buffer[i] != 0) {
-                        log_disk("non-zero byte at %x: %x", i, buffer[i]);
+                        // log_disk("non-zero byte at %x: %x", i, buffer[i]);
                     }
                 }
                 mem.write_bulk(output_buffer, buffer.ptr, size);
@@ -235,6 +279,8 @@ final class FileManager {
         int offset = 0;
 
         override int read(u8[] buffer, int size) {
+            log_ipc("DataFile::read(%s, %d)", path, size);
+            
             if (offset + size > data.length) {
                 error_ipc("Read past end of file %s", path);
             }
@@ -246,6 +292,8 @@ final class FileManager {
         }
 
         override int write(u8* buffer, int size) {
+            log_ipc("DataFile::write(%s, %d)", path, size);
+            
             if (offset + size > data.length) {
                 error_ipc("Write past end of file %s", path);
             }
@@ -361,6 +409,7 @@ final class FileManager {
         }
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
+            log_ipc("DevFS::ioctl(%d)", ioctl);
             if (ioctl == 0x3) {
                 // CreateDir
                 // u32 addr = mem.paddr_read_u32(input_buffer);
@@ -377,8 +426,13 @@ final class FileManager {
                     filename ~= cast(char) c;
                 }
 
+                // does file exist?
+                if (std.file.exists("/home/zaydq/wii" ~ filename)) {
+                    return cast(int) IPCError.EEXIST_DEVFS;
+                }
+
                 log_ipc("DevFS::CreateDir(%s, %d, %d)", filename, owner_id, group_id);
-                // std.file.mkdir("/home/zaydq/wii" ~ filename);
+                try { std.file.mkdir("/home/zaydq/wii" ~ filename); } catch (Exception e) {}
             } else if (ioctl == 0x9) {
                 // CreateFile
                 auto owner_id = mem.paddr_read_u32(input_buffer + 0);
@@ -399,6 +453,43 @@ final class FileManager {
             } else if (ioctl == 0x5) {
                 log_ipc("Who knows");
             } else if (ioctl == 0x6) {
+                u32 output = output_buffer;
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+
+                string filename = "";
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    if (c == 0) {
+                        for (int j = i; j < 0x40; j++) {
+                            mem.paddr_write_u8(output++, 0);
+                        }
+                        break;
+                    }
+                
+                    filename ~= cast(char) c;
+
+                    mem.paddr_write_u8(output++, c);
+                }
+
+                if (!std.file.exists("/home/zaydq/wii/tmp" ~ filename)) {
+                    return cast(int) IPCError.ENOENT_DEVFS;
+                }
+
+                log_ipc("DevFS::Dipshit(%s)", filename);
+
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+                mem.paddr_write_u8(output++, 0);
+
+                return 0;
+            } else if (ioctl == 0x7) {
+                // delete
                 string filename = "";
                 for (int i = 0; i < 0x40; i++) {
                     auto c = mem.paddr_read_u8(input_buffer + i);
@@ -409,8 +500,39 @@ final class FileManager {
                     filename ~= cast(char) c;
                 }
 
-                log_ipc("DevFS::Dipshit(%s)", filename);
-                return cast(int) IPCError.ENOENT;
+                error_ipc("DevFS::Delete(%s)", filename);
+            } else if (ioctl == 0x8) {
+                // rename
+                string old_filename = "";
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    if (c == 0) {
+                        break;
+                    }
+                
+                    old_filename ~= cast(char) c;
+                }
+
+                string new_filename = "";
+                for (int i = 0; i < 0x40; i++) {
+                    auto c = mem.paddr_read_u8(input_buffer + 0x40 + i);
+                    if (c == 0) {
+                        break;
+                    }
+                
+                    new_filename ~= cast(char) c;
+                }
+
+                log_ipc("DevFS::Rename(%s, %s)", old_filename, new_filename);
+                if (std.file.exists("/home/zaydq/wii" ~ new_filename)) {
+                    return cast(int) IPCError.EEXIST_DEVFS;
+                }
+
+                if (!std.file.exists("/home/zaydq/wii/tmp" ~ old_filename)) {
+                    return cast(int) IPCError.ENOENT_DEVFS;
+                }
+
+                std.file.rename("/home/zaydq/wii" ~ old_filename, "/home/zaydq/wii" ~ new_filename);
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }
@@ -422,6 +544,8 @@ final class FileManager {
             log_ipc("DevFS::ioctlv(%d, %d, %d, %d)", ioctl, argcin, argcio, data_paddr);
 
             if (ioctl == 0x4) {
+                int result = IPCError.OK;
+
                 if (argcin != 1) {
                     error_ipc("Invalid argcin %d", argcin);
                 }
@@ -432,6 +556,7 @@ final class FileManager {
 
                 // ReadDir
                 u32 file_addr = mem.paddr_read_u32(data_paddr);
+                u32 count = 0;
 
                 string filename;
                 for (int i = 0; i < 0x40; i++) {
@@ -443,11 +568,29 @@ final class FileManager {
                     filename ~= cast(char) c;
                 }
 
-                if (!std.file.dirEntries("/home/zaydq/wii" ~ filename, SpanMode.shallow).empty) {
-                    error_ipc("handle this dipshit");
+                for (int i = 0; i < 8; i++) {
+                    log_ipc("%x : %x", i, mem.paddr_read_u32(data_paddr + i * 4));
                 }
 
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), 0);
+                log_ipc("DevFS::ReadDir(%s, %d)", filename, count);
+
+                if (!std.file.isDir("/home/zaydq/wii" ~ filename)) {
+                    result = IPCError.EINVAL_DEVFS;
+                } else {
+                    auto files = std.file.dirEntries("/home/zaydq/wii" ~ filename, SpanMode.shallow);
+                    if (argcin > 2) {
+                        error_ipc("handle argcin %d", argcin);
+                    }
+
+                    foreach (string file; files) {
+                    //     if (count != 0) {
+                    //         error_ipc("handle this dipshit: %s %x", filename, count);
+                    //     }
+                        count++;
+                    }
+                }
+
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), count);
             } else if (ioctl == 0xc) {
                 u32 file_addr = mem.paddr_read_u32(data_paddr);
 
@@ -462,6 +605,9 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::DipshitGetUsage(%s)", filename);
+
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), 1);
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x10), 1);
             } else {
                 error_ipc("Unknown ioctlv %d", ioctl);
             }
@@ -494,7 +640,7 @@ final class FileManager {
         usb_dev.usb_manager.connect_mem(mem);
     }
 
-    File[] files;
+    File[] device_files;
 
     FileDescriptor fd_counter = 0;
     File[FileDescriptor] open_files;
@@ -588,6 +734,14 @@ final class FileManager {
             super("/dev/usb/oh1/57e/305");
 
             usb_manager = new USBManager(ipc_response_queue);
+        }
+
+        void connect_scheduler(Scheduler scheduler) {
+            usb_manager.connect_scheduler(scheduler);
+        }
+
+        void connect_wiimote(Wiimote wiimote) {
+            usb_manager.connect_wiimote(wiimote);
         }
         
         override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
@@ -699,19 +853,21 @@ final class FileManager {
 
     alias IPCResponseQueue = IPC.IPCResponseQueue;
     IPCResponseQueue ipc_response_queue;
+    UsbDev57e305 usb_dev_57e305;
 
     this(IPCResponseQueue ipc_response_queue) {
         this.ipc_response_queue = ipc_response_queue;
         
         dev_es = new DevES();
         dev_fs = new DevFS();
+        usb_dev_57e305 = new UsbDev57e305(ipc_response_queue);
 
         generate_settings_txt();
 
-        files = [
+        device_files = [
             dev_es,
             dev_fs,
-            new UsbDev57e305(this.ipc_response_queue),
+            usb_dev_57e305,
             new DevStmImmediate(),
             new DevNetKdTime(),
             new DevNetKdRequest(),
@@ -723,6 +879,14 @@ final class FileManager {
             new DevUsbVen(),
             new DevUsbHid()
         ];
+    }
+
+    void connect_scheduler(Scheduler scheduler) {
+        this.usb_dev_57e305.connect_scheduler(scheduler);
+    }
+
+    void connect_wiimote(Wiimote wiimote) {
+        this.usb_dev_57e305.connect_wiimote(wiimote);
     }
 
     void open(u32 paddr, string filename, OpenMode mode, int uid, int gid) {
@@ -764,6 +928,8 @@ final class FileManager {
     void ioctl(u32 paddr, FileDescriptor fd, int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
         log_ipc("IPC::Ioctl(%d, %d, %d, %d, %d, %d)", fd, ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
 
+        printme = false;
+        
         int result;
         if (fd in open_files) {
             result = open_files[fd].ioctl(ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
@@ -771,7 +937,7 @@ final class FileManager {
             result = IPCError.ENOENT;
         }
 
-        ipc_response_queue.push_later(paddr, result, 40_000);
+        ipc_response_queue.push_later(paddr, result, 40_000, printme);
     }
 
     void ioctlv(u32 paddr, FileDescriptor fd, int ioctl, int argcin, int argcio, u32 data_paddr) {
@@ -839,10 +1005,17 @@ final class FileManager {
     }
 
     File get_file_by_name(string filename) {
-        foreach (file; files) {
+        log_ipc("get_file_by_name(%s)", filename);
+        foreach (file; device_files) {
             if (file.path == filename) {
                 return file;
             }
+        }
+
+        log_ipc("get_file_by_name(%s) not found in device_files", filename);
+        log_ipc("Checking for file in /home/zaydq/wii%s", filename);
+        if (std.file.exists("/home/zaydq/wii" ~ filename)) {
+            return new RealFile(filename);
         }
 
         error_ipc("File not found: %s", filename);
@@ -850,11 +1023,11 @@ final class FileManager {
     }
 
     void load_sysconf(ubyte[] sysconf) {
-        this.files ~= new DataFile("/shared2/sys/SYSCONF", sysconf);
+        this.device_files ~= new DataFile("/shared2/sys/SYSCONF", sysconf);
     }
 
     void load_file_reader(FileReader file_reader) {
-        this.files ~= new DiskDi(file_reader);
+        this.device_files ~= new DiskDi(file_reader);
     }
 
     void set_title_id(u64 title_id) {

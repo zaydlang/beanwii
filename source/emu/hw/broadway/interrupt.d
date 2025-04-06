@@ -63,6 +63,7 @@ final class InterruptController {
     }
 
     bool ipc_interrupt_pending() {
+        log_interrupt("Hollywood interrupt pending: %s", (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0);
         return (hollywood_interrupt_flag & (1 << HollywoodInterruptCause.IPC)) != 0;
     }
 
@@ -215,6 +216,7 @@ final class InterruptController {
     int fifo_write_ptr;
     
     u8 read_FIFO_WRITE_PTR(int target_byte) {
+        log_broadway("read FIFO_WRITE_PTR[%d] = %02x", target_byte, fifo_write_ptr.get_byte(target_byte));
         return fifo_write_ptr.get_byte(target_byte);
     }
 

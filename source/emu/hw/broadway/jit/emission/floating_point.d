@@ -351,6 +351,37 @@ EmissionAction emit_fsub(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_fresx(Code code, u32 opcode) {
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+    bool rc = opcode.bit(0);
+    assert(rc == 0);
+
+    auto paired_single = code.fresh_label();
+    auto end = code.fresh_label();
+
+    code.get_ps(guest_rb, xmm0);
+    auto hid2 = code.get_reg(GuestReg.HID2);
+    code.test(hid2, 1 << 29);
+    code.jnz(paired_single);
+
+    code.cvtsd2ss(xmm0, xmm0);
+    code.rcpss(xmm0, xmm0);
+    code.cvtss2sd(xmm0, xmm0);
+    code.jmp(end);
+
+code.label(paired_single);
+    code.cvtsd2ss(xmm0, xmm0);
+    code.rcpss(xmm0, xmm0);
+    code.cvtss2sd(xmm0, xmm0);
+    code.vpbroadcastq(xmm0, xmm0);
+
+code.label(end);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_faddsx(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_ps;
     auto guest_ra = opcode.bits(16, 20).to_ps;

@@ -9,6 +9,7 @@ module emu.hw.ipc.usb.bluetooth;
 import emu.hw.ipc.ipc;
 import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
+import emu.scheduler;
 import std.container : DList;
 import util.array;
 import util.number;
@@ -33,12 +34,20 @@ final class Bluetooth {
     IPCResponseQueue ipc_response_queue;
     this(IPCResponseQueue response_queue) {
         this.ipc_response_queue = response_queue;
-        this.wiimote = new Wiimote();
     }
 
     Mem mem;
     void connect_mem(Mem mem) {
         this.mem = mem;
+    }
+
+    Scheduler scheduler;
+    void connect_scheduler(Scheduler scheduler) {
+        this.scheduler = scheduler;
+    }
+
+    void connect_wiimote(Wiimote wiimote) {
+        this.wiimote = wiimote;
     }
 
     DList!(u8[]) pending_hci;
@@ -65,7 +74,9 @@ final class Bluetooth {
         if (direction == Direction.ControllerToHost) {
             acl_paddr = paddr;
         } else {
-            error_bluetooth("unimplemented ACL request: %s", data.to_hex_string);
+            wiimote.handle_l2cap(data);
+            send_hci_response([0x13, 0x15, 0x05, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x04, 0x01, 0x00, 0x00]);
+            ipc_response_queue.push_later(paddr, 0, 10_000);
         }
 
         update();
@@ -144,6 +155,7 @@ final class Bluetooth {
         switch (ocf) {
             case 0x009: return hci_control_request_link_accept_connection(data);
             case 0x00f: return hci_control_request_link_change_packet_type(data);
+            case 0x011: return hci_control_request_link_auth_complete(data);
             case 0x019: return hci_control_request_link_get_name(data);
             case 0x01b: return hci_control_request_link_useless_bullshit(data);
             case 0x01d: return hci_control_request_link_get_lmp_subversion(data);
@@ -154,6 +166,7 @@ final class Bluetooth {
 
     void hci_control_request_link_policy(int ocf, u8[] data) {
         switch (ocf) {
+            case 0x003: return hci_control_request_link_policy_sniff_mode(data);
             case 0x00d: return hci_control_request_link_policy_write_settings(data);
             default: error_bluetooth("unimplemented HCI control link policy request: ocf=%04x", ocf);
         }
@@ -247,7 +260,7 @@ final class Bluetooth {
     }
 
     void hci_control_request_vendor_who_cares(u8[] data) {
-        send_hci_response([0xe, 0x04, 0x01, 0x4c, 0xfc, 0x00]);
+        send_hci_response([0xe, 0x04, 0x01, 0x4f, 0xfc, 0x00]);
         log_bluetooth("HCI control request: vendor who cares");
     }
 
@@ -262,9 +275,13 @@ final class Bluetooth {
         trivial_success(data);
     }
 
-    void hci_control_request_link_accept_connection(u8[] data) {
-        wiimote.finish_connecting();
+    void hci_control_request_link_policy_sniff_mode(u8[] data) {
+        // heres the status
+        send_hci_response([0x0f, 0x04, 0x00, 0x01, 0x03, 0x08]);
+        send_hci_response([0x14, 0x06, 0x00, 0x00, 0x01, 0x02, 0x08, 0x00]);
+    }
 
+    void hci_control_request_link_accept_connection(u8[] data) {
         // the fuck?
         send_hci_response([0x0f, 0x04, 0x00, 0x01, 0x09, 0x04]);
 
@@ -273,7 +290,8 @@ final class Bluetooth {
 
         // connection complete please suck my dick
         send_hci_response([0x03, 0x0b, 0x00, 0x00, 0x01, 0x11, 0x02, 0x19, 0x79, 0x00, 0x00, 0x01, 0x00]);
-        send_acl_response([0x00, 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
+        
+        wiimote.finish_connecting();
     }    
     
     void hci_control_request_link_get_name(u8[] data) {
@@ -314,6 +332,11 @@ final class Bluetooth {
     void hci_control_request_link_change_packet_type(u8[] data) {
         send_hci_response([0x0f, 0x04, 0x00, 0x01, 0x0f, 0x04]);
         send_hci_response([0x1d, 0x05, 0x00, 0x00, 0x01, 0x18, 0xcc]);
+    }
+
+    void hci_control_request_link_auth_complete(u8[] data) {
+        send_hci_response([0x0f, 0x04, 0x00, 0x01, 0x11, 0x04]);
+        send_hci_response([0x06, 0x03, 0x00, 0x00, 0x01]);
     }
 
     void hci_control_request_link_policy_write_settings(u8[] data) {
@@ -378,5 +401,6 @@ final class Bluetooth {
     void send_acl_response(u8[] data) {
         log_bluetooth("send_acl_response(%s)", data.to_hex_string);
         pending_acl ~= data;
+        update();
     }
 }

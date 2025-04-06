@@ -372,6 +372,32 @@ EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_ps_nmsubx(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+    log_function("BIG DICKS!");
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6,  10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    auto tmp = code.allocate_register();
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+    code.mulpd(xmm0, xmm2);
+    code.subps(xmm0, xmm1);
+    code.mov(tmp.cvt64(), 0x8000_0000_0000_0000UL);
+    code.movq(xmm1, tmp.cvt64());
+    code.vpbroadcastq(xmm1, xmm1);
+    code.xorpd(xmm1, xmm0);
+    code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_ps_add(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
@@ -404,6 +430,81 @@ EmissionAction emit_psq_st(Code code, u32 opcode) {
         code.mov(ra, d);
     } else {
         code.add(ra, d);
+    }
+
+    auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
+    if (w) {
+        code.cvtsd2ss(xmm0, xmm0);
+        quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+    } else {
+        code.cvtsd2ss(xmm1, xmm0);
+        quantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
+        
+        code.get_ps(guest_rs, xmm0);
+        code.shufpd(xmm0, xmm0, 0b00000001);
+        code.cvtsd2ss(xmm0, xmm0);
+        quantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+    }
+
+    return EmissionAction.Continue;
+}
+
+
+EmissionAction emit_psq_lx(Code code, u32 opcode) {
+    abort_if_no_pse_or_lsqe(code);
+
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    bool w = opcode.bit(10);
+    int i = opcode.bits(7, 9);
+
+    auto rb = code.get_reg(guest_rb);
+    auto ra = code.get_reg(guest_ra);
+    auto rd = code.get_fpr(guest_rd);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, rb);
+    } else {
+        code.add(ra, rb);
+    }
+
+    auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
+    if (w) {
+        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
+        code.cvtss2sd(xmm0, xmm0);
+        code.movq(rd, xmm0);
+        code.set_fpr(guest_rd, rd);
+    } else {
+        dequantize(code, xmm0, ra, gqr, code.allocate_register(), code.allocate_register(), xmm2, true);
+        dequantize(code, xmm1, ra, gqr, code.allocate_register(), code.allocate_register(), xmm2, false);
+        code.cvtss2sd(xmm0, xmm0);
+        code.cvtss2sd(xmm1, xmm1);
+        code.punpcklqdq(xmm0, xmm1);
+        code.set_ps(guest_rd, xmm0);
+    }
+
+    return EmissionAction.Continue;
+}
+EmissionAction emit_psq_stx(Code code, u32 opcode) {
+    abort_if_no_pse_or_lsqe(code);
+
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;    
+    auto guest_rs = opcode.bits(21, 25).to_ps;
+    
+    bool w = opcode.bit(10);
+    int i = opcode.bits(7, 9);
+
+    auto ra = code.get_reg(guest_ra);
+    auto rb = code.get_reg(guest_rb);
+
+    code.get_ps(guest_rs, xmm0);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, rb);
+    } else {
+        code.add(ra, rb);
     }
 
     auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));

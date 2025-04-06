@@ -2338,6 +2338,8 @@ import std.stdio;
     auto subss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x5c, dst, src);
     auto subps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x5c, dst, src);
     auto subpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x5c, dst, src);
+
+    auto rcpss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x53, dst, src);
     /* ====== SSE2 ====== */
 
     auto punpcklqdq(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x6c, dst, src);

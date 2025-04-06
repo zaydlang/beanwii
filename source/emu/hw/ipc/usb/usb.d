@@ -2,7 +2,9 @@ module emu.hw.ipc.usb.usb;
 
 import emu.hw.ipc.ipc;
 import emu.hw.ipc.usb.bluetooth;
+import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
+import emu.scheduler;
 import util.bitop;
 import util.number;
 import util.log;
@@ -20,6 +22,14 @@ final class USBManager {
     void connect_mem(Mem mem) {
         this.mem = mem;
         bluetooth.connect_mem(mem);
+    }
+
+    void connect_scheduler(Scheduler scheduler) {
+        bluetooth.connect_scheduler(scheduler);
+    }
+
+    void connect_wiimote(Wiimote wiimote) {
+        bluetooth.connect_wiimote(wiimote);
     }
 
     u8[] interrupt_request(u32 paddr, u8 endpoint, u8[] data) {

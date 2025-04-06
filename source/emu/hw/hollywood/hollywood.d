@@ -24,6 +24,7 @@ final class Hollywood {
         NoOp              = 0x00,
 
         DrawQuads         = 0x80,
+        DrawTriangleFan   = 0xA0,
     }
 
     enum State {
@@ -394,6 +395,12 @@ final class Hollywood {
                 current_vat = (cast(int) command).bits(0, 2);
                 state = State.WaitingForNumberOfVertices;
                 break;
+            
+            case GXFifoCommand.DrawTriangleFan | 0: .. case GXFifoCommand.DrawTriangleFan | 7:
+                current_draw_command = GXFifoCommand.DrawTriangleFan;
+                current_vat = (cast(int) command).bits(0, 2);
+                state = State.WaitingForNumberOfVertices;
+                break;
         
             default:
                 error_hollywood("Unknown GX command: %02x", command);
@@ -691,7 +698,7 @@ final class Hollywood {
                 vat.position_count = value.bit(0) ? 3 : 2;
                 vat.position_format = cast(CoordFormat) value.bits(1, 3);
                 vat.position_shift = value.bits(4, 8);
-                vat.normal_count = value.bit(9) ? 3 : 2;
+                vat.normal_count = value.bit(9) ? 9 : 3;
                 vat.normal_format = cast(NormalFormat) value.bits(10, 12);
                 vat.color_count[0] = value.bit(13) ? 4 : 3;
                 vat.color_format[0] = cast(ColorFormat) value.bits(14, 16);
@@ -754,7 +761,8 @@ final class Hollywood {
         }
 
         if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
-            error_hollywood("Normal location not implemented");
+            // error_hollywood("Normal location not implemented");
+            size += vat.normal_count;
         }
 
         if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
@@ -830,12 +838,10 @@ final class Hollywood {
                 log_hollywood("BIGREG %x: %08x", register, value);
                 break;
             case 0x0000: .. case 0x00ff:
-                log_hollywood("Sexy matrix %04x: %08x %08x", register, value, mem.cpu.state.pc);
                 general_matrix_ram[register] = force_cast!float(value);
                 break;
             
             case 0x0500: .. case 0x05ff:
-                log_hollywood("Sexture matrix %04x: %08x", register, value);
                 dt_texture_matrix_ram[register - 0x500] = force_cast!float(value);
                 break;
             
@@ -847,8 +853,6 @@ final class Hollywood {
 
                 texture_descriptors[idx].dualtex_matrix_slot = mtx_slot;
                 texture_descriptors[idx].dualtex_normal_enable = normal_enable;
-
-                log_hollywood("BUTTREG %x: %08x", register, value);
                 break;
             
             case 0x100c:
@@ -1007,7 +1011,7 @@ final class Hollywood {
             }
 
             if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
-                error_hollywood("Normal location not implemented");
+                // error_hollywood("Normal location not implemented");
             }
 
             for (int j = 0; j < 2; j++) {
@@ -1079,6 +1083,14 @@ final class Hollywood {
                 for (int i = 0; i < vertices.length; i += 4) {
                     Shape shape;
                     shape.vertices = [vertices[i + 0], vertices[i + 2], vertices[i + 3]];
+                    shape_group.shapes ~= shape;
+                }
+                break;
+            
+            case GXFifoCommand.DrawTriangleFan:
+                for (int i = 1; i < vertices.length - 2; i++) {
+                    Shape shape;
+                    shape.vertices = [vertices[0], vertices[i + 1], vertices[i + 2]];
                     shape_group.shapes ~= shape;
                 }
                 break;

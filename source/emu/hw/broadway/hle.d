@@ -125,3 +125,74 @@ public void hle_os_report(void* context, BroadwayState* state) {
 
     return;
 }
+
+
+public void hle_os_report2(void* context, BroadwayState* state) {
+    import std.conv;
+
+    // shoot me, i have to implement printf
+
+    Mem* mem = cast(Mem*) context;
+    u32 string_ptr = state.gprs[3];
+
+    string output = "";
+    char next_char;
+
+    if ((string_ptr & 0x80000000) != 0x80000000) {
+        log_os_report("asshole: %s", "null");
+        return;
+    }
+
+    u32 p = string_ptr;
+    string tmp;
+    while (mem.read_be_u8(p) != 0) {
+        if (mem.read_be_u8(p) == '%') {
+            p++;
+            tmp ~= "/";
+        } else
+
+        tmp ~= cast(char) mem.read_be_u8(p++);
+    }
+
+    log_os_report("asshole: %s, %x %x %x", tmp, state.gprs[4], state.gprs[5], state.gprs[6]);
+    return;
+    
+    // gprs[3] is the string pointer
+    // gprs[4..] are the arguments
+    int current_gpr_arg = 4; 
+
+    do {
+        next_char = mem.read_be_u8(string_ptr++);
+        if (next_char == '%') {
+            char format_type = mem.read_be_u8(string_ptr++);
+                switch (format_type) {
+                case 's':
+                    char inserted_char;
+                    u32 current_address = state.gprs[current_gpr_arg++];
+                    do {
+                        inserted_char = mem.read_be_u8(current_address++);
+                        output ~= inserted_char;
+                    } while (inserted_char != 0);
+                    break;
+                
+                case 'd':
+                    output ~= to!string(state.gprs[current_gpr_arg++]);
+                    break;
+                
+                case 'x':
+                    output ~= to!string(state.gprs[current_gpr_arg++], 16);
+                    break;
+
+                default:
+                    output ~= format_type;
+                    break;
+            }
+        } else {
+            output ~= next_char;
+        }
+    } while (next_char != 0);
+
+    log_os_report(output);
+
+    return;
+}

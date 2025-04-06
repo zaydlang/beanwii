@@ -113,11 +113,11 @@ final class Broadway {
         }
     }
 
+    bool had_17 = false;
     public void cycle(u32 num_cycles) {
         if (state.halted) {
             log_function("CPU is halted, not running\n");
         }
-
         
         u32 elapsed = 0;
         while (elapsed < num_cycles) {
@@ -127,10 +127,250 @@ final class Broadway {
                 // log_broadway("PSMTXIdentity(%08x)", state.gprs[3]);
                 // log_state(&state);
             }
+
+            bool has_17 = false;
+            for (int gpr = 0; gpr < 32; gpr++) {
+                if (state.gprs[gpr] == 0x80297f70) {
+                    has_17 = true;
+                }
+            }
+
+            if (!had_17 && has_17) {
+                log_broadway("HAD 17: %x %x", state.pc, state.gprs[1]);
+            }
+
+            had_17 = has_17;
+
+            
+            // if (state.pc == 0x802a4990) {
+            //     log_broadway(" bta_hh_maint_dev_act");
+            // }
+
+            // if (state.pc == 0x802a5440) {
+            //     log_broadway(" bta2_hh_maint_dev_act");
+            // }
+
+            // if (state.pc == 0x802da304) {
+            //     log_broadway("BTA_DmAddDevice");
+            // }
+
+            // if (state.pc == 0x802da1ac) {
+            //     log_broadway("WUD Init sub");
+            // }
+
+
+            // if (state.pc == 0x802da284) {
+            //     log_broadway("WUD Init sub inenr poop: %x %x", state.gprs[0], state.gprs[31] + 0x13d);
+            // }
+
+
+            // if (state.pc == 0x802d8f0c) {
+            //     log_broadway("PopulateDevices()");
+            // }
+
+            if (state.pc == 0x80297fd0) {
+                log_broadway("stage: %x %x", state.gprs[3], state.gprs[5]);
+            }
+
+
+            if (state.pc == 0x80297f70) {
+                log_broadway("stagist: %x %x", state.gprs[3], state.gprs[4]);
+            }
+
+            if (state.pc == 0x8027fa7c) {
+                log_broadway("reading disker: %x %x", state.gprs[6], state.gprs[5]);
+            }
+
+            if (state.pc >= 0x8027fa14 &&  state.pc <= 0x8027fb74) {
+                log_broadway("reading diskeyr: %x",state.pc);
+            }
+
+
+            // if (state.pc == 0x802a5794) {
+            //     log_broadway(" bta4_hh_maint_dev_act");
+            // }
+
+
+            // if (state.pc == 0x802a0200) {
+            //     log_broadway("bta_sys_event(%x)", mem.read_be_u16(state.gprs[3]));
+            // }
+
+            // if (state.pc == 0x8029ca64) {
+            //     if (state.gprs[3] != 0)
+            //     log_broadway("mbox addr -> %x %x",state.gprs[3], mem.read_be_u16(state.gprs[3]));
+
+            // }
+
+            // if (state.pc == 0x8029c7fc) {
+            //     log_broadway("GKI_send_msg(%x, %x, %x (%x))", state.gprs[3], state.gprs[4], state.gprs[5], mem.read_be_u16(state.gprs[5]));
+            //     if (mem.read_be_u16(state.gprs[5]) == 0x170e) {
+            //         dump_stack();
+            //     }
+            // }
+
+if (state.pc == 0x80295ddc) {
+    
+    log_function("FUNCTION: IOS_WriteAsync %x", state.lr);
+    dump_stack();
+}
+if (state.pc == 0x80295edc) log_function("FUNCTION: IOS_Write %x", state.lr);
+if (state.pc == 0x8028923c) log_broadway("ABOUT TO CALL RESUME");
+if (state.pc == 0x8027fa14) log_broadway("disk_fun(%x, %x) from %x", state.gprs[3], mem.read_be_u32(0x8056dce0), state.lr);
+if (state.pc >= 0x8028906c && state.pc <= 0x8028949c) log_broadway("dspmailchcekcer @ %x", state.pc);
+
+if (state.pc == 0x802d3368) log_broadway("WPAD WIIMOTE hid parser: 0x%08x", state.ctr);
+if (state.pc == 0x802d3300) log_broadway("WPAD WIIMOTE hid parser");
+if (state.pc == 0x80286a64) log_broadway("AXRmtGetSamples");
+if (state.pc == 0x80286a38) log_broadway("AXRmtGetSamplesLeft");
+if (state.pc == 0x8028491c) log_broadway("__AID");
+if (state.pc == 0x80284994) log_broadway("__AID %x", state.ctr);
+if (state.pc >= 0x8028491c && state.pc <= 0x802849c0) log_broadway("__AID @ %x", state.pc);
+if (state.pc == 0x80286394) log_broadway("__AID2");
+if (state.pc == 0x8027f554) log_broadway("DVDLowRead");
+if (state.pc == 0x8027e194) log_broadway("doTranslationCallback(%x %x)", state.gprs[3], state.gprs[4]);
+// if (state.pc == 0x802af28c) log_broadway("FUNCTION: btm_sec_disconnect");
+// if (state.pc == 0x802b1ca4) log_broadway("FUNCTION: gap_disconnect_ind");
+// if (state.pc == 0x802b27a4) log_broadway("FUNCTION: btsnd_hcic_inq_cancel");
+// if (state.pc == 0x802b2804) log_broadway("FUNCTION: btsnd_hcic_per_inq_mode");
+// if (state.pc == 0x802b28c4) log_broadway("FUNCTION: btsnd_hcic_create_conn");
+// if (state.pc == 0x802b29a4) log_broadway("FUNCTION: btsnd_hcic_disconnect");
+// if (state.pc == 0x802b2a2c) log_broadway("FUNCTION: btsnd_hcic_add_SCO_conn");
+// if (state.pc == 0x802b2ab8) log_broadway("FUNCTION: btsnd_hcic_accept_conn");
+// if (state.pc == 0x802b2b18) log_broadway("FUNCTION: btsnd_hcic_reject_conn");
+// if (state.pc == 0x802b2d14) log_broadway("FUNCTION: btsnd_hcic_link_key_neg_reply");
+// if (state.pc == 0x802b2db4) log_broadway("FUNCTION: btsnd_hcic_pin_code_req_reply");
+// if (state.pc == 0x802b2f98) log_broadway("FUNCTION: btsnd_hcic_pin_code_neg_reply");
+// if (state.pc == 0x802b3038) log_broadway("FUNCTION: btsnd_hcic_change_conn_type");
+// if (state.pc == 0x802b30c8) log_broadway("FUNCTION: btsnd_hcic_auth_request");
+// if (state.pc == 0x802b3144) log_broadway("FUNCTION: btsnd_hcic_set_conn_encrypt");
+// if (state.pc == 0x802b31d0) log_broadway("FUNCTION: btsnd_hcic_rmt_name_req");
+// if (state.pc == 0x802b32a8) log_broadway("FUNCTION: btsnd_hcic_rmt_name_req_cancel");
+// if (state.pc == 0x802b3348) log_broadway("FUNCTION: btsnd_hcic_rmt_features_req");
+// if (state.pc == 0x802b33c4) log_broadway("FUNCTION: btsnd_hcic_rmt_ver_req");
+// if (state.pc == 0x802b3440) log_broadway("FUNCTION: btsnd_hcic_read_rmt_clk_offset");
+// if (state.pc == 0x802b34bc) log_broadway("FUNCTION: btsnd_hcic_setup_esco_conn");
+// if (state.pc == 0x802b35b8) log_broadway("FUNCTION: btsnd_hcic_accept_esco_conn");
+// if (state.pc == 0x802b36a0) log_broadway("FUNCTION: btsnd_hcic_reject_esco_conn");
+// if (state.pc == 0x802b3700) log_broadway("FUNCTION: btsnd_hcic_hold_mode");
+// if (state.pc == 0x802b37b4) log_broadway("FUNCTION: btsnd_hcic_sniff_mode");
+// if (state.pc == 0x802b3880) log_broadway("FUNCTION: btsnd_hcic_exit_sniff_mode");
+// if (state.pc == 0x802b3904) log_broadway("FUNCTION: btsnd_hcic_park_mode");
+// if (state.pc == 0x802b39b8) log_broadway("FUNCTION: btsnd_hcic_exit_park_mode");
+// if (state.pc == 0x802b3a3c) log_broadway("FUNCTION: btsnd_hcic_switch_role");
+// if (state.pc == 0x802b3aec) log_broadway("FUNCTION: btsnd_hcic_write_policy_set");
+// if (state.pc == 0x802b3b80) log_broadway("FUNCTION: btsnd_hcic_reset");
+// if (state.pc == 0x802b3bdc) log_broadway("FUNCTION: btsnd_hcic_set_event_filter");
+// if (state.pc == 0x802b3d98) log_broadway("FUNCTION: btsnd_hcic_write_pin_type");
+// if (state.pc == 0x802b3e0c) log_broadway("FUNCTION: btsnd_hcic_read_stored_key");
+// if (state.pc == 0x802b3e6c) log_broadway("FUNCTION: btsnd_hcic_write_stored_key");
+// if (state.pc == 0x802b402c) log_broadway("FUNCTION: btsnd_hcic_delete_stored_key");
+// if (state.pc == 0x802b40dc) log_broadway("FUNCTION: btsnd_hcic_change_name");
+// if (state.pc == 0x802b421c) log_broadway("FUNCTION: btsnd_hcic_write_page_tout");
+// if (state.pc == 0x802b4254) log_broadway("FUNCTION: btsnd_hcic_write_scan_enable");
+// if (state.pc == 0x802b4284) log_broadway("FUNCTION: btsnd_hcic_write_pagescan_cfg");
+// if (state.pc == 0x802b42c8) log_broadway("FUNCTION: btsnd_hcic_write_inqscan_cfg");
+// if (state.pc == 0x802b430c) log_broadway("FUNCTION: btsnd_hcic_write_auth_enable");
+// if (state.pc == 0x802b4380) log_broadway("FUNCTION: btsnd_hcic_write_encr_mode");
+// if (state.pc == 0x802b43f4) log_broadway("FUNCTION: btsnd_hcic_write_dev_class");
+// if (state.pc == 0x802b4438) log_broadway("FUNCTION: btsnd_hcic_write_auto_flush_tout");
+// if (state.pc == 0x802b447c) log_broadway("FUNCTION: btsnd_hcic_set_host_buf_size");
+// if (state.pc == 0x802b4538) log_broadway("FUNCTION: btsnd_hcic_write_link_super_tout");
+// if (state.pc == 0x802b45cc) log_broadway("FUNCTION: btsnd_hcic_write_cur_iac_lap");
+// if (state.pc == 0x802b463c) log_broadway("FUNCTION: btsnd_hcic_read_local_ver");
+// if (state.pc == 0x802b469c) log_broadway("FUNCTION: btsnd_hcic_read_local_features");
+// if (state.pc == 0x802b46f8) log_broadway("FUNCTION: btsnd_hcic_read_buffer_size");
+// if (state.pc == 0x802b4720) log_broadway("FUNCTION: btsnd_hcic_read_bd_addr");
+// if (state.pc == 0x802b4780) log_broadway("FUNCTION: btsnd_hcic_get_link_quality");
+// if (state.pc == 0x802b47fc) log_broadway("FUNCTION: btsnd_hcic_read_rssi");
+// if (state.pc == 0x802b4874) log_broadway("FUNCTION: btsnd_hcic_set_afh_channels");
+// if (state.pc == 0x802b4c94) log_broadway("FUNCTION: btsnd_hcic_write_inqscan_type");
+// if (state.pc == 0x802b4cc4) log_broadway("FUNCTION: btsnd_hcic_write_inquiry_mode");
+// if (state.pc == 0x802b4cf4) log_broadway("FUNCTION: btsnd_hcic_write_pagescan_type");
+// if (state.pc == 0x802b4d24) log_broadway("FUNCTION: btsnd_hcic_vendor_spec_cmd");
+// if (state.pc == 0x802b625c) log_broadway("FUNCTION: hidh_conn_disconnect");
+// if (state.pc == 0x802b72e4) log_broadway("FUNCTION: hidh_l2cif_disconnect_ind");
+// if (state.pc == 0x802b75a8) log_broadway("FUNCTION: hidh_l2cif_disconnect_cfm");
+// if (state.pc == 0x802b88bc) log_broadway("FUNCTION: L2CA_DisconnectReq");
+// if (state.pc == 0x802b8960) log_broadway("FUNCTION: L2CA_DisconnectRsp");
+// if (state.pc == 0x802b9d08) log_broadway("FUNCTION: l2c_csm_w4_l2cap_disconnect_rsp");
+// if (state.pc == 0x802b9eec) log_broadway("FUNCTION: l2c_csm_w4_l2ca_disconnect_rsp");
+// if (state.pc == 0x802be184) log_broadway("FUNCTION: l2cu_lcb_disconnecting");
+// if (state.pc == 0x802c00b0) log_broadway("FUNCTION: RFCOMM_DisconnectInd");
+// if (state.pc == 0x802c7b54) log_broadway("FUNCTION: sdp_disconnect_ind");
+// if (state.pc == 0x802c7ed0) log_broadway("FUNCTION: sdp_disconnect_cfm");
+// if (state.pc == 0x802b85a4) { log_broadway("FUNCTION: L2CA_ConnectRsp"); dump_stack(); }
+// if (state.pc == 0x802b8370) log_broadway("FUNCTION: L2CA_ConnectReq");
+// if (state.pc >= 0x802ce2fc && state.pc <= 0x802ce324) log_broadway("FUNCTION: WPADSetConnectCallback(%x)", state.pc); 
+
+if (state.pc == 0x802973a0) { log_broadway("ios_dipshit(%08x)", state.gprs[3]); }
+if (state.pc == 0x802ce2fc) { log_broadway("FUNCTION: WPADSetConnectCallback(%x)", state.gprs[3]); 
+dump_stack();}
+if (state.pc == 0x8001d9a0)  log_broadway("FUNCTION: Func7(%x)", state.gprs[3]); 
+if (state.pc == 0x8026c8e8) log_broadway("FUNCTION: InsertAlarm");
+if (state.pc == 0x8026cb38) log_broadway("FUNCTION: OSSetAlarm(%x)", state.gprs[3]);
+if (state.pc == 0x8026cba8) log_broadway("FUNCTION: OSSetPeriodicAlarm");
+if (state.pc == 0x8026cc2c) log_broadway("FUNCTION: OSCancelAlarm(%x)", state.gprs[3]);
+if (state.pc == 0x80006124)  log_broadway("FUNCTION: Func8(%x)", state.gprs[3]); 
+if (state.pc == 0x80304edc)  log_broadway("FUNCTION: Func4(%x)", state.gprs[3]); 
+if (state.pc == 0x80235ce0)  log_broadway("FUNCTION: Func5(%x)", state.gprs[3]); 
+if (state.pc == 0x801a71a4)  log_broadway("FUNCTION: Func6(%x)", state.gprs[3]); 
+if (state.pc == 0x802cee08)  log_broadway("FUNCTION: Func1(%x)", state.gprs[3]); 
+if (state.pc == 0x802fbe5c)  log_broadway("FUNCTION: Func2(%x)", state.gprs[3]); 
+if (state.pc == 0x802fc730)  log_broadway("FUNCTION: Func3(%x)", state.gprs[3]); 
+if (state.pc == 0x802cd3a0) log_broadway("FUNCTION: WPAD thisq(%x %x)", state.gprs[0], state.gprs[29] + 0x161); 
+if (state.pc == 0x802cda9c) log_broadway("FUNCTION: WPADiRetrieveChannel");
+if (state.pc == 0x802cdfe0) log_broadway("FUNCTION: WPADiRecvCallback");
+if (state.pc == 0x802ce7b8) log_broadway("FUNCTION: WPADSaveConfig");
+if (state.pc == 0x802d0458) log_broadway("FUNCTION: WPADSetSpeakerVolume");
+if (state.pc == 0x802d1da8) log_broadway("FUNCTION: WPADiSendWriteDataCmd");
+if (state.pc == 0x802d1f5c) log_broadway("FUNCTION: WPADiSendWriteData");
+if (state.pc == 0x802d2114) log_broadway("FUNCTION: WPADiSendReadData");
+if (state.pc == 0x802d22c0) log_broadway("FUNCTION: WPADiClearQueue");
+if (state.pc == 0x802d3300) log_broadway("FUNCTION: WPADiHIDParser");
+if (state.pc == 0x802fc694) log_broadway("FUNCTION: Setup__Q44nw4r3snd6detail20RemoteSpeakerManagerFv(%x)", state.gprs[3]);
+if (state.pc == 0x802890b8) log_broadway("FUNCTION: MAILBOX: %x", state.gprs[3]);
+if (state.pc == 0x802d2114) {
+    log_broadway("FUNCTION: WPADiSendReadData");
+}
+if (state.pc == 0x802deefc) {
+    log_broadway("FUNCTION: WPADInit() returned");
+}
+if (state.pc == 0x802d2209) {
+    log_broadway("FUNCTION: WPAD->queue_size = %x (%x)", state.gprs[0], state.gprs[30] + 1);
+}
+if (state.pc == 0x802d7b14) {
+    log_broadway("FUNCTION: WIIMOTE DEJBIT %x", state.lr);
+
+            hle_os_report2(cast(void*) &mem, &state);
+}
+
+
+        if (state.pc  >= 0x8028b21c && state.pc  <= 0x8028b318) {
+            log_broadway("__GXSaveFifo: %x", state.pc);
+        }
+if (state.pc == 0x802df108) log_broadway("FUNCTION: WPADInit caller returned %x", state.lr);
+if (state.pc == 0x8019d5b0) error_broadway("iNFINITE LOOP: %08x", state.lr);
+if (state.pc == 0x8019b6c8) error_broadway("ASSERT FAILED: %08x", state.lr);
+if (state.pc >= 0x802913ac && state.pc <= 0x80291454) log_broadway("ASSERT FAILED: %08x", state.pc);
+
             // log_jit("At pc: %x", old_pc);
             // log_state(&state);
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
+            
+            if (state.pc == 0x8029423c) {
+                // log_broadway("FUNCTION: ISFS_ReadDirAsync");
+                // dump_stack();
+            }
+            if (state.pc == 0x802998f0) {
+                // log_broadway("FUNCTION: nand2");
+                // dump_stack();
+            }
+            if (state.pc == 0x802cdadc) {
+
+                // dump_stack();
+            }
+
             if (jit_return_value.block_return_value == BlockReturnValue.DecrementerChanged) {
                 scheduler.remove_event(decrementer_event);
                 decrementer_event = scheduler.add_event_relative_to_clock(() => raise_exception(ExceptionType.Decrementer), state.dec);
@@ -140,6 +380,7 @@ final class Broadway {
                 elapsed += fast_forward;
 
                 if (elapsed < num_cycles) {
+                    handle_pending_interrupts();
                     return;
                 } else {
                     continue;
@@ -195,6 +436,7 @@ final class Broadway {
     public void on_error() {
         log_function("ERROR DETECTED");
         log_state(&state);
+        dump_stack();
         jit.on_error();
 
         import util.dump;
@@ -335,9 +577,10 @@ final class Broadway {
 
     int pending_interrupts = 0;
     void handle_pending_interrupts() {
+        log_interrupt("Pending interrupts: %x (%x)", pending_interrupts, state.msr.bit(15));
         if (pending_interrupts > 0) {
             if (state.msr.bit(15)) {
-                // log_function("Handling pending interrupt: %x", pending_interrupts);
+                log_interrupt("Handling pending interrupt: %x", pending_interrupts);
                 auto exception_to_raise = core.bitop.bsf(pending_interrupts);
                 // log_function("Raising exception: %s", exception_to_raise);
                 handle_exception(cast(ExceptionType) exception_to_raise);

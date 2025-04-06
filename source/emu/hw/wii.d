@@ -11,6 +11,7 @@ import emu.hw.disk.dol;
 import emu.hw.disk.layout;
 import emu.hw.disk.readers.filereader;
 import emu.hw.disk.readers.wbfs;
+import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.hollywood.hollywood;
@@ -43,6 +44,7 @@ final class Wii {
     private SerialInterface   serial_interface;
     private IPC               ipc;
     private PixelEngine       pixel_engine;
+    private Wiimote           wiimote;
 
     private Scheduler        scheduler;
 
@@ -60,6 +62,7 @@ final class Wii {
         this.hollywood          = new Hollywood();
         this.scheduler          = new Scheduler();
         this.pixel_engine       = new PixelEngine();
+        this.wiimote            = new Wiimote();
 
         this.broadway.connect_mem(this.mem);
         this.broadway.connect_scheduler(this.scheduler);
@@ -83,13 +86,19 @@ final class Wii {
         this.ipc.connect_mem(this.mem);
         this.ipc.connect_scheduler(this.scheduler);
         this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.ipc.connect_wiimote(this.wiimote);
         this.pixel_engine.connect_scheduler(this.scheduler);
         this.pixel_engine.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.audio_interface.connect_scheduler(this.scheduler);
         this.audio_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.dsp.connect_scheduler(this.scheduler);
         this.dsp.connect_interrupt_controller(this.broadway.get_interrupt_controller());
+        this.dsp.connect_mem(this.mem);
         this.hollywood.connect_mem(this.mem);
+
+        // todo: ew
+        this.wiimote.connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);
+        this.wiimote.connect_scheduler(this.scheduler);
 
         g_logger_scheduler = &this.scheduler;
 
@@ -291,5 +300,10 @@ final class Wii {
         import util.dump;
         dump(this.mem.mem1, "mem1.bin");
         dump(this.mem.mem2, "mem2.bin");
+    }
+
+    public void set_wiimote_button(WiimoteButton button, bool pressed) {
+        log_wiimote("wii: %s", wiimote);
+        this.wiimote.set_button(button, pressed);
     }
 }

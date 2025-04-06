@@ -27,6 +27,7 @@ final class AudioInterface {
 
     u32 ai_control;
     void write_AI_CONTROL(int target_byte, u8 value) {
+        // log_ai("Writing to AI_CONTROL %x %x from %x", target_byte, value, interrupt_controller.cpu.);
         ai_control = ai_control.set_byte(target_byte, value);
 
         ai_control &= ~(1 << 5);
@@ -37,6 +38,7 @@ final class AudioInterface {
             if (value.bit(0)) {
                 reschedule_audio_sampling();
             } else {
+                log_ai("Disabling audio sampling");
                 scheduler.remove_event(audio_sampling_event_id);
             }
 
@@ -66,7 +68,7 @@ final class AudioInterface {
 
         aiscnt++;
 
-        log_ai("Sampling audio %x %x", aiscnt, aiit);
+        log_ai("Sampling audio %x %x %x", aiscnt, aiit, num_cycles);
 
         if (aiscnt == aiit) {
             ai_control |= 1 << 3;
