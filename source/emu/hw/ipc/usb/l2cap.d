@@ -6,9 +6,10 @@ import util.endian;
 import util.number;
 
 enum {
-    L2CAP_CONNECT_RSP = 0x3,
-    L2CAP_CONFIG_REQ  = 0x4,
-    L2CAP_CONFIG_RSP  = 0x5,
+    L2CAP_CONNECT_RSP    = 0x3,
+    L2CAP_CONFIG_REQ     = 0x4,
+    L2CAP_CONFIG_RSP     = 0x5,
+    L2CAP_DISCONNECT_REQ = 0x6,
 }
 
 struct WiimoteL2capCommand {

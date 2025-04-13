@@ -1,10 +1,13 @@
 module emu.hw.broadway.jit.jit;
 
 import capstone;
+import core.sys.posix.sys.mman;
 import dklib.khash;
+import emu.hw.broadway.jit.code_page_table;
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.codeblocks;
 import emu.hw.broadway.jit.emission.emit;
+import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.cpu;
 import emu.hw.broadway.state;
@@ -14,10 +17,13 @@ import util.bitop;
 import util.log;
 import util.number;
 import util.ringbuffer;
+import xbyak;
 
 alias ReadHandler  = u32 function(u32 address);
 alias WriteHandler = void function(u32 address, u32 value);
 alias HleHandler   = void function(int param);
+alias MfsprHandler = u32 function(GuestReg spr);
+alias MtsprHandler = void function(GuestReg spr, u32 value);
 
 struct JitContext {
     u32 pc;
@@ -39,9 +45,20 @@ struct JitConfig {
     WriteHandler write_handler32;
     WriteHandler write_handler64;
     HleHandler   hle_handler;
+    MfsprHandler read_spr_handler;
+    MtsprHandler write_spr_handler;
 
     void*        mem_handler_context;
     void*        hle_handler_context;
+    void*        spr_handler_context;
+}
+
+private alias JitFunction = BlockReturnValue function(BroadwayState* state);
+
+struct JitEntry {
+    JitFunction func;
+    u32         num_instructions;
+    int         num_times_executed;
 }
 
 final class Jit {
@@ -50,40 +67,35 @@ final class Jit {
         u32 instruction;
     }
 
-    struct JitEntry {
-        JitFunction func;
-        u32         num_instructions;
-    }
-
-    private alias JitFunction = BlockReturnValue function(BroadwayState* state);
-    private alias JitHashMap = khash!(u32, JitEntry);
     private alias DebugRing  = RingBuffer!(DebugState);
     
-    private Mem        mem;
-    private JitHashMap jit_hash_map;
-    private DebugRing  debug_ring;
-    private Code       code;
+    private Mem mem;
+    private CodePageTable code_page_table;
+    private DebugRing debug_ring;
+    private Code code;
 
     private CodeBlockTracker codeblocks;
 
+    u32[][u32] dependents;
+
     this(JitConfig config, Mem mem, size_t ringbuffer_size) {
         this.mem = mem;
-        this.jit_hash_map = JitHashMap();
+        this.code_page_table = new CodePageTable();
         this.debug_ring = new DebugRing(ringbuffer_size);
         this.code = new Code(config);
         this.codeblocks = new CodeBlockTracker();
     }
 
     BlockReturnValue process_jit_function(JitFunction func, BroadwayState* state) {
+        state.cycle_quota = 0;
         BlockReturnValue ret = func(state);
 
-        final switch (ret) {
-            case BlockReturnValue.Invalid: error_jit("Invalid return value"); break;
+        switch (ret) {
             case BlockReturnValue.ICacheInvalidation: {
                 state.icbi_address &= ~31;
                 
                 for (u32 i = 0; i < 32 + MAX_GUEST_OPCODES_PER_RECIPE - 1; i += 4) {
-                    jit_hash_map.remove(state.icbi_address + i + MAX_GUEST_OPCODES_PER_RECIPE - 1);
+                    code_page_table.remove(state.icbi_address + i + MAX_GUEST_OPCODES_PER_RECIPE - 1);
                 }
 
                 break;
@@ -100,6 +112,9 @@ final class Jit {
             
             case BlockReturnValue.DecrementerChanged:
                 break;
+            
+            default:
+                break;
         }
 
         return ret;
@@ -107,20 +122,19 @@ final class Jit {
 
     // returns the number of instructions executed
     public JitReturnValue run(BroadwayState* state) {
-        JitEntry invalid_entry = JitEntry(null, 0);
-        auto cached_func = jit_hash_map.require(state.pc, invalid_entry);
-
-        if (cached_func != invalid_entry) {
-            return JitReturnValue(cached_func.num_instructions, process_jit_function(cached_func.func, state));
+        if (code_page_table.has(state.pc)) {
+            JitEntry entry = code_page_table.get_assume_has(state.pc);
+            entry.num_times_executed++;
+            return JitReturnValue(state.cycle_quota, process_jit_function(entry.func, state));
         } else {
             code.init();
-            auto num_instructions = cast(int) emit(code, mem, state.pc);
+            auto num_instructions = cast(int) emit(this, code, mem, state.pc);
             u8[] bytes = code.get();
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
             
             auto func = cast(JitFunction) ptr;            
-            jit_hash_map[state.pc] = JitEntry(func, num_instructions);
-            return JitReturnValue(num_instructions, process_jit_function(func, state));
+            code_page_table.put(state.pc, JitEntry(func, num_instructions, 1));
+            return JitReturnValue(state.cycle_quota, process_jit_function(func, state));
         }
     }
 
@@ -140,6 +154,32 @@ final class Jit {
         foreach (debug_state; this.debug_ring.get()) {
             log_instruction(debug_state.instruction, debug_state.state.pc - 4);
             log_state(&debug_state.state);
+        }
+    }
+
+    u64 get_address_for_code(u32 address) {
+        return cast(u64) code_page_table.get_assume_has(address).func;
+    }
+
+    bool has_code_for(u32 address) {
+        return code_page_table.has(address);
+    }
+
+    void add_dependent(u32 parent, u32 child) {
+        if (parent !in dependents) {
+            dependents[parent] = new u32[0];
+        }
+
+        dependents[parent] ~= child;
+    }
+
+    void invalidate(u32 address) {
+        code_page_table.remove(address);
+
+        if (address in dependents) {
+            foreach (dependent; dependents[address]) {
+                invalidate(dependent);
+            }
         }
     }
 }

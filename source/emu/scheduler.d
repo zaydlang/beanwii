@@ -33,11 +33,11 @@ final class Scheduler {
         event_in_progress = false;
     }
 
-    ulong add_event_relative_to_clock(void delegate() callback, int delta_cycles) {
+    ulong add_event_relative_to_clock(void delegate() callback, ulong delta_cycles) {
         return add_event(callback, current_timestamp + delta_cycles);
     }
 
-    ulong add_event_relative_to_self(void delegate() callback, int delta_cycles) {
+    ulong add_event_relative_to_self(void delegate() callback, ulong delta_cycles) {
         return add_event(callback, self.timestamp + delta_cycles);
     }
 

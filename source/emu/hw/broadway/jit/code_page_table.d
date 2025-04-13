@@ -1,0 +1,101 @@
+module emu.hw.broadway.jit.code_page_table;
+
+import core.stdc.stdlib;
+import emu.hw.broadway.jit.jit;
+import util.bitop;
+import util.log;
+import util.number;
+
+final class CodePageTable {
+    // We want entries from 0x80000000 to 0x9000000
+    // This is 29 bits of information.
+    // Lets split this as 7, 7, 7, 8
+    
+    JitEntry**** jit_entries;
+
+    JitEntry empty_entry = JitEntry(null, 0, 0);
+
+    this() {
+        jit_entries = cast(JitEntry****) calloc(8, 128);
+        
+        for (int i = 0; i < 128; i++) {
+            jit_entries[i] = null;
+        }
+    }
+
+    void put(u32 address, JitEntry entry) {
+        auto l1 = address.bits(22, 28);
+        auto l2 = address.bits(15, 21);
+        auto l3 = address.bits(8, 14);
+        auto l4 = address.bits(0, 7);
+
+        auto l1_entries = jit_entries[l1];
+        if (l1_entries == null) {
+            jit_entries[l1] = cast(JitEntry***) calloc(8, 128);
+            l1_entries = jit_entries[l1];
+        }
+
+        auto l2_entries = l1_entries[l2];
+        if (l2_entries == null) {
+            l1_entries[l2] = cast(JitEntry**) calloc(8, 128);
+            l2_entries = l1_entries[l2];
+        }
+
+        auto l3_entries = l2_entries[l3];
+        if (l3_entries == null) {
+            l2_entries[l3] = cast(JitEntry*) calloc(JitEntry.sizeof, 256);
+            l3_entries = l2_entries[l3];
+        }
+
+        l3_entries[l4] = entry;
+    }
+
+    JitEntry get_assume_has(u32 address) {
+        auto l1 = address.bits(22, 28);
+        auto l2 = address.bits(15, 21);
+        auto l3 = address.bits(8, 14);
+        auto l4 = address.bits(0, 7);
+
+        auto l1_entries = jit_entries[l1];
+        auto l2_entries = l1_entries[l2];
+        auto l3_entries = l2_entries[l3];
+
+        return l3_entries[l4];
+    }
+
+    void remove(u32 address) {
+        if (has(address)) {
+            auto l1 = address.bits(22, 28);
+            auto l2 = address.bits(15, 21);
+            auto l3 = address.bits(8, 14);
+            auto l4 = address.bits(0, 7);
+
+            jit_entries[l1][l2][l3][l4] = empty_entry;
+        }
+    }
+
+    bool has(u32 address) {
+        auto l1 = address.bits(22, 28);
+        auto l2 = address.bits(15, 21);
+        auto l3 = address.bits(8, 14);
+        auto l4 = address.bits(0, 7);
+
+        auto l1_entries = jit_entries[l1];
+        if (l1_entries == null) {
+            return false;
+        }
+
+        auto l2_entries = l1_entries[l2];
+        if (l2_entries == null) {
+            return false;
+        }
+
+        auto l3_entries = l2_entries[l3];
+        if (l3_entries == null) {
+            return false;
+        }
+
+        auto entry = l3_entries[l4];
+        return entry != empty_entry;
+    }
+}

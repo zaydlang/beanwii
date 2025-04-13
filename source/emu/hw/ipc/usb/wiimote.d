@@ -130,9 +130,10 @@ final class Wiimote {
 
     void handle_bluetooth_hci(u8[] data) {
         final switch (data[8]) {
-            case L2CAP_CONNECT_RSP: handle_l2cap_connect_rsp(data); break;
-            case L2CAP_CONFIG_REQ:  handle_l2cap_config_req(data);  break;
-            case L2CAP_CONFIG_RSP:  handle_l2cap_config_rsp(data);  break;
+            case L2CAP_CONNECT_RSP:    handle_l2cap_connect_rsp(data); break;
+            case L2CAP_CONFIG_REQ:     handle_l2cap_config_req(data);  break;
+            case L2CAP_CONFIG_RSP:     handle_l2cap_config_rsp(data);  break;
+            case L2CAP_DISCONNECT_REQ: error_wiimote("L2CAP_DISCONNECT_REQ not implemented"); break;
         }
     }
 

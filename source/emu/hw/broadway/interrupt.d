@@ -166,25 +166,6 @@ final class InterruptController {
         recalculate_hollywood_interrupt();
     }
 
-    int fifo_base_start;
-    int fifo_base_end;
-
-    u8 read_FIFO_BASE_START(int target_byte) {
-        return fifo_base_start.get_byte(target_byte);
-    }
-
-    void write_FIFO_BASE_START(int target_byte, u8 value) {
-        fifo_base_start = fifo_base_start.set_byte(target_byte, value);
-    }
-
-    u8 read_FIFO_BASE_END(int target_byte) {
-        return fifo_base_end.get_byte(target_byte);
-    }
-
-    void write_FIFO_BASE_END(int target_byte, u8 value) {
-        fifo_base_end = fifo_base_end.set_byte(target_byte, value);
-    }
-
     int UNKNOWN_CC003018;
     int UNKNOWN_CC00301C;
     int UNKNOWN_CC003020;
@@ -211,17 +192,6 @@ final class InterruptController {
 
     void write_UNKNOWN_CC003020(int target_byte, u8 value) {
         UNKNOWN_CC003020 = UNKNOWN_CC003020.set_byte(target_byte, value);
-    }
-
-    int fifo_write_ptr;
-    
-    u8 read_FIFO_WRITE_PTR(int target_byte) {
-        log_broadway("read FIFO_WRITE_PTR[%d] = %02x", target_byte, fifo_write_ptr.get_byte(target_byte));
-        return fifo_write_ptr.get_byte(target_byte);
-    }
-
-    void write_FIFO_WRITE_PTR(int target_byte, u8 value) {
-        fifo_write_ptr = fifo_write_ptr.set_byte(target_byte, value);
     }
 
     void connect_ipc(IPC ipc) {

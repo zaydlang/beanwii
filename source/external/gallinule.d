@@ -34,7 +34,7 @@ final:
 }
 
 struct ZaydAppender {
-    ubyte[0x4000] buffer;
+    ubyte[0x40000] buffer;
     size_t pos = 0;
 
     void opOpAssign(string s : "~")(ubyte[] data) {
@@ -627,9 +627,9 @@ package:
 final:
     ptrdiff_t[string] labels;
     Tuple!(ptrdiff_t, string, string, bool)[] branches;
-    ZaydAppender buffer;
 
 public:
+    ZaydAppender buffer;
     void reset() {
         buffer.deallocate();
         labels.clear();
@@ -3273,6 +3273,7 @@ import std.stdio;
 
     auto jmp(ushort imm16) => emit!0(0xea, imm16);
     auto jmp(uint imm32) => emit!0(0xea, imm32);
+    auto jmp(ulong imm64) => emit!0(0xea, cast(long)imm64);
 
     auto ja(string name) => branches ~= tuple(cast(ptrdiff_t)buffer.length, name, "ja", name !in labels);
     auto jae(string name) => branches ~= tuple(cast(ptrdiff_t)buffer.length, name, "jae", name !in labels);

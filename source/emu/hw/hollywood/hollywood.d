@@ -279,6 +279,12 @@ final class Hollywood {
     }
 
     void write_GX_FIFO(T)(T value, int offset) {
+        fifo_write_ptr += T.sizeof;
+        while (fifo_write_ptr >= fifo_base_end) {
+            fifo_write_ptr -= (fifo_base_end - fifo_base_start);
+            fifo_wrapped = true;
+        }
+
         final switch (state) {
             case State.WaitingForCommand:
                 handle_new_command(value, offset);
@@ -1285,6 +1291,51 @@ final class Hollywood {
         
         glLinkProgram(gl_program);
         glUseProgram(gl_program);
+    }
+
+    u32 fifo_base_start;
+    u32 fifo_base_end;
+    u32 fifo_write_ptr;
+    bool fifo_wrapped = false;
+
+    u8 read_FIFO_BASE_START(int target_byte) {
+        return fifo_base_start.get_byte(target_byte);
+    }
+
+    void write_FIFO_BASE_START(int target_byte, u8 value) {
+        log_broadway("write FIFO_BASE_START[%d] = %02x", target_byte, value);
+        fifo_base_start = fifo_base_start.set_byte(target_byte, value);
+    }
+
+    u8 read_FIFO_BASE_END(int target_byte) {
+        return fifo_base_end.get_byte(target_byte);
+    }
+
+    void write_FIFO_BASE_END(int target_byte, u8 value) {
+        log_broadway("write FIFO_BASE_END[%d] = %02x", target_byte, value);
+        fifo_base_end = fifo_base_end.set_byte(target_byte, value);
+    }
+
+    u8 read_FIFO_WRITE_PTR(int target_byte) {
+        log_broadway("read FIFO_WRITE_PTR[%d] = %02x", target_byte, fifo_write_ptr.get_byte(target_byte));
+        u8 return_value = fifo_write_ptr.get_byte(target_byte);
+    
+        if (target_byte == 3) {
+            return_value &= 0x1f;
+            return_value |= fifo_wrapped << 5;
+        }
+
+        return return_value;
+    }
+
+    void write_FIFO_WRITE_PTR(int target_byte, u8 value) {
+        log_broadway("write FIFO_WRITE_PTR[%d] = %02x", target_byte, value);
+        fifo_write_ptr = fifo_write_ptr.set_byte(target_byte, value);
+        fifo_write_ptr &= 0x1fffffff;
+
+        if (target_byte == 3) {
+            fifo_wrapped = value.bit(5);
+        }
     }
 
     ShapeGroup[] debug_drawn_shape_groups;

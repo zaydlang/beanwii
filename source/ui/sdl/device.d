@@ -233,6 +233,7 @@ class SdlDevice : MultiMediaDevice, Window {
             }
         }
 
+        int x = 0;
         void draw() {
             SDL_GL_MakeCurrent(window, gl_context);
             glUseProgram(widget_shader);

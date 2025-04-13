@@ -1,6 +1,7 @@
 module emu.hw.broadway.jit.emission.emit;
 
 import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.emission_action;
 import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.helpers;
@@ -8,6 +9,7 @@ import emu.hw.broadway.jit.emission.opcode;
 import emu.hw.broadway.jit.emission.floating_point;
 import emu.hw.broadway.jit.emission.paired_singles;
 import emu.hw.broadway.jit.emission.return_value;
+import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import gallinule.x86;
@@ -17,15 +19,7 @@ import util.number;
 
 __gshared bool instrument = false; 
 __gshared bool dicksinmyass = false; 
-enum MAX_GUEST_OPCODES_PER_RECIPE = 10;
-
-enum EmissionAction {
-    Continue,
-    BranchTaken,
-    ICacheInvalidation,
-    CpuHalted,
-    DecrementerChanged
-}
+enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
     code.reserve_register(ecx);
@@ -283,23 +277,8 @@ private EmissionAction emit_b(Code code, u32 opcode) {
         return EmissionAction.CpuHalted;
     }
 
-    auto pc = code.get_reg(GuestReg.PC);
-    auto lr = code.allocate_register();
-
-    if (lk) {
-        code.lea(lr, code.dwordPtr(pc, 4));
-        code.set_reg(GuestReg.LR, lr);
-    }
-
-    if (!aa) {
-        code.add(pc, branch_address);
-    } else {
-        code.mov(pc, branch_address);
-    }
-
-    code.set_reg(GuestReg.PC, pc);
-
-    return EmissionAction.BranchTaken;
+    u32 branch_target = aa ? branch_address : code.get_guest_pc() + branch_address;
+    return EmissionAction.DirectBranchTaken(branch_target, lk);
 }
 
 private EmissionAction emit_bc(Code code, u32 opcode) {
@@ -309,39 +288,11 @@ private EmissionAction emit_bc(Code code, u32 opcode) {
     int  bi = opcode.bits(16, 20);
     int  bd = opcode.bits(2, 15);
 
-    auto tmp = code.allocate_register();
+    auto cond = code.allocate_register();
+    is_cond_ok(code, bo, bi, cond);
 
-    is_cond_ok(code, bo, bi, tmp);
-
-    auto no_branch = code.fresh_label();
-    auto end       = code.fresh_label();
-    code.test(tmp, 1);
-    code.jz(no_branch);
-
-    if (lk) {
-        auto pc = code.get_reg(GuestReg.PC);
-        code.lea(pc, code.dwordPtr(pc, 4));
-        code.set_reg(GuestReg.LR, pc);
-    }
-
-    if (aa) {
-        code.mov(tmp, sext_32(bd, 14) << 2);
-        code.set_reg(GuestReg.PC, tmp);
-    } else {
-        auto address = code.get_reg(GuestReg.PC);
-        code.add(address, sext_32(bd, 14) << 2);
-        code.set_reg(GuestReg.PC, address);
-    }
-
-    code.jmp(end);
-
-code.label(no_branch);
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-
-code.label(end);
-    return EmissionAction.BranchTaken;
+    u32 branch_target = aa ? (sext_32(bd, 14) << 2) : code.get_guest_pc() + (sext_32(bd, 14) << 2);
+    return EmissionAction.ConditionalDirectBranchTaken(cond, branch_target, lk);
 }
 
 private EmissionAction emit_bcctr(Code code, u32 opcode) {
@@ -351,33 +302,11 @@ private EmissionAction emit_bcctr(Code code, u32 opcode) {
 
     assert(opcode.bits(11, 15) == 0);
 
-    auto tmp = code.allocate_register();
-    is_cond_ok(code, bo, bi, tmp);
-
-    auto no_branch = code.fresh_label();
-    auto end       = code.fresh_label();
-
-    code.test(tmp, 1);
-    code.jz(no_branch);
-
-    if (lk) {
-        auto pc = code.get_reg(GuestReg.PC);
-        code.lea(pc, code.dwordPtr(pc, 4));
-        code.set_reg(GuestReg.LR, pc);
-    }
+    auto cond = code.allocate_register();
+    is_cond_ok(code, bo, bi, cond);
 
     auto ctr = code.get_reg(GuestReg.CTR);
-    code.set_reg(GuestReg.PC, ctr);
-
-    code.jmp(end);
-
-code.label(no_branch);
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-
-code.label(end);
-    return EmissionAction.BranchTaken;
+    return EmissionAction.ConditionalIndirectBranchTaken(cond, ctr, lk);
 }
 
 private EmissionAction emit_bclr(Code code, u32 opcode) {
@@ -390,31 +319,8 @@ private EmissionAction emit_bclr(Code code, u32 opcode) {
     auto tmp = code.allocate_register();
     is_cond_ok(code, bo, bi, tmp);
 
-    auto no_branch = code.fresh_label();
-    auto end       = code.fresh_label();
-
-    code.test(tmp, 1);
-    code.jz(no_branch);
-
     auto lr = code.get_reg(GuestReg.LR);
-
-    if (lk) {
-        auto pc = code.get_reg(GuestReg.PC);
-        code.lea(pc, code.dwordPtr(pc, 4));
-        code.set_reg(GuestReg.LR, pc);
-    }
-
-    code.set_reg(GuestReg.PC, lr);
-
-    code.jmp(end);
-
-code.label(no_branch);
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-
-code.label(end);
-    return EmissionAction.BranchTaken;
+    return EmissionAction.ConditionalIndirectBranchTaken(tmp, lr, lk);
 }
 
 private EmissionAction emit_cntlzw(Code code, u32 opcode) {
@@ -761,7 +667,10 @@ private EmissionAction emit_hle(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
-    return EmissionAction.BranchTaken;
+    auto lr = code.get_reg(GuestReg.LR);
+    code.set_reg(GuestReg.PC, lr);
+
+    return EmissionAction.RanHLEFunction;
 }
 
 private EmissionAction emit_icbi(Code code, u32 opcode) {
@@ -1272,17 +1181,30 @@ private EmissionAction emit_mfspr(Code code, u32 opcode) {
     assert(opcode.bit(0) == 0);
 
     GuestReg src = get_spr_from_encoding(spr);
-    auto reg = code.get_reg(src);
-    code.set_reg(guest_rd, reg);
+    if (src == GuestReg.TBU || src == GuestReg.TBL || src == GuestReg.DEC) {
+        code.push(rdi);
+        code.enter_stack_alignment_context();
+            code.mov(rdi, cast(u64) code.config.spr_handler_context);
+            code.mov(esi, src);
+            code.mov(rax, cast(u64) code.config.read_spr_handler);
+            code.call(rax);
+        code.exit_stack_alignment_context();
+        code.pop(rdi);
 
-    // TODO: make this not shit
-    auto pc = code.get_reg(GuestReg.PC);
-    code.add(pc, 4);
-    code.set_reg(GuestReg.PC, pc);
-    return EmissionAction.BranchTaken;
+        code.set_reg(guest_rd, eax);
+    } else {
+        auto reg = code.get_reg(src);
+        code.set_reg(guest_rd, reg);
+    }
+
+    return EmissionAction.VolatileStateChanged;
 }
 
 private EmissionAction emit_mftb(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    code.reserve_register(edi);
+    
     auto guest_rd = opcode.bits(21, 25).to_gpr;
     int tb_id = opcode.bits(16, 20) | (opcode.bits(11, 15) << 5);
 
@@ -1293,9 +1215,17 @@ private EmissionAction emit_mftb(Code code, u32 opcode) {
         default: assert(0);
     }
 
-    auto reg = code.get_reg(tb_reg);
-    code.set_reg(guest_rd, reg);
-
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.spr_handler_context);
+        code.mov(esi, tb_reg);
+        code.mov(rax, cast(u64) code.config.read_spr_handler);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+    
+    code.set_reg(guest_rd, eax);
+    
     return EmissionAction.Continue;
 }
 
@@ -1335,23 +1265,35 @@ private EmissionAction emit_mtmsr(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_mtspr(Code code, u32 opcode) {
+    code.reserve_register(edi);
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    code.reserve_register(edx);
+    
     auto guest_rd = opcode.bits(21, 25).to_gpr;
     auto spr      = opcode.bits(11, 15) << 5 | opcode.bits(16, 20);
     auto rd       = code.get_reg(guest_rd);
     assert(opcode.bit(0) == 0);
 
     GuestReg sysreg = get_spr_from_encoding(spr);
-    code.set_reg(sysreg, rd);
+    if (sysreg == GuestReg.TBU || sysreg == GuestReg.TBL || sysreg == GuestReg.DEC) {
+        code.push(rdi);
+        code.enter_stack_alignment_context();
+            code.mov(rdi, cast(u64) code.config.spr_handler_context);
+            code.mov(esi, sysreg);
+            code.mov(edx, rd);
+            code.mov(rax, cast(u64) code.config.write_spr_handler);
+            code.call(rax);
+        code.exit_stack_alignment_context();
+        code.pop(rdi);
+    } else {
+        code.set_reg(sysreg, rd);
+    }
 
     if (sysreg == GuestReg.DEC) {
         return EmissionAction.DecrementerChanged;
     } else {
-        // TODO: make this not shit
-        auto pc = code.get_reg(GuestReg.PC);
-        code.add(pc, 4);
-        code.set_reg(GuestReg.PC, pc);
-
-        return EmissionAction.BranchTaken;
+        return EmissionAction.VolatileStateChanged;
     }
 }
 
@@ -1582,10 +1524,8 @@ private EmissionAction emit_rfi(Code code, u32 opcode) {
     code.and(code.get_address(GuestReg.MSR), ~(1 << 18));
     code.or(code.get_address(GuestReg.MSR), srr1);
 
-    auto pc = code.get_reg(GuestReg.SRR0);
-    code.set_reg(GuestReg.PC, pc);
-
-    return EmissionAction.BranchTaken;
+    auto srr0 = code.get_reg(GuestReg.SRR0);
+    return EmissionAction.IndirectBranchTaken(srr0, false);
 }
 
 private EmissionAction emit_rlwimi(Code code, u32 opcode) {
@@ -2444,6 +2384,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
 
     switch (secondary_opcode) {
         case PrimaryOp04SecondaryOpcode.PS_ADD:     return emit_ps_add    (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_DIV:     return emit_ps_div    (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_NMADDX:  return emit_ps_nmaddx (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_NMSUBX:  return emit_ps_nmsubx (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MADDX:   return emit_ps_maddx  (code, opcode);
@@ -2477,7 +2418,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_NEGX:   instrument = true;  return emit_ps_negx   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUBX:  instrument = true;   return emit_ps_subx   (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
@@ -2492,7 +2433,7 @@ private EmissionAction emit_op_13(Code code, u32 opcode) {
         case PrimaryOp13SecondaryOpcode.CRXOR: return emit_crxor(code, opcode);
         case PrimaryOp13SecondaryOpcode.ISYNC: return emit_isync(code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
@@ -2579,7 +2520,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.SYNC:    return emit_sync   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.XOR:     return emit_xor    (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
@@ -2597,7 +2538,7 @@ instrument = true;
         case PrimaryOp3BSecondaryOpcode.FRESX:    return emit_fresx   (code, opcode);
         case PrimaryOp3BSecondaryOpcode.FSUBSX:   return emit_fsubsx  (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
@@ -2630,7 +2571,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FRSQRTEX: return emit_frsqrtex(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
@@ -2638,99 +2579,198 @@ public EmissionAction disassemble(Code code, u32 opcode) {
     int primary_opcode = opcode.bits(26, 31);
 
     switch (primary_opcode) {
-        case PrimaryOpcode.ADDI:   return emit_addi  (code, opcode);
-        case PrimaryOpcode.ADDIC:  return emit_addic (code, opcode);
-        case PrimaryOpcode.ADDIC_: return emit_addic_(code, opcode);
-        case PrimaryOpcode.ADDIS:  return emit_addis (code, opcode);
-        case PrimaryOpcode.ANDI:   return emit_andi  (code, opcode);
-        case PrimaryOpcode.ANDIS:  return emit_andis (code, opcode);
-        case PrimaryOpcode.B:      return emit_b     (code, opcode);
-        case PrimaryOpcode.BC:     return emit_bc    (code, opcode);
-        case PrimaryOpcode.CMPLI:  return emit_cmpli (code, opcode);
-        case PrimaryOpcode.CMPI:   return emit_cmpi  (code, opcode);
-        case PrimaryOpcode.LBZ:    return emit_lbz   (code, opcode);
-        case PrimaryOpcode.LBZU:   return emit_lbzu  (code, opcode);
-        case PrimaryOpcode.LFD:    return emit_lfd   (code, opcode);
-        case PrimaryOpcode.LFS:    return emit_lfs   (code, opcode);
-        case PrimaryOpcode.LHA:    return emit_lha   (code, opcode);
-        case PrimaryOpcode.LHZ:    return emit_lhz   (code, opcode);
-        case PrimaryOpcode.LHZU:   return emit_lhzu  (code, opcode);
-        case PrimaryOpcode.LMW:    return emit_lmw   (code, opcode);
-        case PrimaryOpcode.LWZ:    return emit_lwz   (code, opcode);
-        case PrimaryOpcode.LWZU:   return emit_lwzu  (code, opcode);
-        case PrimaryOpcode.MULLI:  return emit_mulli (code, opcode);
-        case PrimaryOpcode.ORI:    return emit_ori   (code, opcode);
-        case PrimaryOpcode.ORIS:   return emit_oris  (code, opcode);
-        case PrimaryOpcode.PSQ_L:  return emit_psq_l (code, opcode);
-        case PrimaryOpcode.PSQ_ST: return emit_psq_st(code, opcode);
-        case PrimaryOpcode.RLWIMI: return emit_rlwimi(code, opcode);
-        case PrimaryOpcode.RLWINM: return emit_rlwinm(code, opcode);
-        case PrimaryOpcode.RLWNM:  return emit_rlwnm (code, opcode);
-        case PrimaryOpcode.SC:     return emit_sc    (code, opcode);
-        case PrimaryOpcode.STB:    return emit_stb   (code, opcode);
-        case PrimaryOpcode.STBU:   return emit_stbu  (code, opcode);
-        case PrimaryOpcode.STFD:   return emit_stfd  (code, opcode);
-        case PrimaryOpcode.STFS:   return emit_stfs  (code, opcode);
-        case PrimaryOpcode.STH:    return emit_sth   (code, opcode);
-        case PrimaryOpcode.STHU:   return emit_sthu  (code, opcode);
-        case PrimaryOpcode.STMW:   return emit_stmw  (code, opcode);
-        case PrimaryOpcode.STW:    return emit_stw   (code, opcode);
-        case PrimaryOpcode.STWU:   return emit_stwu  (code, opcode);
-        case PrimaryOpcode.SUBFIC: return emit_subfic(code, opcode);
-        case PrimaryOpcode.XORI:   return emit_xori  (code, opcode);
-        case PrimaryOpcode.XORIS:  return emit_xoris (code, opcode);
+        case PrimaryOpcode.ADDI:    return emit_addi  (code, opcode);
+        case PrimaryOpcode.ADDIC:   return emit_addic (code, opcode);
+        case PrimaryOpcode.ADDIC_:  return emit_addic_(code, opcode);
+        case PrimaryOpcode.ADDIS:   return emit_addis (code, opcode);
+        case PrimaryOpcode.ANDI:    return emit_andi  (code, opcode);
+        case PrimaryOpcode.ANDIS:   return emit_andis (code, opcode);
+        case PrimaryOpcode.B:       return emit_b     (code, opcode);
+        case PrimaryOpcode.BC:      return emit_bc    (code, opcode);
+        case PrimaryOpcode.CMPLI:   return emit_cmpli (code, opcode);
+        case PrimaryOpcode.CMPI:    return emit_cmpi  (code, opcode);
+        case PrimaryOpcode.LBZ:     return emit_lbz   (code, opcode);
+        case PrimaryOpcode.LBZU:    return emit_lbzu  (code, opcode);
+        case PrimaryOpcode.LFD:     return emit_lfd   (code, opcode);
+        case PrimaryOpcode.LFS:     return emit_lfs   (code, opcode);
+        case PrimaryOpcode.LHA:     return emit_lha   (code, opcode);
+        case PrimaryOpcode.LHZ:     return emit_lhz   (code, opcode);
+        case PrimaryOpcode.LHZU:    return emit_lhzu  (code, opcode);
+        case PrimaryOpcode.LMW:     return emit_lmw   (code, opcode);
+        case PrimaryOpcode.LWZ:     return emit_lwz   (code, opcode);
+        case PrimaryOpcode.LWZU:    return emit_lwzu  (code, opcode);
+        case PrimaryOpcode.MULLI:   return emit_mulli (code, opcode);
+        case PrimaryOpcode.ORI:     return emit_ori   (code, opcode);
+        case PrimaryOpcode.ORIS:    return emit_oris  (code, opcode);
+        case PrimaryOpcode.PSQ_L:   return emit_psq_l (code, opcode);
+        case PrimaryOpcode.PSQ_LU:  return emit_psq_lu(code, opcode);
+        case PrimaryOpcode.PSQ_ST:  return emit_psq_st(code, opcode);
+        case PrimaryOpcode.PSQ_STU: return emit_psq_stu(code, opcode);
+        case PrimaryOpcode.RLWIMI:  return emit_rlwimi(code, opcode);
+        case PrimaryOpcode.RLWINM:  return emit_rlwinm(code, opcode);
+        case PrimaryOpcode.RLWNM:   return emit_rlwnm (code, opcode);
+        case PrimaryOpcode.SC:      return emit_sc    (code, opcode);
+        case PrimaryOpcode.STB:     return emit_stb   (code, opcode);
+        case PrimaryOpcode.STBU:    return emit_stbu  (code, opcode);
+        case PrimaryOpcode.STFD:    return emit_stfd  (code, opcode);
+        case PrimaryOpcode.STFS:    return emit_stfs  (code, opcode);
+        case PrimaryOpcode.STH:     return emit_sth   (code, opcode);
+        case PrimaryOpcode.STHU:    return emit_sthu  (code, opcode);
+        case PrimaryOpcode.STMW:    return emit_stmw  (code, opcode);
+        case PrimaryOpcode.STW:     return emit_stw   (code, opcode);
+        case PrimaryOpcode.STWU:    return emit_stwu  (code, opcode);
+        case PrimaryOpcode.SUBFIC:  return emit_subfic(code, opcode);
+        case PrimaryOpcode.XORI:    return emit_xori  (code, opcode);
+        case PrimaryOpcode.XORIS:   return emit_xoris (code, opcode);
 
-        case PrimaryOpcode.OP_04:  return emit_op_04 (code, opcode);
-        case PrimaryOpcode.OP_13:  return emit_op_13 (code, opcode);
-        case PrimaryOpcode.OP_1F:  return emit_op_1F (code, opcode);
-        case PrimaryOpcode.OP_3B:  return emit_op_3B (code, opcode);
-        case PrimaryOpcode.OP_3F:  return emit_op_3F (code, opcode);
+        case PrimaryOpcode.OP_04:   return emit_op_04 (code, opcode);
+        case PrimaryOpcode.OP_13:   return emit_op_13 (code, opcode);
+        case PrimaryOpcode.OP_1F:   return emit_op_1F (code, opcode);
+        case PrimaryOpcode.OP_3B:   return emit_op_3B (code, opcode);
+        case PrimaryOpcode.OP_3F:   return emit_op_3F (code, opcode);
 
-        default: unimplemented_opcode(opcode); return EmissionAction.BranchTaken;
+        default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
 
-public size_t emit(Code code, Mem mem, u32 address) {
-    size_t num_opcodes_processed = 0;
-    instrument = false;    
-    import capstone;
+public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
+    u32 original_address = address;
+    int num_opcodes_processed = 0;
 
-    // auto cs = create(Arch.ppc, ModeFlags(Mode.bit32));
-    // auto opcode = mem.read_be_u32(address);
-    // log_jit("Disassembling opcode 0x%08x", address);
-    // auto res = cs.disasm((cast(ubyte*) &opcode)[0 .. 4], 0);
-    // foreach (instr; res) {
-    //     log_jit("[GUEST] 0x%08x | %s\t\t%s", address, instr.mnemonic, instr.opStr);
-    // }
-    // log_jit("Opcode: 0x%08x", opcode);
-    // log_jit("Disassembling at 0x%08x", address);
     while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
-
-        // auto cs = create(Arch.ppc, ModeFlags(Mode.bit32));
-        // auto opcode = mem.read_be_u32(address);
-        // log_jit("Disassembling opcode 0x%08x", address);
-        // auto res = cs.disasm((cast(ubyte*) &opcode)[0 .. 4], 0);
-        // foreach (instr; res) {
-            // log_jit("[GUEST] 0x%08x | %s\t\t%s", address, instr.mnemonic, instr.opStr);
-        // }
-        // log_jit("Opcode: 0x%08x", opcode);
         code.set_guest_pc(address);
         EmissionAction action = disassemble(code, mem.read_be_u32(address));
 
-        if (action != EmissionAction.BranchTaken && action != EmissionAction.CpuHalted) {
-            auto pc = code.get_reg(GuestReg.PC);
-            code.add(pc, 4);
-            code.set_reg(GuestReg.PC, pc);
-        }
-
         num_opcodes_processed++;
         if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE || action != EmissionAction.Continue) {
-            final switch (action) {
-                case EmissionAction.Continue:           code.mov(rax, BlockReturnValue.GuestBlockEnd); break;
-                case EmissionAction.BranchTaken:        code.mov(rax, BlockReturnValue.BranchTaken); break;
-                case EmissionAction.ICacheInvalidation: code.mov(rax, BlockReturnValue.ICacheInvalidation); break;
-                case EmissionAction.CpuHalted:          code.mov(rax, BlockReturnValue.CpuHalted); break;
-                case EmissionAction.DecrementerChanged: code.mov(rax, BlockReturnValue.DecrementerChanged); break;
+            code.add(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), num_opcodes_processed);
+            
+            final switch (action.type) {
+                case EmissionActionType.Continue:                       
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    break;
+
+                case EmissionActionType.DirectBranchTaken:
+                    if (action.is_with_link()) {
+                        code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
+                    }
+
+                    code.set_reg(GuestReg.PC, action.get_direct_branch_target());
+                    
+                    if (jit.has_code_for(action.get_direct_branch_target())) {
+                        jit.add_dependent(original_address, action.get_direct_branch_target());
+                        u64 target = jit.get_address_for_code(action.get_direct_branch_target());
+                        code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
+                        target += 15; // size of prologue
+
+                        auto exit = code.fresh_label();
+                        code.jge(exit);
+                        code.mov(rax, target);
+                        code.jmp(rax);
+
+                    code.label(exit);
+                        code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    } else {
+                        code.mov(rax, BlockReturnValue.BranchTaken);
+                    }
+
+                    break;
+
+                case EmissionActionType.IndirectBranchTaken:
+                    if (action.is_with_link()) {
+                        error_jit("Indirect branch with link not allowed");
+                    }      
+
+                    code.set_reg(GuestReg.PC, action.get_indirect_branch_target());
+                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    break;
+
+                case EmissionActionType.ConditionalDirectBranchTaken:
+                    auto no_branch = code.fresh_label();
+                    auto end       = code.fresh_label();
+
+                    code.test(action.get_condition_reg(), 1);
+                    code.jz(no_branch);
+
+                    if (action.is_with_link()) {
+                        code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
+                    }
+                    code.set_reg(GuestReg.PC, action.get_direct_branch_target());
+
+                    if (jit.has_code_for(action.get_direct_branch_target())) {
+                        jit.add_dependent(original_address, action.get_direct_branch_target());
+                        u64 target = jit.get_address_for_code(action.get_direct_branch_target());
+                        code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
+                        target += 15; // size of prologue
+
+                        auto exit = code.fresh_label();
+                        code.jge(exit);
+                        code.mov(rax, target);
+                        code.jmp(rax);
+
+                    code.label(exit);
+                        code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    } else {
+                        code.mov(rax, BlockReturnValue.BranchTaken);
+                    }
+
+                    code.jmp(end);
+
+                code.label(no_branch);
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+
+                code.label(end);
+                    
+                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    break;
+                
+                case EmissionActionType.ConditionalIndirectBranchTaken:
+                    auto no_branch = code.fresh_label();
+                    auto end       = code.fresh_label();
+
+                    code.test(action.get_condition_reg(), 1);
+                    code.jz(no_branch);
+
+                    if (action.is_with_link()) {
+                        code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
+                    }
+                    code.set_reg(GuestReg.PC, action.get_indirect_branch_target());
+                    code.jmp(end);
+
+                code.label(no_branch);
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+
+                code.label(end);
+                    
+                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    break;
+                    
+                case EmissionActionType.ICacheInvalidation:
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.ICacheInvalidation);
+                    break;
+
+                case EmissionActionType.CpuHalted:
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.CpuHalted);
+                    break;
+
+                case EmissionActionType.DecrementerChanged:
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.DecrementerChanged);
+                    break;
+
+                case EmissionActionType.VolatileStateChanged:
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    break;
+
+                case EmissionActionType.RanHLEFunction:
+                    auto lr = code.get_reg(GuestReg.LR);
+                    code.set_reg(GuestReg.PC, lr);
+                    code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    break;
             }
 
             break;

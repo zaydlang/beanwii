@@ -193,7 +193,7 @@ final class SlowMem : MemStrategy {
         } else {
             auto memory_access = get_memory_access_from_paddr(address);
         }
-
+        
         if (address == 0x8056dce0) {
             log_slowmem("disker inUse index: %x %x", value, cpu.state.pc);
         }
@@ -217,6 +217,15 @@ final class SlowMem : MemStrategy {
         if (address == 0x8056df50) {
             log_broadway("__dsp_rudetask_pend = %x %x", value, cpu.state.pc);
         }
+
+        if (address == 2 + 0x803b4250) {
+            log_broadway("bta2_hh_maint_dev_act.action1 = %x %x", value, cpu.state.pc);
+        }
+
+        if (address == 8 + 0x803b4250) {
+            log_broadway("bta2_hh_maint_dev_act.action2 = %x %x", value, cpu.state.pc);
+        }
+
 
         auto region = memory_access.region;
 

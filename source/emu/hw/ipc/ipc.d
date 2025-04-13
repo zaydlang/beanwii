@@ -151,7 +151,7 @@ final class IPC {
         remote_is_dead_timeout = scheduler.add_event_relative_to_self(() {
             mem.cpu.dump_stack();
             error_ipc("IPC: Remote is dead");
-        }, 100_000_000);
+        }, 100_000_000_000);
 
         assert(offset == 0, "IPC: PPCCTRL offset is not 0");
         assert(T.sizeof == 4, "IPC: PPCCTRL write size is not 4");

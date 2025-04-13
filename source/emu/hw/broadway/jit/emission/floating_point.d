@@ -1,6 +1,7 @@
 module emu.hw.broadway.jit.emission.floating_point;
 
 import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.emission_action;
 import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.guest_reg;
