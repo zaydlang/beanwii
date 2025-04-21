@@ -22,7 +22,7 @@ u32 generate_rlw_mask(u32 mb, u32 me) {
 
 int get_cr_index(int cr_bit) {
     // account for powerpc having the bits in the opposite order
-    return 3 - (cr_bit & 3) + 4 * (cr_bit >> 2);
+    return 31 - cr_bit;
 }
 
 void is_cond_ok(Code code, int bo, int bi, R32 result) {

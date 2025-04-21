@@ -86,7 +86,7 @@ TestState get_actual_test_state(Wii wii) {
     state.pc = wii.broadway.state.pc;
 
     for (int i = 0; i < 8; i++) {
-        state.cr[i] = (wii.broadway.state.cr >> (4 * i)) & 0xF;
+        state.cr[7 - i] = (wii.broadway.state.cr >> (4 * i)) & 0xF;
     }
 
     state.xer = wii.broadway.state.xer;

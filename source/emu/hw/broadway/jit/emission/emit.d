@@ -1241,7 +1241,7 @@ private EmissionAction emit_mtcrf(Code code, u32 opcode) {
     u32 mask = 0;
     for (int i = 0; i < 8; i++) {
         if (crm.bit(i)) {
-            mask |= 0xFF << (7 - i);
+            mask |= 0xF << ((7 - i) * 4);
         }
     }
 

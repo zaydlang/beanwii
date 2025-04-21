@@ -12,6 +12,8 @@ enum CmpType {
 };
 
 void do_cmp(T)(Code code, CmpType cmp_type, R32 lhs, T rhs, int cr) {
+    cr = 7 - cr;
+    
     static if (is(T == R32)) {
         auto tmp = rhs;
     } else {
@@ -74,13 +76,15 @@ void set_division_flags(Code code, bool rc, bool oe, R32 tmp1, R32 tmp3, bool ba
             code.cmove(tmp1, tmp3);
         }
 
-        code.and(code.get_address(GuestReg.CR), 0xffff_fff0);
+        code.and(code.get_address(GuestReg.CR), 0x0fff_ffff);
         code.or(code.get_address(GuestReg.CR), tmp1);
     }
 }
 
 // result could equal tmp1 if needed
 void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, R32 result, R32 tmp1, R32 tmp2, R32 tmp3, int cr) {
+    cr = 7 - cr;
+
     if (set_xer_carry) {
         code.setc(tmp2.cvt8());
     }
@@ -123,6 +127,8 @@ void set_flags(Code code, bool set_xer_carry, bool rc, bool oe, R32 result, R32 
 }
 
 void emit_fp_flags_helper(Code code, int crfd, R32 tmp) {
+    crfd = 7 - crfd;
+
     // thanks merryhime
     code.sete(cl);
     code.rcl(cl, 5);  // cl = ZF:CF:0000
