@@ -720,6 +720,8 @@ final class FileManager {
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
             if (ioctl == 0x5001) {
                 log_ipc("Set brightness to %d", mem.paddr_read_u32(input_buffer));
+            } else if (ioctl == 0x6002) {
+                log_ipc("nobody knows, nobody cares");
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }

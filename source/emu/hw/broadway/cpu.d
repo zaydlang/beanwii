@@ -31,7 +31,7 @@ final class Broadway {
 
     public  bool                should_log;
 
-    private Scheduler           scheduler;
+    public  Scheduler           scheduler;
 
     private ulong decrementer_event;
 
@@ -127,6 +127,7 @@ final class Broadway {
     
 
 
+    bool debjit = false;
     bool had_17 = false;
     public void cycle(u32 num_cycles) {
         if (state.halted) {
@@ -138,10 +139,65 @@ final class Broadway {
             exception_raised = false;
             u32 old_pc = state.pc;
 
+            if (scheduler.get_current_time() > 0x00000000719727e8 && state.pc == 0x8019be80) {
+                debjit = true;
+            }
+
+            if (debjit) {
+                log_state(&state);
+            }
+
+            if (state.pc == 0x8019bb50) {
+                log_wii("dipshit(%x %x %x)", state.gprs[3], state.gprs[4], state.gprs[5]);
+            }
+            if (state.pc == 0x8019bf40) {
+                // log_hollywood("r3r25: %x %x", state.gprs[3], state.gprs[25]);
+            }
+
+            if (state.pc == 0x8019be80) {
+                log_hollywood("r3r26: %x %x", state.gprs[3], state.gprs[25]);
+            }
+
+            if (state.pc >= 0x801a71a4 && state.pc <= 0x801a7734) {
+                // log_hollywood("DEBJIT: %x", state.pc);
+            }
+
+            if (state.pc >= 0x80055618 && state.pc <= 0x800556f4) {
+                // log_hollywood("DEBJIT: %x", state.pc);
+            }
+
+            if (num_log > 0) {
+                num_log--;
+                // log_hollywood("NUMLOG: %x", state.pc);
+            }
+
+            if (state.pc == 0x8019be80) { 
+                
+                num_log = 10000;}
+                // log_hollywood("ASSWIPE %x", state.pc); }
+
+            if (state.pc == 0x8001d9b4) log_hollywood("dumas1");
+            if (state.pc == 0x8001d9b8) {
+                // log_hollywood("dumas0");
+            }
+            if (state.pc == 0x8001d9bc) log_hollywood("dumas2");
+            if (state.pc == 0x8001d9c0) log_hollywood("dumas3");
+            if (state.pc == 0x8001d9c4) log_hollywood("dumas4");
+            if (state.pc == 0x8028f198) {
+                // log_hollywood("GXInvalidateTexAll: %x", state.pc);
+                // dump_stack();
+            }
             // log_jit("At pc: %x", old_pc);
             // log_state(&state);
             JitReturnValue jit_return_value = jit.run(&state);
+            // log_jit("JIT returned: %s", jit_return_value);
 
+            if (old_pc == 0x8005b040) {
+                log_wii("COMPARATOR: %f ? %f -> %x", 
+                    *(cast(double*)&state.ps[0].ps0),
+                    *(cast(double*)&state.ps[1].ps0),
+                    state.cr);
+            }
             // also change emit.d:2661-ishz
             auto delta = jit_return_value.num_instructions_executed * 2;
 
@@ -373,16 +429,16 @@ final class Broadway {
         import std.stdio;
 
         writefln("Dumping stack. pc: %x lr: %x", state.pc, state.lr);
-        for (int i = 0; i < 500 / 8; i += 8) {
+        for (int i = 0; i < 500 / 8; i ++) {
             writefln("%08x %08x %08x %08x %08x %08x %08x %08x", 
-                mem.read_be_u32(state.pc + i * 10),
-                mem.read_be_u32(state.pc + i * 10 + 4),
-                mem.read_be_u32(state.pc + i * 10 + 8),
-                mem.read_be_u32(state.pc + i * 10 + 12),
-                mem.read_be_u32(state.pc + i * 10 + 16),
-                mem.read_be_u32(state.pc + i * 10 + 20),
-                mem.read_be_u32(state.pc + i * 10 + 24),
-                mem.read_be_u32(state.pc + i * 10 + 28));
+                mem.read_be_u32(state.gprs[1] + i * 32),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 4),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 8),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 12),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 16),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 20),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 24),
+                mem.read_be_u32(state.gprs[1] + i * 32 + 28));
         }
     }
 

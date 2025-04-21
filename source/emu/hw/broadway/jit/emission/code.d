@@ -241,4 +241,8 @@ final class Code {
     void set_guest_pc(u32 pc) {
         guest_pc = pc;
     }
+
+    u64 current_offset() {
+        return block.buffer.pos;
+    }
 }

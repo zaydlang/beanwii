@@ -1,66 +1,74 @@
-module emu.hw.broadway.jit.code_page_table;
+module emu.hw.broadway.jit.page_table;
 
-import core.stdc.stdlib;
+import core.memory;
 import emu.hw.broadway.jit.jit;
 import util.bitop;
 import util.log;
 import util.number;
 
-final class CodePageTable {
-    // We want entries from 0x80000000 to 0x9000000
+final class PageTable(T) {
+    struct U {
+        T entry;
+        bool valid;
+    }
+
+    // We want entries from 0x80000000 to 0x9fffffff
     // This is 29 bits of information.
     // Lets split this as 7, 7, 7, 8
     
-    JitEntry**** jit_entries;
-
-    JitEntry empty_entry = JitEntry(null, 0, 0);
+    U**** entries;
 
     this() {
-        jit_entries = cast(JitEntry****) calloc(8, 128);
-        
+        entries = cast(U****) GC.calloc(8 * 128);
+    
         for (int i = 0; i < 128; i++) {
-            jit_entries[i] = null;
+            entries[i] = null;
         }
     }
 
-    void put(u32 address, JitEntry entry) {
+    void put(u32 address, T entry) {
         auto l1 = address.bits(22, 28);
         auto l2 = address.bits(15, 21);
         auto l3 = address.bits(8, 14);
         auto l4 = address.bits(0, 7);
 
-        auto l1_entries = jit_entries[l1];
+        auto l1_entries = entries[l1];
         if (l1_entries == null) {
-            jit_entries[l1] = cast(JitEntry***) calloc(8, 128);
-            l1_entries = jit_entries[l1];
+            entries[l1] = cast(U***) GC.calloc(8 * 128);
+            l1_entries = entries[l1];
         }
 
         auto l2_entries = l1_entries[l2];
         if (l2_entries == null) {
-            l1_entries[l2] = cast(JitEntry**) calloc(8, 128);
+            l1_entries[l2] = cast(U**) GC.calloc(8 * 128);
             l2_entries = l1_entries[l2];
         }
 
         auto l3_entries = l2_entries[l3];
         if (l3_entries == null) {
-            l2_entries[l3] = cast(JitEntry*) calloc(JitEntry.sizeof, 256);
+            l2_entries[l3] = cast(U*) GC.calloc(U.sizeof * 256);
             l3_entries = l2_entries[l3];
         }
 
-        l3_entries[l4] = entry;
+        l3_entries[l4].valid = true;
+        l3_entries[l4].entry = entry;
     }
 
-    JitEntry get_assume_has(u32 address) {
+    T get_assume_has(u32 address) {
+        if (!has(address)) {
+            error_jit("PageTable: Address %x not found in page table", address);
+        }
+
         auto l1 = address.bits(22, 28);
         auto l2 = address.bits(15, 21);
         auto l3 = address.bits(8, 14);
         auto l4 = address.bits(0, 7);
 
-        auto l1_entries = jit_entries[l1];
+        auto l1_entries = entries[l1];
         auto l2_entries = l1_entries[l2];
         auto l3_entries = l2_entries[l3];
 
-        return l3_entries[l4];
+        return l3_entries[l4].entry;
     }
 
     void remove(u32 address) {
@@ -70,7 +78,7 @@ final class CodePageTable {
             auto l3 = address.bits(8, 14);
             auto l4 = address.bits(0, 7);
 
-            jit_entries[l1][l2][l3][l4] = empty_entry;
+            entries[l1][l2][l3][l4].valid = false;
         }
     }
 
@@ -80,7 +88,7 @@ final class CodePageTable {
         auto l3 = address.bits(8, 14);
         auto l4 = address.bits(0, 7);
 
-        auto l1_entries = jit_entries[l1];
+        auto l1_entries = entries[l1];
         if (l1_entries == null) {
             return false;
         }
@@ -96,6 +104,6 @@ final class CodePageTable {
         }
 
         auto entry = l3_entries[l4];
-        return entry != empty_entry;
+        return entry.valid;
     }
 }

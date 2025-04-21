@@ -452,31 +452,34 @@ final class DebugTriWindow : Window {
     }
 
     string calculate_color_tev_stage_text(int stage) {
-        string a = calculate_color_input_text(debug_shape.tev_config.in_color_a[stage]);
-        string b = calculate_color_input_text(debug_shape.tev_config.in_color_b[stage]);
-        string c = calculate_color_input_text(debug_shape.tev_config.in_color_c[stage]);
-        string d = calculate_color_input_text(debug_shape.tev_config.in_color_d[stage]);
-        string bias = "%.1f".format(debug_shape.tev_config.bias_color[stage]);
-        string scale = "%.1f".format(debug_shape.tev_config.scale_color[stage]);
-        int dest = debug_shape.tev_config.color_dest[stage];
+    //     string a = calculate_color_input_text(debug_shape.tev_config.in_color_a[stage]);
+    //     string b = calculate_color_input_text(debug_shape.tev_config.in_color_b[stage]);
+    //     string c = calculate_color_input_text(debug_shape.tev_config.in_color_c[stage]);
+    //     string d = calculate_color_input_text(debug_shape.tev_config.in_color_d[stage]);
+    //     string bias = "%.1f".format(debug_shape.tev_config.bias_color[stage]);
+    //     string scale = "%.1f".format(debug_shape.tev_config.scale_color[stage]);
+    //     int dest = debug_shape.tev_config.color_dest[stage];
 
-        return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
-            dest, d, c, a, c, b, bias, scale
-        ));
+    //     return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
+    //         dest, d, c, a, c, b, bias, scale
+    //     ));
+    // }
+        return "";
     }
 
     string calculate_alfa_tev_stage_text(int stage) {
-        string a = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_a[stage]);
-        string b = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_b[stage]);
-        string c = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_c[stage]);
-        string d = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_d[stage]);
-        string bias = "%.1f".format(debug_shape.tev_config.bias_alfa[stage]);
-        string scale = "%.1f".format(debug_shape.tev_config.scale_alfa[stage]);
-        int dest = debug_shape.tev_config.alfa_dest[stage];
+        // string a = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_a[stage]);
+        // string b = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_b[stage]);
+        // string c = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_c[stage]);
+        // string d = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_d[stage]);
+        // string bias = "%.1f".format(debug_shape.tev_config.bias_alfa[stage]);
+        // string scale = "%.1f".format(debug_shape.tev_config.scale_alfa[stage]);
+        // int dest = debug_shape.tev_config.alfa_dest[stage];
 
-        return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
-            dest, d, c, a, c, b, bias, scale
-        ));
+        // return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
+        //     dest, d, c, a, c, b, bias, scale
+        // ));
+        return "";
     }
 
     string calculate_color_input_text(int color_input) {

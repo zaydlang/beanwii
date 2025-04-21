@@ -6,22 +6,25 @@ in vec2 UV;
 in vec4 frag_color;
 uniform sampler2D wiiscreen;
 
-uniform TevConfig {
-	uniform int num_tev_stages;
-	uniform int in_color_a[16];
-	uniform int in_color_b[16];
-	uniform int in_color_c[16];
-	uniform int in_color_d[16];
-	uniform int in_alfa_a[16];
-	uniform int in_alfa_b[16];
-	uniform int in_alfa_c[16];
-	uniform int in_alfa_d[16];
-	uniform int color_dest[16];
-	uniform int alfa_dest[16];
-	uniform float bias_color[16];
-	uniform float scale_color[16];
-	uniform float bias_alfa[16];
-	uniform float scale_alfa[16];
+struct TevStage {
+	int in_color_a;
+	int in_color_b;
+	int in_color_c;
+	int in_color_d;
+	int in_alfa_a;
+	int in_alfa_b;
+	int in_alfa_c;
+	int in_alfa_d;
+	int color_dest;
+	int alfa_dest;
+	float bias_color;
+	float scale_color;
+	float bias_alfa;
+	float scale_alfa;
+};
+
+layout (std140) uniform TevConfig {
+	TevStage stages[16];
 	uniform vec4 reg0;
 	uniform vec4 reg1;
 	uniform vec4 reg2;
@@ -31,6 +34,7 @@ uniform TevConfig {
 	uniform vec4 konst_b;
 	uniform vec4 konst_c;
 	uniform vec4 konst_d;
+	uniform int num_tev_stages;
 };
 
 vec4 color_regs[4];
@@ -79,31 +83,31 @@ void main(void) {
 	color_regs[3] = reg3;
 
 	for (int i = 0; i < num_tev_stages; i++) {
-		vec3 ca = get_parameter_for_color_stage(in_color_a[i], i, konst_a);
-		vec3 cb = get_parameter_for_color_stage(in_color_b[i], i, konst_b);
-		vec3 cc = get_parameter_for_color_stage(in_color_c[i], i, konst_c);
-		vec3 cd = get_parameter_for_color_stage(in_color_d[i], i, konst_d);
-		vec3 aa = get_parameter_for_alfa_stage(in_alfa_a[i],   i, konst_a);
-		vec3 ab = get_parameter_for_alfa_stage(in_alfa_b[i],   i, konst_b);
-		vec3 ac = get_parameter_for_alfa_stage(in_alfa_c[i],   i, konst_c);
-		vec3 ad = get_parameter_for_alfa_stage(in_alfa_d[i],   i, konst_d);
+		vec3 ca = get_parameter_for_color_stage(stages[i].in_color_a, i, konst_a);
+		vec3 cb = get_parameter_for_color_stage(stages[i].in_color_b, i, konst_b);
+		vec3 cc = get_parameter_for_color_stage(stages[i].in_color_c, i, konst_c);
+		vec3 cd = get_parameter_for_color_stage(stages[i].in_color_d, i, konst_d);
+		vec3 aa = get_parameter_for_alfa_stage(stages[i].in_alfa_a,   i, konst_a);
+		vec3 ab = get_parameter_for_alfa_stage(stages[i].in_alfa_b,   i, konst_b);
+		vec3 ac = get_parameter_for_alfa_stage(stages[i].in_alfa_c,   i, konst_c);
+		vec3 ad = get_parameter_for_alfa_stage(stages[i].in_alfa_d,   i, konst_d);
 
-		last_color_dest = (cd + ((1 - cc) * ca + cc * cb) + vec3(bias_color[i])) * vec3(scale_color[i]);
-		last_alfa_dest = ((ad + ((1 - ac) * aa + ac * ab) + vec3(bias_alfa[i])) * vec3(scale_alfa[i])).x;
+		last_color_dest = (cd + ((1 - cc) * ca + cc * cb) + vec3(stages[i].bias_color)) * vec3(stages[i].scale_color);
+		last_alfa_dest = ((ad + ((1 - ac) * aa + ac * ab) + vec3(stages[i].bias_alfa)) * vec3(stages[i].scale_alfa)).x;
 
-		color_regs[color_dest[i]].rgb = last_color_dest;
-		color_regs[alfa_dest[i]].a = last_alfa_dest;
+		color_regs[stages[i].color_dest].rgb = last_color_dest;
+		color_regs[stages[i].alfa_dest].a = last_alfa_dest;
 	}
 
 	// last_alfa_dest = 1;
 	out_Color = vec4(last_color_dest, last_alfa_dest);
 	// out_Color = vec4(UV[0],UV[1],0,1);
 
-	// if (in_alfa_a[0] == 7 && in_alfa_b[0] == 7 && in_alfa_c[0] == 7 && in_alfa_d[0] == 6) {
+	// if (stages[0].in_alfa_a == 7 && stages[0].in_alfa_b == 7 && stages[0].in_alfa_c == 7 && stages[0].in_alfa_d == 6) {
 	// out_Color = vec4(1,0,0,1);
 	// } else {
-	// out_Color = vec4(0,1,0,last_alfa_dest);
-	// }
+	// out_Color = vec4(0,1,0,texture(wiiscreen, vec2(UV.y, UV.x)).a);
+//  }
 
 	// out_Color = konst_a;
 	// out_Color = texture(wiiscreen, vec2(UV.y, UV.x));

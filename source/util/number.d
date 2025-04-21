@@ -39,3 +39,7 @@ public bool is_signed_number(T)() {
         is(T == s16) ||
         is(T == s8);
 }
+
+public T div_roundup(T)(T a, T b) {
+    return (a + b - 1) / b;
+}

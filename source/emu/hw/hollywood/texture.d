@@ -51,11 +51,11 @@ TextureCache texture_cache;
 size_t size_of_texture(TextureDescriptor descriptor) {
     final switch (descriptor.type) {
         case TextureType.I4:
-            return descriptor.width * descriptor.height / 2;
+            return div_roundup(descriptor.width * descriptor.height, 2);
         case TextureType.IA8:
             return descriptor.width * descriptor.height * 2;
         case TextureType.Compressed:
-            return descriptor.width * descriptor.height / 2;
+            return div_roundup(descriptor.width * descriptor.height, 2);
         case TextureType.RGB565:
             return descriptor.width * descriptor.height * 2;
         case TextureType.RGB5A3:
@@ -85,8 +85,8 @@ Color[] load_texture_rgb565(TextureDescriptor descriptor, Mem mem) {
 
     auto texture = new Color[width * height];
 
-    int tiles_x = cast(int) width  / 4;
-    int tiles_y = cast(int) height / 4;
+    int tiles_x = div_roundup(cast(int) width,  4);
+    int tiles_y = div_roundup(cast(int) height, 4);
 
     u32 current_address = base_address;
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
@@ -120,8 +120,8 @@ Color[] load_texture_rgb5a3(TextureDescriptor descriptor, Mem mem) {
 
     auto texture = new Color[width * height];
 
-    int tiles_x = cast(int) width  / 4;
-    int tiles_y = cast(int) height / 4;
+    int tiles_x = div_roundup(cast(int) width,  4);
+    int tiles_y = div_roundup(cast(int) height, 4);
 
     u32 current_address = base_address;
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
@@ -164,8 +164,8 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
 
     auto texture = new Color[width * height];
 
-    int tiles_x = cast(int) width  / 8;
-    int tiles_y = cast(int) height / 8;
+    int tiles_x = div_roundup(cast(int) width,  8);
+    int tiles_y = div_roundup(cast(int) height, 8);
 
     u32 current_address = base_address;
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
@@ -174,6 +174,10 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
         for (int fine_x = 0; fine_x < 8; fine_x++) {
             auto x = tile_x * 8 + fine_x;
             auto y = tile_y * 8 + fine_y;
+
+            if (x > width || y > height) {
+                continue;
+            }
 
             auto value = mem.paddr_read_u8(cast(u32) current_address);
 
@@ -209,8 +213,8 @@ Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
 
     auto texture = new Color[width * height];
 
-    int tiles_x = cast(int) width  / 4;
-    int tiles_y = cast(int) height / 4;
+    int tiles_x = div_roundup(cast(int) width,  4);
+    int tiles_y = div_roundup(cast(int) height, 4);
 
     u32 current_address = base_address;
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
@@ -246,8 +250,8 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
     
     auto texture = new Color[width * height];
 
-    int tiles_x = cast(int) width  / 8;
-    int tiles_y = cast(int) height / 8;
+    int tiles_x = div_roundup(cast(int) width,  8);
+    int tiles_y = div_roundup(cast(int) height, 8);
 
     int[4] interpolate(int[4] color_a, int[4] color_b, double c) {
         return [

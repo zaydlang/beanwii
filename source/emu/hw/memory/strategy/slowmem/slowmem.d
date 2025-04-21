@@ -138,6 +138,7 @@ final class SlowMem : MemStrategy {
 
 
     private T read_be(T, bool translate)(u32 address) {
+        // log_broadway("statepc: %x", cpu.state.pc);
         static if (translate) {
             auto memory_access = this.translate_vaddr_to_paddr(address);
         } else {
@@ -188,6 +189,7 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
+        // log_broadway("statepc: %x", cpu.state.pc);
         static if (translate) {
             auto memory_access = this.translate_vaddr_to_paddr(address);
         } else {

@@ -95,6 +95,8 @@ final class Wii {
         this.dsp.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.dsp.connect_mem(this.mem);
         this.hollywood.connect_mem(this.mem);
+        this.hollywood.connect_pixel_engine(this.pixel_engine);
+        this.hollywood.connect_scheduler(this.scheduler);
 
         // todo: ew
         this.wiimote.connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);

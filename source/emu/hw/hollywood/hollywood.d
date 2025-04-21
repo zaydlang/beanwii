@@ -4,7 +4,9 @@ import bindbc.opengl;
 import emu.hw.hollywood.blitting_processor;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.texture;
+import emu.hw.pe.pe;
 import emu.hw.memory.strategy.memstrategy;
+import emu.scheduler;
 import std.file;
 import util.bitop;
 import util.force_cast;
@@ -140,36 +142,59 @@ final class Hollywood {
         RGBA8888 = 5,
     }
 
+    struct GlAlignedU32 {
+        u32 value;
+        u32[3] padding;
+        alias value this;
+
+        void opAssign(u32 value) {
+            this.value = value;
+        }
+    }
+
+    struct GlAlignedFloat {
+        float value;
+        alias value this;
+
+        void opAssign(float value) {
+            this.value = value;
+        }
+    }
+
+    struct TevStage {
+        u32 in_color_a;
+        u32 in_color_b;
+        u32 in_color_c;
+        u32 in_color_d;
+        u32 in_alfa_a;
+        u32 in_alfa_b;
+        u32 in_alfa_c;
+        u32 in_alfa_d;
+        u32 color_dest;
+        u32 alfa_dest;
+        float bias_color;
+        float scale_color;
+        float bias_alfa;
+        float scale_alfa;
+        u32[2] padding;
+    }
+
     struct TevConfig {
         align(1):
-        int num_tev_stages;
+        TevStage[16] stages;
 
-        u32[16] in_color_a;
-        u32[16] in_color_b;
-        u32[16] in_color_c;
-        u32[16] in_color_d;
-        u32[16] in_alfa_a;
-        u32[16] in_alfa_b;
-        u32[16] in_alfa_c;
-        u32[16] in_alfa_d;
-        u32[16] color_dest;
-        u32[16] alfa_dest;
-        float[16] bias_color;
-        float[16] scale_color;
-        float[16] bias_alfa;
-        float[16] scale_alfa;
-        int[3] dipshit_padding;
+        GlAlignedFloat[4] reg0;
+        GlAlignedFloat[4] reg1;
+        GlAlignedFloat[4] reg2;
+        GlAlignedFloat[4] reg3;
 
-        float[4] reg0;
-        float[4] reg1;
-        float[4] reg2;
-        float[4] reg3;
+        GlAlignedFloat[4][16] ras;
+        GlAlignedFloat[4] konst_a;
+        GlAlignedFloat[4] konst_b;
+        GlAlignedFloat[4] konst_c;
+        GlAlignedFloat[4] konst_d;
 
-        float[4][16] ras;
-        float[4] konst_a;
-        float[4] konst_b;
-        float[4] konst_c;
-        float[4] konst_d;
+        int num_tev_stages; 
     }
 
     enum RasChannelId {
@@ -233,20 +258,7 @@ final class Hollywood {
 
         enum properties = [
             "num_tev_stages",
-            "in_color_a",
-            "in_color_b",
-            "in_color_c",
-            "in_color_d",
-            "in_alfa_a",
-            "in_alfa_b",
-            "in_alfa_c",
-            "in_alfa_d",
-            "color_dest",
-            "alfa_dest",
-            "bias_color",
-            "scale_color",
-            "bias_alfa",
-            "scale_alfa",
+            "stages",
             "reg0",
             "reg1",
             "reg2",
@@ -278,12 +290,24 @@ final class Hollywood {
         this.mem = mem;
     }
 
+    PixelEngine pixel_engine;
+    void connect_pixel_engine(PixelEngine pixel_engine) {
+        this.pixel_engine = pixel_engine;
+    }
+
+    Scheduler scheduler;
+    void connect_scheduler(Scheduler scheduler) {
+        this.scheduler = scheduler;
+    }
+
     void write_GX_FIFO(T)(T value, int offset) {
         fifo_write_ptr += T.sizeof;
         while (fifo_write_ptr >= fifo_base_end) {
             fifo_write_ptr -= (fifo_base_end - fifo_base_start);
             fifo_wrapped = true;
         }
+
+        log_hollywood("GX FIFO write: %08x %d %x %x", value, offset, mem.cpu.state.pc, mem.cpu.state.lr);
 
         final switch (state) {
             case State.WaitingForCommand:
@@ -538,21 +562,21 @@ final class Hollywood {
                 if (bp_register.bit(0)) {
                     log_hollywood("TEV_ALPHA_ENV_%x: %08x (tev op 1) at pc 0x%08x", bp_register - 0xc1, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc1) / 2;
-                    tev_config.in_alfa_a[idx] = bp_data.bits(13, 15);
-                    tev_config.in_alfa_b[idx] = bp_data.bits(10, 12);
-                    tev_config.in_alfa_c[idx] = bp_data.bits(7, 9);
-                    tev_config.in_alfa_d[idx] = bp_data.bits(4, 6);
-                    tev_config.bias_alfa[idx] = 
+                    tev_config.stages[idx].in_alfa_a = bp_data.bits(13, 15);
+                    tev_config.stages[idx].in_alfa_b = bp_data.bits(10, 12);
+                    tev_config.stages[idx].in_alfa_c = bp_data.bits(7, 9);
+                    tev_config.stages[idx].in_alfa_d = bp_data.bits(4, 6);
+                    tev_config.stages[idx].bias_alfa = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
-                    tev_config.alfa_dest[idx] = bp_data.bits(22, 23);
+                    tev_config.stages[idx].alfa_dest = bp_data.bits(22, 23);
 
                     if (bp_data.bits(16, 17) == 3) {
                         error_hollywood("Invalid bias");
                     }
 
-                    tev_config.scale_alfa[idx] = 
+                    tev_config.stages[idx].scale_alfa = 
                         bp_data.bits(20, 21) == 0 ? 1 :
                         bp_data.bits(20, 21) == 1 ? 2 :
                         bp_data.bits(20, 21) == 2 ? 4 :
@@ -564,21 +588,21 @@ final class Hollywood {
                 } else {
                     log_hollywood("TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", bp_register - 0xc0, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc0) / 2;
-                    tev_config.in_color_a[idx] = bp_data.bits(12, 15);
-                    tev_config.in_color_b[idx] = bp_data.bits(8, 11);
-                    tev_config.in_color_c[idx] = bp_data.bits(4, 7);
-                    tev_config.in_color_d[idx] = bp_data.bits(0, 3);
-                    tev_config.bias_color[idx] = 
+                    tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
+                    tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
+                    tev_config.stages[idx].in_color_c = bp_data.bits(4, 7);
+                    tev_config.stages[idx].in_color_d = bp_data.bits(0, 3);
+                    tev_config.stages[idx].bias_color = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
-                    tev_config.color_dest[idx] = bp_data.bits(22, 23);
+                    tev_config.stages[idx].color_dest = bp_data.bits(22, 23);
 
                     if (bp_data.bits(16, 17) == 3) {
                         error_hollywood("Invalid bias");
                     }
 
-                    tev_config.scale_color[idx] = 
+                    tev_config.stages[idx].scale_color = 
                         bp_data.bits(20, 21) == 0 ? 1 :
                         bp_data.bits(20, 21) == 1 ? 2 :
                         bp_data.bits(20, 21) == 2 ? 4 :
@@ -656,6 +680,16 @@ final class Hollywood {
             case 0xa0: .. case 0xa3:
                 texture_descriptors[bp_register - 0xa0 + 4].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
                 texture_descriptors[bp_register - 0xa0 + 4].wrap_t = cast(TextureWrap) bp_data.bits(2, 3);
+                break;
+            
+            case 0x45:
+                log_hollywood("PE interrupt: %08x", bp_data);
+                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_finish_interrupt(); }, 100_000);
+                break;
+
+            case 0x47:
+                log_hollywood("tokenize interrupt: %08x", bp_data);
+                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_token_interrupt(cast(u16) bp_data.bits(0, 15)); }, 100_000);
                 break;
 
             default:
@@ -1072,11 +1106,20 @@ final class Hollywood {
 
         for (int i = 0; i < 16; i++) {
             switch (ras_color[i]) {
-                case RasChannelId.Color0: shape_group.tev_config.ras[i] = color_0_global; break;
+                case RasChannelId.Color0: 
+                    shape_group.tev_config.ras[i][0] = color_0_global[0]; 
+                    shape_group.tev_config.ras[i][1] = color_0_global[1];
+                    shape_group.tev_config.ras[i][2] = color_0_global[2];
+                    shape_group.tev_config.ras[i][3] = color_0_global[3];
+                    break;
                 default: log_hollywood("unimpelmented ras: %x", ras_color[i]); break;
             }
         }
-        shape_group.tev_config.konst_a = [1.0f, 1.0f, 0.0f, 1.0f];
+
+        shape_group.tev_config.konst_a[0] = 1.0f;
+        shape_group.tev_config.konst_a[1] = 1.0f;
+        shape_group.tev_config.konst_a[2] = 0.0f;
+        shape_group.tev_config.konst_a[3] = 1.0f;
 
         switch (current_draw_command) {
             case GXFifoCommand.DrawQuads:
@@ -1122,8 +1165,8 @@ final class Hollywood {
         glClearColor(0, 0, 0, 1); 
         // glClearDepth(1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_ALWAYS);
+        // glEnable(GL_DEPTH_TEST);
+        // glDepthFunc(GL_ALWAYS);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -1207,7 +1250,7 @@ final class Hollywood {
     }
 
     void submit_shape_group_to_opengl(ShapeGroup shape_group) {
-        // log_hollywood("Submitting shape group to OpenGL (%d): %s", shape_group.shapes.length, shape_group);
+        log_hollywood("Submitting shape group to OpenGL (%d): %s", shape_group.shapes.length, shape_group);
         // log_hollywood("pointer data: %x %x %x", shape_group.shapes.ptr, shape_group.shapes[0].vertices.ptr, shape_group.shapes[0].vertices[2].position.ptr);
 
         uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
@@ -1238,6 +1281,7 @@ final class Hollywood {
 
         uint ubo = gl_object_manager.allocate_uniform_buffer_object();
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        log_hollywood("TevConfig: sizeof %d", TevConfig.sizeof);
         glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, &shape_group.tev_config, GL_STATIC_DRAW);
         glUniformBlockBinding(gl_program, glGetUniformBlockIndex(gl_program, "TevConfig"), 0);
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);

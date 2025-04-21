@@ -20,6 +20,7 @@ import util.number;
 __gshared bool instrument = false; 
 __gshared bool dicksinmyass = false; 
 enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
+enum ENABLE_BASIC_BLOCK_LINKING = false;
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
     code.reserve_register(ecx);
@@ -2549,7 +2550,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FABSX:  return emit_fabsx  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FCTIWZX: return emit_fctiwzx (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FCMPO:  dicksinmyass = true; instrument = true; return emit_fcmpo  (code, opcode);
-        case PrimaryOp3FSecondaryOpcode.FCMPU:  dicksinmyass = true; instrument = true; return emit_fcmpu  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FCMPU:   return emit_fcmpu  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FMR:    instrument = true; return emit_fmr    (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FRSPX: return emit_frspx (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FSUB:   instrument = true; return emit_fsub   (code, opcode);
@@ -2658,8 +2659,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
 
                     code.set_reg(GuestReg.PC, action.get_direct_branch_target());
                     
-                    if (jit.has_code_for(action.get_direct_branch_target())) {
-                        jit.add_dependent(original_address, action.get_direct_branch_target());
+                    if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target())) {
+                        jit.add_dependent(action.get_direct_branch_target(), original_address);
                         u64 target = jit.get_address_for_code(action.get_direct_branch_target());
                         code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                         target += 15; // size of prologue
@@ -2672,6 +2673,11 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.label(exit);
                         code.mov(rax, BlockReturnValue.GuestBlockEnd);
                     } else {
+                        // jit.submit_basic_block_link_patch_point(action.get_direct_branch_target(), original_address, code.current_offset());
+                        // for (int i = 0; i < 25; i++) {
+                            // code.nop();
+                        // }
+
                         code.mov(rax, BlockReturnValue.BranchTaken);
                     }
 
@@ -2687,19 +2693,24 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     break;
 
                 case EmissionActionType.ConditionalDirectBranchTaken:
-                    auto no_branch = code.fresh_label();
-                    auto end       = code.fresh_label();
+                    auto branch = code.fresh_label();
+                    auto end    = code.fresh_label();
 
                     code.test(action.get_condition_reg(), 1);
-                    code.jz(no_branch);
+                    code.jnz(branch);
 
+                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
+                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    code.jmp(end);
+
+                code.label(branch);
                     if (action.is_with_link()) {
                         code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
                     }
                     code.set_reg(GuestReg.PC, action.get_direct_branch_target());
 
-                    if (jit.has_code_for(action.get_direct_branch_target())) {
-                        jit.add_dependent(original_address, action.get_direct_branch_target());
+                    if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target())) {
+                        jit.add_dependent(action.get_direct_branch_target(), original_address);
                         u64 target = jit.get_address_for_code(action.get_direct_branch_target());
                         code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                         target += 15; // size of prologue
@@ -2712,17 +2723,18 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.label(exit);
                         code.mov(rax, BlockReturnValue.GuestBlockEnd);
                     } else {
+                        if (ENABLE_BASIC_BLOCK_LINKING) {
+                            jit.submit_basic_block_link_patch_point(action.get_direct_branch_target(), original_address, code.current_offset());
+                            for (int i = 0; i < 25; i++) {
+                                code.nop();
+                            }
+                        }
+                        
                         code.mov(rax, BlockReturnValue.BranchTaken);
                     }
 
-                    code.jmp(end);
-
-                code.label(no_branch);
-                    code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
-
                 code.label(end);
                     
-                    code.mov(rax, BlockReturnValue.BranchTaken);
                     break;
                 
                 case EmissionActionType.ConditionalIndirectBranchTaken:

@@ -23,6 +23,7 @@ EmissionAction emit_fcmpo(Code code, u32 opcode) {
 
     code.movq(xmm0, ra);
     code.movq(xmm1, rb);
+
     code.comisd(xmm0, xmm1);
     emit_fp_flags_helper(code, crfd, ra.cvt32());
 

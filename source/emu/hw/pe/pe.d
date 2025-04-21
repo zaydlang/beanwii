@@ -1,5 +1,6 @@
 module emu.hw.pe.pe;
 
+import bindbc.opengl;
 import emu.hw.broadway.interrupt;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
@@ -11,8 +12,6 @@ final class PixelEngine {
     Scheduler scheduler;
     void connect_scheduler(Scheduler scheduler) {
         this.scheduler = scheduler;
-
-        scheduler.add_event_relative_to_clock(&this.pe_finish, 33_513_982 / 60);
     }
 
     InterruptController interrupt_controller;
@@ -20,19 +19,44 @@ final class PixelEngine {
         this.interrupt_controller = interrupt_controller;
     }
 
-    void pe_finish() {
+    void raise_finish_interrupt() {
+        log_pe("PE finish interrupt");
         if (pe_irq.bit(1)) {
             log_pe("PE finish interrupt");
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.PeFinish);
         }
-
-        log_pe("PE finish");
-        scheduler.add_event_relative_to_self(&this.pe_finish, 33_513_982 / 60);
     }
 
     u32 z_config;
     void write_Z_CONFIG(int target_byte, u8 value) {
+        log_pe("Z_CONFIG: %d %d", target_byte, value);
         z_config = z_config.set_byte(target_byte, value);
+
+        if (target_byte == 0) {
+            if (z_config.bit(0)) {
+                glEnable(GL_DEPTH_TEST);
+            } else {
+                glDisable(GL_DEPTH_TEST);
+            }
+
+            if (z_config.bit(4)) {
+                glDepthMask(GL_TRUE);
+            } else {
+                glDepthMask(GL_FALSE);
+            }
+
+            final switch (z_config.bits(1, 3)) {
+                case 0: glDepthFunc(GL_NEVER); break;
+                case 1: glDepthFunc(GL_LESS); break;
+                case 2: glDepthFunc(GL_LEQUAL); break;
+                case 3: glDepthFunc(GL_EQUAL); break;
+                case 4: glDepthFunc(GL_NOTEQUAL); break;
+                case 5: glDepthFunc(GL_GEQUAL); break;
+                case 6: glDepthFunc(GL_GREATER); break;
+                case 7: glDepthFunc(GL_ALWAYS); break;
+            }
+        }
+
     }
 
     u8 read_Z_CONFIG(int target_byte) {
@@ -41,6 +65,7 @@ final class PixelEngine {
 
     u32 alpha_config;
     void write_ALPHA_CONFIG(int target_byte, u8 value) {
+        log_pe("ALPHA_CONFIG: %d %x", target_byte, value);
         alpha_config = alpha_config.set_byte(target_byte, value);
     }
 
@@ -77,9 +102,15 @@ final class PixelEngine {
 
     u32 pe_irq;
     void write_PE_IRQ(int target_byte, u8 value) {
+        log_pe("PE_IRQ: %d %x", target_byte, value);
         if (target_byte == 0 && value.bit(3)) {
             interrupt_controller.acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause.PeFinish);
             value &= ~0x08;
+        }
+
+        if (target_byte == 0 && value.bit(2)) {
+            interrupt_controller.acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause.PeToken);
+            value &= ~0x04;
         }
 
         pe_irq = pe_irq.set_byte(target_byte, value);
@@ -95,6 +126,16 @@ final class PixelEngine {
     }
 
     u8 read_PE_TOKEN(int target_byte) {
+        log_pe("PE_TOKEN: %d %x %x %x", target_byte, pe_token.get_byte(target_byte), interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return pe_token.get_byte(target_byte);
+    }
+
+    void raise_token_interrupt(u16 token) {
+        pe_token = token;
+
+        if (pe_irq.bit(0)) {
+            log_pe("PE token interrupt: %04x", token);
+            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.PeToken);
+        }
     }
 }
