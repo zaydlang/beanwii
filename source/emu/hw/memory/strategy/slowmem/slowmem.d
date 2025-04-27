@@ -46,7 +46,7 @@ final class SlowMem : MemStrategy {
     public u8[] mem2;
     public u8[] hle_trampoline;
 
-    private Mmio mmio;
+    public Mmio mmio;
     public Broadway cpu;
     
     this() {
@@ -54,6 +54,7 @@ final class SlowMem : MemStrategy {
         this.mem2 = new u8[MEM2_SIZE];
         this.hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
         this.mmio = new Mmio();
+        // log_wii("mem1 base: %x", this.mem1.ptr);
 
         this.mmio.connect_memory(this);
     }
@@ -195,7 +196,26 @@ final class SlowMem : MemStrategy {
         } else {
             auto memory_access = get_memory_access_from_paddr(address);
         }
-        
+
+        if (address == 0x8076ae40 + 0x168) {
+            log_wii("IMPORTANT Write to 0x%08x = 0x%08x", address, value);
+        }
+
+        if (address == 0x8076ae40 + 0x164) {
+            log_wii("IMPORTANT Write to 0x%08x = 0x%08x", address, value);
+        }
+
+        if (address == 0x8076ae40 + 0x15c) {
+            log_wii("IMPORTANT Write to 0x%08x = 0x%08x", address, value);
+        }
+
+        if (address == 0x8076ae40 + 0x170) {
+            log_wii("IMPORTANT Write to 0x%08x = 0x%08x", address, value);
+        }
+
+
+
+
         if (address == 0x8056dce0) {
             log_slowmem("disker inUse index: %x %x", value, cpu.state.pc);
         }

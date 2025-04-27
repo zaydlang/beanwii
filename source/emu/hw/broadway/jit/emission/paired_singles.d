@@ -101,8 +101,10 @@ EmissionAction emit_psq_l_generic(Code code, R64 dest, GuestReg guest_rd, R32 ad
     if (w) {
         dequantize(code, xmm0, address, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
         code.cvtss2sd(xmm0, xmm0);
-        code.movq(dest, xmm0);
-        code.set_fpr(guest_rd, dest);
+        code.mov(dest, 0x3ff0_0000_000_0000UL);
+        code.movq(xmm1, dest);
+        code.punpcklqdq(xmm0, xmm1);
+        code.set_ps(guest_rd, xmm0);
     } else {
         dequantize(code, xmm0, address, gqr, code.allocate_register(), code.allocate_register(), xmm2, true);
         dequantize(code, xmm1, address, gqr, code.allocate_register(), code.allocate_register(), xmm2, false);
@@ -481,9 +483,9 @@ EmissionAction emit_ps_merge10(Code code, u32 opcode) {
 EmissionAction emit_ps_div(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
-    auto guest_ra = opcode.bits(16, 20).to_fpr;
-    auto guest_rb = opcode.bits(11, 15).to_fpr;
-    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+    auto guest_rd = opcode.bits(21, 25).to_ps;
     assert(opcode.bit(0) == 0);
 
     code.get_ps(guest_ra, xmm0);

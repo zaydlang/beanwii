@@ -19,7 +19,6 @@ import util.number;
 
 __gshared bool instrument = false; 
 __gshared bool dicksinmyass = false; 
-enum MAX_GUEST_OPCODES_PER_RECIPE = 20;
 enum ENABLE_BASIC_BLOCK_LINKING = false;
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
@@ -765,6 +764,35 @@ private EmissionAction emit_lbzu(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+private EmissionAction emit_lbzux(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto ra       = code.get_reg(guest_ra);
+    auto rb       = code.get_reg(guest_rb);
+
+    code.mov(esi, ra);
+    code.add(esi, rb);
+    code.set_reg(guest_ra, esi);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+
+        code.mov(rax, cast(u64) code.config.read_handler8);
+        code.call(rax);
+        code.movzx(eax, al);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    code.set_reg(guest_rd, eax);
+
+    return EmissionAction.Continue;
+}
+
 private EmissionAction emit_lbzx(Code code, u32 opcode) {
     code.reserve_register(esi);
     code.reserve_register(eax);
@@ -776,6 +804,10 @@ private EmissionAction emit_lbzx(Code code, u32 opcode) {
     auto rb       = code.get_reg(guest_rb);
 
     code.mov(esi, ra);
+    if (guest_ra == GuestReg.R0) {
+        code.xor(esi, esi);
+    }
+
     code.add(esi, rb);
 
     code.push(rdi);
@@ -860,6 +892,37 @@ private EmissionAction emit_lhax(Code code, u32 opcode) {
 
     return EmissionAction.Continue;
 }
+
+private EmissionAction emit_lhaux(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto rb       = code.get_reg(guest_rb);
+
+    R32 ra = code.get_reg(guest_ra);
+
+    code.mov(esi, ra);
+    code.add(esi, rb);
+    code.set_reg(guest_ra, esi);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+
+        code.mov(rax, cast(u64) code.config.read_handler16);
+        code.call(rax);
+        code.movsx(eax, ax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    code.set_reg(guest_rd, eax);
+
+    return EmissionAction.Continue;
+}
+
 private EmissionAction emit_lhz(Code code, u32 opcode) {
     code.reserve_register(esi);
     code.reserve_register(eax);
@@ -1023,6 +1086,35 @@ private EmissionAction emit_lwzu(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
     
+    code.set_reg(guest_rd, eax);
+
+    return EmissionAction.Continue;
+}
+
+private EmissionAction emit_lhzux(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+
+    R32 ra = code.get_reg(guest_ra);
+    R32 rb = code.get_reg(guest_rb);
+    code.add(ra, rb);
+    code.set_reg(guest_ra, ra);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler16);
+        code.call(rax);
+        code.movzx(eax, ax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
     code.set_reg(guest_rd, eax);
 
     return EmissionAction.Continue;
@@ -2470,11 +2562,15 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.EXTSH:   return emit_extsh  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.HLE:     return emit_hle    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.ICBI:    return emit_icbi   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LBZUX:   return emit_lbzux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LBZX:    return emit_lbzx   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LFDUX:   return emit_lfdux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LFDX:    return emit_lfdx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LFSUX:   return emit_lfsux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LFSX:    return emit_lfsx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHAX:    return emit_lhax   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LHAUX:   return emit_lhaux  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LHZUX:   return emit_lhzux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHZX:    return emit_lhzx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LWZX:    return emit_lwzx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LWZUX:   return emit_lwzux  (code, opcode);
@@ -2502,6 +2598,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.SRW:     return emit_srw    (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STBUX:   return emit_stbux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STBX:    return emit_stbx   (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.STFDX:   return emit_stfdx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFSX:   return emit_stfsx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHBRX:  return emit_sthbrx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHUX:   return emit_sthux  (code, opcode);
@@ -2593,6 +2690,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.LBZ:     return emit_lbz   (code, opcode);
         case PrimaryOpcode.LBZU:    return emit_lbzu  (code, opcode);
         case PrimaryOpcode.LFD:     return emit_lfd   (code, opcode);
+        case PrimaryOpcode.LFDU:    return emit_lfdu  (code, opcode);
         case PrimaryOpcode.LFS:     return emit_lfs   (code, opcode);
         case PrimaryOpcode.LHA:     return emit_lha   (code, opcode);
         case PrimaryOpcode.LHZ:     return emit_lhz   (code, opcode);
@@ -2638,12 +2736,12 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
     u32 original_address = address;
     int num_opcodes_processed = 0;
 
-    while (num_opcodes_processed < MAX_GUEST_OPCODES_PER_RECIPE) {
+    while (num_opcodes_processed < code.get_max_instructions_per_block()) {
         code.set_guest_pc(address);
         EmissionAction action = disassemble(code, mem.read_be_u32(address));
 
         num_opcodes_processed++;
-        if (num_opcodes_processed == MAX_GUEST_OPCODES_PER_RECIPE || action != EmissionAction.Continue) {
+        if (num_opcodes_processed == code.get_max_instructions_per_block() || action != EmissionAction.Continue) {
             code.add(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), num_opcodes_processed);
             
             final switch (action.type) {

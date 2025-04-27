@@ -26,6 +26,7 @@ struct TextureDescriptor {
 
 enum TextureType {
     I4 = 0,
+    IA4 = 2,
     IA8 = 3,
     RGB565 = 4,
     RGB5A3 = 5,
@@ -52,6 +53,8 @@ size_t size_of_texture(TextureDescriptor descriptor) {
     final switch (descriptor.type) {
         case TextureType.I4:
             return div_roundup(descriptor.width * descriptor.height, 2);
+        case TextureType.IA4:
+            return descriptor.width * descriptor.height;
         case TextureType.IA8:
             return descriptor.width * descriptor.height * 2;
         case TextureType.Compressed:
@@ -175,7 +178,7 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
             auto x = tile_x * 8 + fine_x;
             auto y = tile_y * 8 + fine_y;
 
-            if (x > width || y > height) {
+            if (x >= width || y >= height) {
                 continue;
             }
 
@@ -198,6 +201,45 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
     
                 current_address += 1;
             }
+        }
+        }
+    }
+    }
+
+    return texture;
+}
+
+Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
+    auto width = descriptor.width;
+    auto height = descriptor.height;
+    auto base_address = descriptor.base_address;
+
+    auto texture = new Color[width * height];
+
+    int tiles_x = div_roundup(cast(int) width,  8);
+    int tiles_y = div_roundup(cast(int) height, 4);
+
+    u32 current_address = base_address;
+    for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+    for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+        for (int fine_y = 0; fine_y < 8; fine_y++) {
+        for (int fine_x = 0; fine_x < 8; fine_x++) {
+            auto x = tile_x * 8 + fine_x;
+            auto y = tile_y * 8 + fine_y;
+
+            if (x > width || y > height) {
+                continue;
+            }
+
+            auto value = mem.paddr_read_u8(cast(u32) current_address);
+
+            texture[x * height + y] = Color(
+                ((value & 0x0f) >> 0) * 0x11,
+                ((value & 0x0f) >> 0) * 0x11,
+                ((value & 0x0f) >> 0) * 0x11,
+                ((value & 0xf0) >> 4) * 0x11,
+            );
+            current_address += 1;
         }
         }
     }
@@ -243,6 +285,7 @@ Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
 
     return texture;
 }
+
 Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
     auto width = descriptor.width;
     auto height = descriptor.height;
@@ -359,6 +402,8 @@ Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
     switch (descriptor.type) {
         case TextureType.I4:
             result = load_texture_i4(descriptor, mem); break;
+        case TextureType.IA4:
+            result = load_texture_ia4(descriptor, mem); break;
         case TextureType.IA8:
             result = load_texture_ia8(descriptor, mem); break;
         case TextureType.Compressed:

@@ -111,18 +111,32 @@ final class Broadway {
     bool shitter = false;
     int cunt = 0;
 
+
     bool is_sussy(u64 foat) {
-        return (foat & 0x0000_ffff_ffff_0000) == 0x0000_0000_7fff_0000 || foat == 0x4330000000000000;
+        auto mantissa = (foat >> 52) & 0b11111111111;
+        return (mantissa == 0b11111111111);
     }
 
     void sussy_floats() {
+        int new_count = 0;
         for (int i = 0; i < 32; i++) {
             if (is_sussy(state.ps[i].ps0) || is_sussy(state.ps[i].ps1)) {
-                log_function("BIG CHANGE: %x %x\n", mem.read_be_u32(state.pc - 4), 0);
+                // log_function("BIG CH: %x %x\n", mem.read_be_u32(state.pc - 4), 0);
                 // log_state(&state);
-                error_function("sussy float!\n");
+            new_count |= 1 << i;
+
+            if (!cunt.bit(i)) {
+                // log_state(&state);
+                // dump_stack();
+
             }
+            }
+
+
         }
+
+
+        cunt = new_count;
     }
     
 
@@ -136,70 +150,95 @@ final class Broadway {
         
         u32 elapsed = 0;
         while (elapsed < num_cycles) {
+            // sussy_floats();
             exception_raised = false;
             u32 old_pc = state.pc;
 
-            if (scheduler.get_current_time() > 0x00000000719727e8 && state.pc == 0x8019be80) {
-                debjit = true;
+            // }
+            if (state.pc == 0x80278764) {
+                // jit.enter_single_step_mode();
+                // debjit = true;
+                // log_wii("MtxMul(%x [%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x], [%08x %08x %08x %08x])",
+                //     state.gprs[5],
+                //     mem.read_be_u32(state.gprs[3] + 0),
+                //     mem.read_be_u32(state.gprs[3] + 4),
+                //     mem.read_be_u32(state.gprs[3] + 8),
+                //     mem.read_be_u32(state.gprs[3] + 12),
+                //     mem.read_be_u32(state.gprs[3] + 16),
+                //     mem.read_be_u32(state.gprs[3] + 20),
+                //     mem.read_be_u32(state.gprs[3] + 24),
+                //     mem.read_be_u32(state.gprs[3] + 28),
+                //     mem.read_be_u32(state.gprs[3] + 32),
+                //     mem.read_be_u32(state.gprs[3] + 36),
+                //     mem.read_be_u32(state.gprs[3] + 40),
+                //     mem.read_be_u32(state.gprs[3] + 44),
+                //     mem.read_be_u32(state.gprs[3] + 48),
+                //     mem.read_be_u32(state.gprs[3] + 52),
+                //     mem.read_be_u32(state.gprs[3] + 56),
+                //     mem.read_be_u32(state.gprs[3] + 60),
+                //     mem.read_be_u32(state.gprs[4] + 0),
+                //     mem.read_be_u32(state.gprs[4] + 4),
+                //     mem.read_be_u32(state.gprs[4] + 8),
+                //     mem.read_be_u32(state.gprs[4] + 12)
+                //     );
             }
 
-            if (debjit) {
+            // if (debjit)
+            // log_state(&state);
+
+
+            if (state.pc ==0x8006d6f4) {
+                // log_wii("second comparison mismatch between %x and %x %x %x", state.gprs[18], state.gprs[0], mem.read_be_u16(mem.read_be_u32(state.gprs[24] + 0x10) + 1)
+                // , mem.read_be_u32(state.gprs[24] + 0x10));
+            }
+            if (state.pc == 0x800652d4) {
+                // log_wii("broken();");
+                // dump_stack();
+                // log_state(&state);
+            }
+
+            if (state.pc == 0x802613e4) {
+            }
+            if (state.pc >= 0x802613e4 && state.pc <= 0x80261620) {
                 log_state(&state);
             }
-
-            if (state.pc == 0x8019bb50) {
-                log_wii("dipshit(%x %x %x)", state.gprs[3], state.gprs[4], state.gprs[5]);
+                // log_wii("state at: %x", state.pc);
+                // log_state(&state);
+            // }
+            if (state.pc == 0x8025e928) {
+                log_state(&state);
             }
-            if (state.pc == 0x8019bf40) {
-                // log_hollywood("r3r25: %x %x", state.gprs[3], state.gprs[25]);
+            if (state.pc == 0x8025e730) {
+                log_state(&state);
             }
-
-            if (state.pc == 0x8019be80) {
-                log_hollywood("r3r26: %x %x", state.gprs[3], state.gprs[25]);
+            if (state.pc == 0x800653c4) {
+                log_state(&state);
             }
-
-            if (state.pc >= 0x801a71a4 && state.pc <= 0x801a7734) {
-                // log_hollywood("DEBJIT: %x", state.pc);
+            if (state.pc == 0x8006d490) {
+                // log_wii("Comparison between %x and %x", state.gprs[31], state.gprs[0]);
             }
-
-            if (state.pc >= 0x80055618 && state.pc <= 0x800556f4) {
-                // log_hollywood("DEBJIT: %x", state.pc);
+            if (state.pc == 0x8006d448) {
+                // log_wii("Debjit.");
             }
-
-            if (num_log > 0) {
-                num_log--;
-                // log_hollywood("NUMLOG: %x", state.pc);
+            if (state.pc == 0x8006d710) {
+                // log_wii("Debjit 3 %x %x", state.gprs[19], state.gprs[17]);
             }
 
-            if (state.pc == 0x8019be80) { 
-                
-                num_log = 10000;}
-                // log_hollywood("ASSWIPE %x", state.pc); }
-
-            if (state.pc == 0x8001d9b4) log_hollywood("dumas1");
-            if (state.pc == 0x8001d9b8) {
-                // log_hollywood("dumas0");
-            }
-            if (state.pc == 0x8001d9bc) log_hollywood("dumas2");
-            if (state.pc == 0x8001d9c0) log_hollywood("dumas3");
-            if (state.pc == 0x8001d9c4) log_hollywood("dumas4");
-            if (state.pc == 0x8028f198) {
-                // log_hollywood("GXInvalidateTexAll: %x", state.pc);
+            if (state.ps[4].ps0 == 0xdf40d1aee7f155cf) {
+                // log_wii("your weenis is showing");
                 // dump_stack();
             }
-            // log_jit("At pc: %x", old_pc);
-            // log_state(&state);
-            JitReturnValue jit_return_value = jit.run(&state);
-            // log_jit("JIT returned: %s", jit_return_value);
+        if (state.pc >= 0x800653A0 && state.pc <= 0x800653c0) {
+            log_state(&state);
+        }
 
-            if (old_pc == 0x8005b040) {
-                log_wii("COMPARATOR: %f ? %f -> %x", 
-                    *(cast(double*)&state.ps[0].ps0),
-                    *(cast(double*)&state.ps[1].ps0),
-                    state.cr);
-            }
-            // also change emit.d:2661-ishz
+            JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
+            if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
+                log_wii("PC: %x", state.pc);
+                // log_state(&state);
+                // dump_stack();
+            }
 
             if (jit_return_value.block_return_value == BlockReturnValue.CpuHalted) {
                 auto fast_forward = scheduler.tick_to_next_event();

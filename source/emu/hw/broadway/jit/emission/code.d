@@ -33,6 +33,8 @@ final class Code {
     Block!true block;
     alias block this;
 
+    private int max_instructions_per_block = 20;
+
     static const CPU_BASE_REG = rdi;
 
     JitConfig config;
@@ -244,5 +246,17 @@ final class Code {
 
     u64 current_offset() {
         return block.buffer.pos;
+    }
+
+    void enter_single_step_mode() {
+        this.max_instructions_per_block = 1;
+    }
+
+    int get_max_instructions_per_block() {
+        if (get_guest_pc >= 0x800653A0 && get_guest_pc <= 0x800653c0) {
+            return 1;
+        }
+
+        return max_instructions_per_block;
     }
 }

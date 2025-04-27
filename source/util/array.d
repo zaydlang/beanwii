@@ -11,12 +11,12 @@ private enum Endianness {
 
 pragma(inline, true)
 private T read(T)(u8* buf, size_t address) {
-    return (cast(T*) buf)[address >> get_shift!T];
+    return *cast(T*)(buf + address);
 }
 
 pragma(inline, true)
 private void write(T)(u8* buf, size_t address, T value) {
-    (cast(T*) buf)[address >> get_shift!T] = value;
+    *cast(T*)(buf + address) = value;
 }
 
 pragma(inline, true)

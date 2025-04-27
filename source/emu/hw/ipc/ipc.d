@@ -366,7 +366,6 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void interrupt_acknowledged() {
-        log_hollywood("ipc: %x ", hw_ipc_ppcctrl);
         if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1) && state == State.Idle) {
             if (state == State.WaitingForCpuToGetResponse) {
                 log_ipc("IPC: state -> Idle");

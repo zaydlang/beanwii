@@ -85,6 +85,84 @@ EmissionAction emit_lfd(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_lfdu(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    int imm = sext_32(opcode.bits(0, 15), 16);
+
+    auto ra = code.get_reg(guest_ra);
+    code.add(ra, imm);
+    code.set_reg(guest_ra, ra);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler64);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    code.set_fpr(guest_rd, rax);
+
+    return EmissionAction.Continue;
+}
+
+EmissionAction emit_lfdux(Code code, u32 opcode) {
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+
+    auto ra = code.get_reg(guest_ra);
+    auto rb = code.get_reg(guest_rb);
+    code.add(ra, rb);
+    code.set_reg(guest_ra, ra);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler64);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    code.set_fpr(guest_rd, rax);
+
+    return EmissionAction.Continue;
+}
+
+EmissionAction emit_stfdx(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_fpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+
+    auto ra = code.get_reg(guest_ra);
+    auto rs = code.get_fpr(guest_rs);
+    auto rb = code.get_reg(guest_rb);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, rb);
+    } else {
+        code.add(ra, rb);
+    }
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+        code.mov(rdx, rs);
+
+        code.mov(rax, cast(u64) code.config.write_handler64);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_stfd(Code code, u32 opcode) {
     auto guest_rs = opcode.bits(21, 25).to_fpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
@@ -636,8 +714,8 @@ EmissionAction emit_fdivx(Code code, u32 opcode) {
     bool rc = opcode.bit(0);
     assert(rc == 0);
 
-    code.get_ps(guest_rb, xmm0);
-    code.get_ps(guest_ra, xmm1);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_ra, xmm0);
 
     code.divsd(xmm0, xmm1);
     code.set_ps(guest_rd, xmm0);

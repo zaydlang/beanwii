@@ -98,9 +98,16 @@ final class Jit {
         this.codeblocks = new CodeBlockTracker();
     }
 
+    int dick = 0;
+
     BlockReturnValue process_jit_function(JitFunction func, BroadwayState* state) {
         state.cycle_quota = 0;
         // log_state(state);
+        if (state.pc == 0x800653c4) {
+            // log_wii("JIT: %x %x %x", state.pc, 0,0);
+        }
+
+
         BlockReturnValue ret = func(state);
 
         switch (ret) {
@@ -108,8 +115,8 @@ final class Jit {
                 // log_jit("ICache invalidation %x", state.icbi_address);
                 state.icbi_address &= ~31;
                 
-                for (u32 i = 0; i < 32 + MAX_GUEST_OPCODES_PER_RECIPE - 1; i += 4) {
-                    invalidate(state.icbi_address + i - MAX_GUEST_OPCODES_PER_RECIPE + 1);
+                for (u32 i = 0; i < 32 + code.get_max_instructions_per_block() - 1; i += 4) {
+                    invalidate(state.icbi_address + i - code.get_max_instructions_per_block() + 1);
                 }
 
                 break;
@@ -290,5 +297,16 @@ final class Jit {
 
     u64 peek_next_jit_id() {
         return jit_id;
+    }
+
+    void enter_single_step_mode() {
+        code.enter_single_step_mode();
+        invalidate_all();
+    }
+
+    void invalidate_all() {
+        code_page_table = new PageTable!JitEntry();
+        basic_block_link_requests = new PageTable!(BasicBlockLinkRequest[]);
+        codeblocks = new CodeBlockTracker();
     }
 }
