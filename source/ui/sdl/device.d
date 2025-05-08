@@ -247,7 +247,7 @@ class SdlDevice : MultiMediaDevice, Window {
                     drawn_shape_groups = hollywood.debug_get_drawn_shape_groups();
                     
                     for (int i = 0; i < drawn_shape_groups.length; i++) {
-                        auto tri = new SdlButton(0, 0, DEBUGGER_PANEL_WIDTH, 30, from_hex(0x90e0ef), from_hex(0x0077b6), font_spm_medium, "Triangle #%d".format(i), widget_shader,
+                        auto tri = new SdlButton(0, 0, DEBUGGER_PANEL_WIDTH, 30, from_hex(0x90e0ef), from_hex(0x0077b6), font_spm_medium, "Group #%d".format(i), widget_shader,
                             (void* idx) { create_debug_tri_window(this, cast(int) idx); }, (void* idx) { hovered_shape = cast(int) idx; }, cast(void*) i);
                         items ~= tri;
                     }

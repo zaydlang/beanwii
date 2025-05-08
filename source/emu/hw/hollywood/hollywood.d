@@ -90,8 +90,8 @@ final class Hollywood {
         
         float[3] position;
         float[3] normal;
-        float[2] texcoord;
-        float[4][8] color;
+        float[2][8] texcoord;
+        float[4][2] color;
     }
 
     struct Texture {
@@ -103,7 +103,7 @@ final class Hollywood {
 
         float[12] dualtex_matrix;
         float[12] tex_matrix;
-        bool dualtex_normal_enable;
+        bool normalize_before_dualtex;
     }
 
     struct ShapeGroup {    
@@ -111,7 +111,9 @@ final class Hollywood {
         float[16] projection_matrix;
         Texture[8] texture;
         TevConfig tev_config;
+        VertexConfig vertex_config;
         bool textured;
+        int enabled_textures_bitmap;
 
         Shape[] shapes;
     }
@@ -148,6 +150,17 @@ final class Hollywood {
         RGBA8888 = 5,
     }
 
+    enum MaterialSource {
+        FromGlobal = 0,
+        FromVertex = 1,
+    }
+
+    struct ColorConfig {
+        MaterialSource material_src;
+    }
+
+    ColorConfig[2] color_configs;
+
     struct GlAlignedU32 {
         u32 value;
         u32[3] padding;
@@ -182,7 +195,12 @@ final class Hollywood {
         float scale_color;
         float bias_alfa;
         float scale_alfa;
-        u32[2] padding;
+        u32 ras_channel_id;
+        u32 ras_swap_table_index;
+        u32 tex_swap_table_index;
+        u32 texmap;
+        u32 texcoord;
+        u32 texmap_enable;
     }
 
     struct TevConfig {
@@ -194,13 +212,25 @@ final class Hollywood {
         GlAlignedFloat[4] reg2;
         GlAlignedFloat[4] reg3;
 
-        GlAlignedFloat[4][16] ras;
-        GlAlignedFloat[4] konst_a;
-        GlAlignedFloat[4] konst_b;
-        GlAlignedFloat[4] konst_c;
-        GlAlignedFloat[4] konst_d;
+        int num_tev_stages;
+        u64 swap_tables; // 8 * 4 
+    }
 
-        int num_tev_stages; 
+    alias GLBool = u32;
+
+    struct TexConfig {
+        align(1):
+        float[12] dualtex_matrix;
+        float[12] tex_matrix;
+        GLBool    normalize_before_dualtex;
+        u32       texcoord_source;
+        u32[2]    padding2;
+    }
+
+    struct VertexConfig {
+        align(1):
+        TexConfig[8] tex_configs;
+        int end; // used to verify the size of tex_configs[8] by getting the offset of end
     }
 
     enum RasChannelId {
@@ -245,8 +275,7 @@ final class Hollywood {
     private float[256] general_matrix_ram;
     private float[256] dt_texture_matrix_ram;
 
-    private float[4] color_0_global;
-    private float[4] color_1_global;
+    private float[4][2] color_global;
 
     private GLuint gl_program;
 
@@ -257,6 +286,9 @@ final class Hollywood {
 
     u32[16] array_bases;
     u32[16] array_strides;
+
+    u16 enabled_textures;
+    int[8] texture_uniform_locations;
 
     struct FifoDebugValue {
         u64 value;
@@ -276,33 +308,35 @@ final class Hollywood {
 
         projection_matrix[15] = 1;
 
-        enum properties = [
+        enum tev_properties = [
             "num_tev_stages",
             "stages",
             "reg0",
             "reg1",
             "reg2",
             "reg3",
-            "ras",
-            "konst_a",
-            "konst_b",
-            "konst_c",
-            "konst_d",
         ];
 
         // losing my mind over this
-        static foreach (prop; properties) {{
+        static foreach (prop; tev_properties) {{
             auto ix = glGetProgramResourceIndex(gl_program, GL_UNIFORM, prop.ptr);
             GLenum[] props = [ GL_ARRAY_STRIDE, GL_OFFSET ];
             GLint[2] values = [0, 0];
             glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 2, props.ptr, 2,null, values.ptr);
             log_hollywood("%s offset: %d, stride: %d %d", prop, values[1], values[0], mixin("TevConfig." ~ prop ~ ".offsetof"));
         }}
-        // auto ix = glGetProgramResourceIndex(gl_program, GL_UNIFORM, "in_color_a");
-        // GLenum[] props = [ GL_ARRAY_STRIDE, GL_OFFSET ];
-        // GLint[2] values = [0, 0];
-        // glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 2, props.ptr, 2,null, values.ptr);
-        // log_hollywood("offset: %d, stride: %d", values[1], values[0]);
+
+        enum vertex_properties = [
+            "end"
+        ];
+
+        static foreach (prop; vertex_properties) {{
+            auto ix = glGetProgramResourceIndex(gl_program, GL_UNIFORM, prop.ptr);
+            GLenum[] props = [ GL_ARRAY_STRIDE, GL_OFFSET ];
+            GLint[2] values = [0, 0];
+            glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 2, props.ptr, 2,null, values.ptr);
+            log_hollywood("%s offset: %d, stride: %d %d", prop, values[1], values[0], mixin("VertexConfig." ~ prop ~ ".offsetof"));
+        }}
     }
 
     Mem mem;
@@ -695,6 +729,19 @@ final class Hollywood {
                 break;
             
             case 0x28: .. case 0x2f:
+                int idx = (bp_register - 0x28);
+                tev_config.stages[idx * 2 + 0].texmap        = bp_data.bits(0, 2);
+                tev_config.stages[idx * 2 + 0].texcoord      = bp_data.bits(3, 5);
+                tev_config.stages[idx * 2 + 0].texmap_enable = bp_data.bit(6);
+                tev_config.stages[idx * 2 + 1].texmap        = bp_data.bits(12, 14);
+                tev_config.stages[idx * 2 + 1].texcoord      = bp_data.bits(15, 17);
+                tev_config.stages[idx * 2 + 1].texmap_enable = bp_data.bit(18);
+                log_hollywood("texmaps: %d %d %d", idx, tev_config.stages[idx * 2 + 0].texmap, tev_config.stages[idx * 2 + 1].texmap);
+
+                enabled_textures &= ~(3 << (idx * 2));
+                enabled_textures |= (bp_data.bit(6)) << (idx * 2);
+                enabled_textures |= (bp_data.bit(18)) << (idx * 2 + 1);
+
                 ras_color[bp_register - 0x28] = cast(RasChannelId) bp_data.bits(19, 21);
                 break;
             
@@ -725,6 +772,11 @@ final class Hollywood {
                     if (bp_data.bits(18, 19) > 3) {
                         error_hollywood("Invalid scale");
                     }
+
+                    log_hollywood("Set indices to %d %d", bp_data.bits(0, 1), bp_data.bits(2, 3));
+                    tev_config.stages[idx].ras_swap_table_index = value.bits(0, 1);
+                    tev_config.stages[idx].tex_swap_table_index = value.bits(2, 3);
+                    break;
                 } else {
                     log_hollywood("TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", bp_register - 0xc0, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc0) / 2;
@@ -807,10 +859,6 @@ final class Hollywood {
             case 0xf4: .. case 0xf5:
                 log_hollywood("TEV_Z_ENV_%x: %08x", bp_register - 0xf4, bp_data);
                 break;
-            
-            case 0xf6: .. case 0xfd:
-                log_hollywood("TEV_KSEL_%x: %08x", bp_register - 0xf6, bp_data);
-                break;
 
             case 0x80: .. case 0x83:
                 texture_descriptors[bp_register - 0x80].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
@@ -830,6 +878,25 @@ final class Hollywood {
             case 0x47:
                 log_hollywood("tokenize interrupt: %08x", bp_data);
                 scheduler.add_event_relative_to_clock(() { pixel_engine.raise_token_interrupt(cast(u16) bp_data.bits(0, 15)); }, 100_000);
+                break;
+            
+            case 0xf6:
+            case 0xf8:
+            case 0xfa:
+            case 0xfc:
+                log_hollywood("TEV_SWAP_TABLE_%x: %08x", bp_register - 0xf6, value);
+                int idx = (bp_register - 0xf6) / 2;
+                tev_config.swap_tables &= ~(0xf << (idx * 8));
+                tev_config.swap_tables |= value.bits(0, 3) << (idx * 8);
+                break;
+            
+            case 0xf7:
+            case 0xf9:
+            case 0xfb:
+            case 0xfd:
+                int idx = (bp_register - 0xf6) / 2;
+                tev_config.swap_tables &= ~(0xf << (idx * 8 + 4));
+                tev_config.swap_tables |= value.bits(0, 3) << (idx * 8 + 4);
                 break;
 
             default:
@@ -1045,8 +1112,13 @@ final class Hollywood {
                 break;
             
             case 0x1040: .. case 0x1047:
-                log_hollywood("BIGREG %x: %08x", register, value);
+                int idx = register - 0x1040;
+
+                assert_hollywood(value.bits(7, 11) <= 12, "Invalid tex coord source");
+                log_hollywood("texcoord_source[%d]: %d", idx, value.bits(7, 11));
+                texture_descriptors[idx].texcoord_source = cast(TexcoordSource) value.bits(7, 11);
                 break;
+
             case 0x0000: .. case 0x00ff:
                 general_matrix_ram[register] = force_cast!float(value);
                 break;
@@ -1058,31 +1130,38 @@ final class Hollywood {
             case 0x1050: .. case 0x1057:
                 int idx = register - 0x1050;
 
-                bool normal_enable = value.bit(7); // not sure yet
-                int mtx_slot = value.bits(0, 5);
-
-                texture_descriptors[idx].dualtex_matrix_slot = mtx_slot;
-                texture_descriptors[idx].dualtex_normal_enable = normal_enable;
+                texture_descriptors[idx].dualtex_matrix_slot = value.bits(0, 5);
+                texture_descriptors[idx].normalize_before_dualtex = value.bit(7);
                 break;
             
             case 0x100c:
-                color_0_global = [
+                color_global[0] = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
                     value.bits(0, 7) / 255.0
                 ];
-
-                log_hollywood("color_0_global: %s %x", color_0_global,value);
                 break;
             
             case 0x100d:
-                color_1_global = [
+                color_global[1] = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
                     value.bits(0, 7) / 255.0
                 ];
+                break;
+            
+            case 0x100e:
+                this.color_configs[0].material_src = cast(MaterialSource) value.bit(0);
+                break;
+            
+            case 0x100f:
+                this.color_configs[1].material_src = cast(MaterialSource) value.bit(0);
+                break;
+            
+            case 0x103f:
+                // num texgens, who cares
                 break;
 
             default:
@@ -1165,7 +1244,7 @@ final class Hollywood {
                     (cast(float) (value.bits(0, 3) << 4)) / 0xff,
                     (cast(float) (value.bits(4, 7) << 4)) / 0xff,
                     (cast(float) (value.bits(8, 11) << 4)) / 0xff,
-                    (cast(float) (value.bits(12, 15) << 4)) / 0xff
+                    (cast(float) (value.bits(12, 15) << 4)) / 0xff,
                 ];
             
             case ColorFormat.RGBA6666:
@@ -1173,7 +1252,7 @@ final class Hollywood {
                     (cast(float) (value.bits(0, 5) << 2)) / 0xff,
                     (cast(float) (value.bits(6, 11) << 2)) / 0xff,
                     (cast(float) (value.bits(12, 17) << 2)) / 0xff,
-                    (cast(float) (value.bits(18, 23) << 2)) / 0xff
+                    (cast(float) (value.bits(18, 23) << 2)) / 0xff,
                 ];
             
             case ColorFormat.RGBA8888:
@@ -1181,7 +1260,7 @@ final class Hollywood {
                     (cast(float) (value.bits(0, 7))) / 0xff,
                     (cast(float) (value.bits(8, 15))) / 0xff,
                     (cast(float) (value.bits(16, 23))) / 0xff,
-                    (cast(float) (value.bits(24, 31))) / 0xff
+                    (cast(float) (value.bits(24, 31))) / 0xff,
                 ];
         }
     }
@@ -1199,10 +1278,10 @@ final class Hollywood {
     private size_t calculate_expected_size_of_color(ColorFormat format) {
         final switch (format) {
             case ColorFormat.RGB565:   return 2;
-            case ColorFormat.RGB888:   return 4;
+            case ColorFormat.RGB888:   return 3;
             case ColorFormat.RGB888x:  return 4;
             case ColorFormat.RGBA4444: return 2;
-            case ColorFormat.RGBA6666: return 4;
+            case ColorFormat.RGBA6666: return 3;
             case ColorFormat.RGBA8888: return 4;
         }
     }
@@ -1317,7 +1396,7 @@ final class Hollywood {
     }
 
     private void process_new_shape() {
-        log_hollywood("process_new_shape");
+        log_hollywood("process_new_shape %d", shape_groups.length);
         glUseProgram(gl_program);
 
         ShapeGroup shape_group;
@@ -1325,6 +1404,30 @@ final class Hollywood {
         shape_group.textured = false;
         shape_group.position_matrix = general_matrix_ram[0 .. 12]; // ????
         shape_group.projection_matrix = projection_matrix;
+
+
+        int enabled_textures_bitmap;
+        for (int i = 0; i < 8; i++) {
+            if (tev_config.stages[i].texmap_enable) { 
+                int j = tev_config.stages[i].texmap;
+                shape_group.texture[j].data = load_texture(texture_descriptors[j], mem).ptr;
+                shape_group.texture[j].width = texture_descriptors[j].width;
+                shape_group.texture[j].height = texture_descriptors[j].height;
+                shape_group.texture[j].wrap_s = texture_descriptors[j].wrap_s;
+                shape_group.texture[j].wrap_t = texture_descriptors[j].wrap_t;
+                shape_group.texture[j].dualtex_matrix = 
+                    dt_texture_matrix_ram[texture_descriptors[j].dualtex_matrix_slot * 4 + 0 .. 
+                    texture_descriptors[j].dualtex_matrix_slot * 4 + 12];
+                shape_group.texture[j].tex_matrix = 
+                    general_matrix_ram[texture_descriptors[j].tex_matrix_slot * 4 + 0 ..
+                    texture_descriptors[j].tex_matrix_slot * 4 + 12];
+
+                shape_group.texture[j].normalize_before_dualtex = texture_descriptors[j].normalize_before_dualtex;
+
+                shape_group.textured = true;
+                enabled_textures_bitmap |= 1 << j;
+            }
+        }
 
         int offset = 0;
         Vertex[] vertices;
@@ -1358,16 +1461,27 @@ final class Hollywood {
             }
 
             for (int j = 0; j < 2; j++) {
+                float[4] color;
+
                 if (vcd.color_location[j] != VertexAttributeLocation.NotPresent) {
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                     log_hollywood("processing color with size %d", size);
-                    v.color[j] = dequantize_color(read_from_shape_data_buffer(offset, size), vat.color_format[j], 0);
+                    color = dequantize_color(read_from_shape_data_buffer(offset, size), vat.color_format[j], 0);
 
                     if (vat.color_count[j] == 3) {
-                        v.color[j][3] = 1.0;
+                        color[3] = 1.0;
                     }
 
                     offset += size;
+                }
+
+                final switch (this.color_configs[j].material_src) {
+                    case MaterialSource.FromGlobal:
+                        v.color[j] = color_global[j];
+                        break;
+                    case MaterialSource.FromVertex:
+                        v.color[j] = color;
+                        break;
                 }
             }
 
@@ -1375,61 +1489,64 @@ final class Hollywood {
             for (int j = 0; j < 8; j++) { 
                 if (vcd.texcoord_location[j] == VertexAttributeLocation.Direct) {
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
-                    if (j != 0) {
-                        offset += vat.texcoord_count[j];
-                        continue;
-                    }
-
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        v.texcoord[k] = dequantize_coord(read_from_shape_data_buffer(offset, size), vat.texcoord_format[j], vat.texcoord_shift[j]);
+                        v.texcoord[j][k] = dequantize_coord(read_from_shape_data_buffer(offset, size), vat.texcoord_format[j], vat.texcoord_shift[j]);
                         offset += size;
                     }
-
-                    if (i == 0) {
-                        shape_group.texture[j].data = load_texture(texture_descriptors[j], mem).ptr;
-                        shape_group.texture[j].width = texture_descriptors[j].width;
-                        shape_group.texture[j].height = texture_descriptors[j].height;
-                        shape_group.texture[j].wrap_s = texture_descriptors[j].wrap_s;
-                        shape_group.texture[j].wrap_t = texture_descriptors[j].wrap_t;
-                        shape_group.texture[j].dualtex_matrix = 
-                            dt_texture_matrix_ram[texture_descriptors[j].dualtex_matrix_slot * 4 + 0 .. 
-                            texture_descriptors[j].dualtex_matrix_slot * 4 + 12];
-                        shape_group.texture[j].tex_matrix = 
-                            general_matrix_ram[texture_descriptors[j].tex_matrix_slot * 4 + 0 ..
-                            texture_descriptors[j].tex_matrix_slot * 4 + 12];
-
-                        shape_group.texture[j].dualtex_normal_enable = texture_descriptors[j].dualtex_normal_enable;
-
-                        shape_group.textured = true;
-                    }
+        
+                } else if (vcd.texcoord_location[j] != VertexAttributeLocation.NotPresent) {
+                    // error_hollywood("shit!");
                 }
             }
 
             vertices ~= v;
         }
 
+        for (int i = 0; i < 8; i++) {
+            shape_group.vertex_config.tex_configs[i].tex_matrix = shape_group.texture[i].tex_matrix;
+            shape_group.vertex_config.tex_configs[i].dualtex_matrix = shape_group.texture[i].dualtex_matrix; 
+            shape_group.vertex_config.tex_configs[i].normalize_before_dualtex = shape_group.texture[i].normalize_before_dualtex;
+            shape_group.vertex_config.tex_configs[i].texcoord_source = cast(u32) texture_descriptors[i].texcoord_source;
+        }
+
+        shape_group.enabled_textures_bitmap = enabled_textures_bitmap;
+
         shape_group.tev_config = tev_config;
 
         for (int i = 0; i < 16; i++) {
-            switch (ras_color[i]) {
-                case RasChannelId.Color0: 
-                    shape_group.tev_config.ras[i][0] = color_0_global[0]; 
-                    shape_group.tev_config.ras[i][1] = color_0_global[1];
-                    shape_group.tev_config.ras[i][2] = color_0_global[2];
-                    shape_group.tev_config.ras[i][3] = color_0_global[3];
-                    break;
-                default: log_hollywood("unimpelmented ras: %x", ras_color[i]); break;
+            // if (shape_groups.length == 132) {
+            //     log_hollywood("ras_color[%d]: %s", i, ras_color[i]);
+            // }
+            // switch (ras_color[i]) {
+            //     case RasChannelId.Color0: 
+            //         shape_group.tev_config.ras[i][0] = shape_group.color[0][0];
+            //         shape_group.tev_config.ras[i][1] = shape_group.color[0][1];
+            //         shape_group.tev_config.ras[i][2] = shape_group.color[0][2];
+            //         shape_group.tev_config.ras[i][3] = shape_group.color[0][3];
+            //         break;
+            //     case RasChannelId.Color1:
+            //         shape_group.tev_config.ras[i][0] = shape_group.color[1][0];
+            //         shape_group.tev_config.ras[i][1] = shape_group.color[1][1];
+            //         shape_group.tev_config.ras[i][2] = shape_group.color[1][2];
+            //         shape_group.tev_config.ras[i][3] = shape_group.color[1][3];
+            //         break;
+            //     default: log_hollywood("unimpelmented ras: %x", ras_color[i]); break;
+            // }
+            if (ras_color[i] != 0 && ras_color[i] != 0x1 && ras_color[i] != 0x7) {
+                error_hollywood("Unimplemented ras color: %x", ras_color[i]);
             }
+            tev_config.stages[i].ras_channel_id = cast(RasChannelId) ras_color[i];
         }
 
-        shape_group.tev_config.konst_a[0] = 1.0f;
-        shape_group.tev_config.konst_a[1] = 1.0f;
-        shape_group.tev_config.konst_a[2] = 0.0f;
-        shape_group.tev_config.konst_a[3] = 1.0f;
+        // shape_group.tev_config.konst_a[0] = 1.0f;
+        // shape_group.tev_config.konst_a[1] = 1.0f;
+        // shape_group.tev_config.konst_a[2] = 0.0f;
+        // shape_group.tev_config.konst_a[3] = 1.0f;
 
         switch (current_draw_command) {
             case GXFifoCommand.DrawQuads:
+                log_hollywood("DrawQuads(%d)", vertices.length);
                 for (int i = 0; i < vertices.length; i += 4) {
                     Shape shape;
                     shape.vertices = vertices[i .. i + 3];
@@ -1503,7 +1620,11 @@ final class Hollywood {
         log_hollywood("Rendering %d shape groups", shape_groups.length);
         log_hollywood("Amongus projection matrix: %s", projection_matrix);
         foreach (ShapeGroup shape_group; shape_groups) {
-            draw_shape_group(shape_group, texnum);
+            if (i == 36 || i == 0) {
+                log_hollywood("New Shapegroup: %s", shape_group);
+            }
+            i++;
+            // draw_shape_group(shape_group, texnum);
             debug_drawn_shape_groups ~= shape_group;
         }
 
@@ -1512,49 +1633,56 @@ final class Hollywood {
 
     void draw_shape_group(ShapeGroup shape_group, int texnum) {
         if (shape_group.textured) {
-            GLuint texture_id = gl_object_manager.allocate_texture_object();
+            int enabled_textures_bitmap = shape_group.enabled_textures_bitmap;
+            while (enabled_textures_bitmap != 0) {
+                int i = cast(int) enabled_textures_bitmap.bfs;
+                enabled_textures_bitmap &= ~(1 << i);
 
-            // "Bind" the newly created texture : all future texture functions will modify this texture
-            glBindTexture(GL_TEXTURE_2D, texture_id);
+                GLuint texture_id = gl_object_manager.allocate_texture_object();
 
-            // Give the image to OpenGL
-            // log_hollywood("projection color: %s", shape.texture[0]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) shape_group.texture[0].height, cast(GLint) shape_group.texture[0].width, 0, GL_BGRA, GL_UNSIGNED_BYTE, shape_group.texture[0].data);
+                // "Bind" the newly created texture : all future texture functions will modify this texture
+                glActiveTexture(GL_TEXTURE0 + i);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glActiveTexture(GL_TEXTURE0 + i);
 
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                // Give the image to OpenGL
+                // log_hollywood("projection color: %s", shape.texture[0]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) shape_group.texture[i].height, cast(GLint) shape_group.texture[i].width, 0, GL_BGRA, GL_UNSIGNED_BYTE, shape_group.texture[i].data);
 
-            // final switch (shape.texture[0].wrap_s) {
-            //     case TextureWrap.Clamp:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            //         break;
-                
-            //     case TextureWrap.Repeat:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            //         break;
-                
-            //     case TextureWrap.Mirror:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-            //         break;
-            // }
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-            // final switch (shape.texture[0].wrap_t) {
-            //     case TextureWrap.Clamp:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            //         break;
-                
-            //     case TextureWrap.Repeat:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            //         break;
-                
-            //     case TextureWrap.Mirror:
-            //         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-            //         break;
-            // }
+                final switch (shape_group.texture[i].wrap_s) {
+                    case TextureWrap.Clamp:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                        break;
+                    
+                    case TextureWrap.Repeat:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                        break;
+                    
+                    case TextureWrap.Mirror:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+                        break;
+                }
 
-            glUniform1i(glGetUniformLocation(gl_program, "wiiscreen"), texnum);
-            glActiveTexture(GL_TEXTURE0 + texnum);
-            glBindTexture(GL_TEXTURE_2D, texture_id);
+                final switch (shape_group.texture[i].wrap_t) {
+                    case TextureWrap.Clamp:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                        break;
+                    
+                    case TextureWrap.Repeat:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                        break;
+                    
+                    case TextureWrap.Mirror:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+                        break;
+                }
+
+                glUniform1i(texture_uniform_locations[i], i);
+            }
+
             
             texnum++;
         } else {
@@ -1565,7 +1693,7 @@ final class Hollywood {
     }
 
     void submit_shape_group_to_opengl(ShapeGroup shape_group) {
-        log_wii("Submitting %x to OpenGL", shape_group.shapes.ptr);
+        log_hollywood("swap_tables: %x %x", shape_group.tev_config.swap_tables, shape_group.tev_config.stages[0].ras_swap_table_index);
         log_hollywood("Submitting shape group to OpenGL (%d): %s", shape_group.shapes.length, shape_group);
         // log_hollywood("pointer data: %x %x %x", shape_group.shapes.ptr, shape_group.shapes[0].vertices.ptr, shape_group.shapes[0].vertices[2].position.ptr);
 
@@ -1573,34 +1701,40 @@ final class Hollywood {
         uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
         glBindVertexArray(vertex_array_object);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
-        glBufferData(GL_ARRAY_BUFFER, 40 * shape_group.shapes.length * GLfloat.sizeof * 3, shape_group.shapes.ptr, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 30 * shape_group.shapes.length * GLfloat.sizeof * 3, shape_group.shapes.ptr, GL_STATIC_DRAW);
 
         auto position_location = glGetAttribLocation(gl_program, "in_Position");
         glEnableVertexAttribArray(position_location);
-        glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) 0);
+        glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) 0);
 
         auto normal_location = glGetAttribLocation(gl_program, "normal");
         glEnableVertexAttribArray(normal_location);
-        glVertexAttribPointer(normal_location, 3, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (3 * float.sizeof));
+        glVertexAttribPointer(normal_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (3 * float.sizeof));
 
         auto texcoord_location = glGetAttribLocation(gl_program, "texcoord");
         glEnableVertexAttribArray(texcoord_location);
-        glVertexAttribPointer(texcoord_location, 2, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (6 * float.sizeof));
+        glVertexAttribPointer(texcoord_location, 2, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (6 * float.sizeof));
 
         auto color_location = glGetAttribLocation(gl_program, "in_color");
         glEnableVertexAttribArray(color_location);
-        glVertexAttribPointer(color_location, 4, GL_FLOAT, GL_FALSE, 40 * float.sizeof, cast(void*) (8 * float.sizeof));
+        glVertexAttribPointer(color_location, 4, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (22 * float.sizeof));
 
         glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "position_matrix"), 1, GL_TRUE,  shape_group.position_matrix.ptr);
         glUniformMatrix4x3fv(glGetUniformLocation(gl_program, "texture_matrix"),  1, GL_TRUE,  shape_group.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv  (glGetUniformLocation(gl_program, "MVP"),             1, GL_FALSE, shape_group.projection_matrix.ptr);
 
-        uint ubo = gl_object_manager.allocate_uniform_buffer_object();
-        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        uint tev_ubo = gl_object_manager.allocate_uniform_buffer_object();
+        glBindBuffer(GL_UNIFORM_BUFFER, tev_ubo);
         log_hollywood("TevConfig: sizeof %d", TevConfig.sizeof);
         glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, &shape_group.tev_config, GL_STATIC_DRAW);
         glUniformBlockBinding(gl_program, glGetUniformBlockIndex(gl_program, "TevConfig"), 0);
-        glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, tev_ubo);
+
+        uint vertex_ubo = gl_object_manager.allocate_uniform_buffer_object();
+        glBindBuffer(GL_UNIFORM_BUFFER, vertex_ubo);
+        glBufferData(GL_UNIFORM_BUFFER, VertexConfig.sizeof, &shape_group.vertex_config, GL_STATIC_DRAW);
+        glUniformBlockBinding(gl_program, glGetUniformBlockIndex(gl_program, "VertexConfig"), 1);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 1, vertex_ubo);
 
         glDrawArrays(GL_TRIANGLES, 0, cast(int) shape_group.shapes.length * 3);
 
@@ -1626,7 +1760,14 @@ final class Hollywood {
         glCompileShader(vertex_shader);
         glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compiled);
         if (!compiled) {
-            error_hollywood("Vertex shader compilation error.");
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(vertex_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Vertex shader compilation error: %s", info_log.fromStringz);
         } 
 
         glCompileShader(fragment_shader);
@@ -1651,6 +1792,20 @@ final class Hollywood {
         
         glLinkProgram(gl_program);
         glUseProgram(gl_program);
+
+        // cry about it
+        texture_uniform_locations = [
+            glGetUniformLocation(gl_program, "wiiscreen0"),
+            glGetUniformLocation(gl_program, "wiiscreen1"),
+            glGetUniformLocation(gl_program, "wiiscreen2"),
+            glGetUniformLocation(gl_program, "wiiscreen3"),
+            glGetUniformLocation(gl_program, "wiiscreen4"),
+            glGetUniformLocation(gl_program, "wiiscreen5"),
+            glGetUniformLocation(gl_program, "wiiscreen6"),
+            glGetUniformLocation(gl_program, "wiiscreen7"),
+        ];
+
+        log_hollywood("uniform locations: %s", texture_uniform_locations);
     }
 
     u32 fifo_base_start;

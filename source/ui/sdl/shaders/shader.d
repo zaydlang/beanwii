@@ -26,7 +26,14 @@ static GLint load_shader(string path) {
     glCompileShader(vertex_shader);
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compiled);
     if (!compiled) {
-        error_frontend("Vertex shader compilation error.");
+        import core.stdc.stdlib;
+        import std.string;
+        
+        char* info_log = cast(char*) malloc(10000000);
+        int info_log_length;
+
+        glGetShaderInfoLog(vertex_shader, 10000000, &info_log_length, cast(char*) info_log);
+        error_frontend("Vertex shader compilation error in %s: %s", vertex_path, info_log.fromStringz);
     } 
 
     glCompileShader(fragment_shader);

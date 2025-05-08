@@ -17,9 +17,10 @@ struct TextureDescriptor {
 
     TextureWrap wrap_s;
     TextureWrap wrap_t;
+    TexcoordSource texcoord_source;
 
     int dualtex_matrix_slot;
-    bool dualtex_normal_enable;
+    bool normalize_before_dualtex;
 
     int tex_matrix_slot;
 }
@@ -44,6 +45,22 @@ enum TextureWrap {
     Clamp = 0,
     Repeat = 1,
     Mirror = 2,
+}
+
+enum TexcoordSource {
+    Geometry = 0,
+    Normal = 1,
+    Colors = 2,
+    BinormalT = 3,
+    BinormalB = 4,
+    Tex0 = 5,
+    Tex1 = 6,
+    Tex2 = 7,
+    Tex3 = 8,
+    Tex4 = 9,
+    Tex5 = 10,
+    Tex6 = 11,
+    Tex7 = 12,
 }
 
 alias TextureCache = khash!(u64, Color[]);
@@ -139,17 +156,17 @@ Color[] load_texture_rgb5a3(TextureDescriptor descriptor, Mem mem) {
 
             if (value & 0x8000) {
                 texture[x * height + y] = Color(
-                    cast(u8) (value.bits(8, 11)  << 4),
-                    cast(u8) (value.bits(4, 7)   << 4),
-                    cast(u8) (value.bits(0, 3)   << 4),
-                    cast(u8) (value.bits(12, 14) << 5)
+                    cast(u8) (value.bits(0,   4) << 3),
+                    cast(u8) (value.bits(5,   9) << 3),
+                    cast(u8) (value.bits(10, 14) << 3),
+                    255
                 );
             } else {
                 texture[x * height + y] = Color(
-                    cast(u8) (value.bits(10, 14) << 3),
-                    cast(u8) (value.bits(5,   9) << 3),
-                    cast(u8) (value.bits(0,   4) << 3),
-                    255
+                    cast(u8) (value.bits(0, 3)   << 4),
+                    cast(u8) (value.bits(4, 7)   << 4),
+                    cast(u8) (value.bits(8, 11)  << 4),
+                    cast(u8) (value.bits(12, 14) << 5)
                 );
             }
         }
@@ -186,17 +203,17 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
 
             if (x % 2 == 0) {
                 texture[x * height + y] = Color(
-                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
-                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
-                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
-                    ((value & 0xf0) >> 4) * 0x11 == 0 ? 0 : 255,
+                    ((value & 0xf0) >> 4) * 0x11,
+                    ((value & 0xf0) >> 4) * 0x11,
+                    ((value & 0xf0) >> 4) * 0x11,
+                    ((value & 0xf0) >> 4) * 0x11,
                 );
             } else {
                 texture[x * height + y] = Color(
-                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
-                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
-                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
-                    (value & 0x0f) * 0x11 == 0 ? 0 : 255,
+                    (value & 0x0f) * 0x11,
+                    (value & 0x0f) * 0x11,
+                    (value & 0x0f) * 0x11,
+                    (value & 0x0f) * 0x11,
                 );
     
                 current_address += 1;
