@@ -3,10 +3,11 @@ module emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.emission_action;
 import emu.hw.broadway.jit.emission.flags;
+import emu.hw.broadway.jit.emission.floating_point;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.helpers;
+import emu.hw.broadway.jit.emission.idle_loop_detector;
 import emu.hw.broadway.jit.emission.opcode;
-import emu.hw.broadway.jit.emission.floating_point;
 import emu.hw.broadway.jit.emission.paired_singles;
 import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.jit.jit;
@@ -2736,14 +2737,27 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
     u32 original_address = address;
     int num_opcodes_processed = 0;
 
+    jit.idle_loop_detector.reset();
+    jit.idle_loop_detector.debug_prints = original_address == 0x80274d70;
+
     while (num_opcodes_processed < code.get_max_instructions_per_block()) {
         code.set_guest_pc(address);
-        EmissionAction action = disassemble(code, mem.read_be_u32(address));
+        u32 instruction = mem.read_be_u32(address);
+        jit.idle_loop_detector.add(instruction);
+        EmissionAction action = disassemble(code, instruction);
 
         num_opcodes_processed++;
         if (num_opcodes_processed == code.get_max_instructions_per_block() || action != EmissionAction.Continue) {
             code.add(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), num_opcodes_processed);
             
+            bool in_idle_loop = jit.idle_loop_detector.is_in_idle_loop();
+            R32 was_branch_taken;
+            if (in_idle_loop) {
+                log_jit("IDLE POOP: %x %x", original_address, in_idle_loop);
+                was_branch_taken = code.allocate_register();
+                code.xor(was_branch_taken, was_branch_taken);
+            }
+
             final switch (action.type) {
                 case EmissionActionType.Continue:                       
                     code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
@@ -2751,6 +2765,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     break;
 
                 case EmissionActionType.DirectBranchTaken:
+                    if (in_idle_loop) {
+                        code.mov(was_branch_taken, 1);
+                    }
+
                     if (action.is_with_link()) {
                         code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
                     }
@@ -2782,6 +2800,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     break;
 
                 case EmissionActionType.IndirectBranchTaken:
+                    if (in_idle_loop) {
+                        code.mov(was_branch_taken, 1);
+                    }
+
                     if (action.is_with_link()) {
                         error_jit("Indirect branch with link not allowed");
                     }      
@@ -2802,6 +2824,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.jmp(end);
 
                 code.label(branch);
+                    if (in_idle_loop) {
+                        code.mov(was_branch_taken, 1);
+                    }
+
                     if (action.is_with_link()) {
                         code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
                     }
@@ -2842,6 +2868,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.test(action.get_condition_reg(), 1);
                     code.jz(no_branch);
 
+                    if (in_idle_loop) {
+                        code.mov(was_branch_taken, 1);
+                    }
+
                     if (action.is_with_link()) {
                         code.set_reg(GuestReg.LR, code.get_guest_pc() + 4);
                     }
@@ -2881,6 +2911,28 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.set_reg(GuestReg.PC, lr);
                     code.mov(rax, BlockReturnValue.GuestBlockEnd);
                     break;
+            }
+
+            if (jit.idle_loop_detector.is_in_idle_loop()) {
+                auto not_an_idle_loop = code.fresh_label();
+
+                code.cmp(was_branch_taken, 0);
+                code.je(not_an_idle_loop);
+
+                if (jit.idle_loop_detector.has_memory_accessor_reg()) {
+                    auto memory_accessor_reg = code.get_reg(jit.idle_loop_detector.get_memory_accessor_reg());
+                
+                    // this is not often called, so im okay with it being slow.
+                    // are you mmio?
+                    foreach (top_byte; [0xcc, 0xcd, 0x0c, 0x0d]) {
+                        code.cmp(memory_accessor_reg, top_byte);
+                        code.je(not_an_idle_loop);
+                    }
+
+                    code.mov(rax, BlockReturnValue.IdleLoopDetected);
+                }
+
+                code.label(not_an_idle_loop);
             }
 
             break;

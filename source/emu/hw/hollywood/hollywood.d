@@ -1624,7 +1624,7 @@ final class Hollywood {
                 log_hollywood("New Shapegroup: %s", shape_group);
             }
             i++;
-            // draw_shape_group(shape_group, texnum);
+            draw_shape_group(shape_group, texnum);
             debug_drawn_shape_groups ~= shape_group;
         }
 

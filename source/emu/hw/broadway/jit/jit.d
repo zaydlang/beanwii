@@ -7,6 +7,7 @@ import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.codeblocks;
 import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.guest_reg;
+import emu.hw.broadway.jit.emission.idle_loop_detector;
 import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.jit.page_table;
 import emu.hw.broadway.cpu;
@@ -86,6 +87,7 @@ final class Jit {
     private Code code;
 
     private CodeBlockTracker codeblocks;
+    public  IdleLoopDetector idle_loop_detector;
 
     u32[][u32] dependents;
 
@@ -96,6 +98,7 @@ final class Jit {
         this.debug_ring = new DebugRing(ringbuffer_size);
         this.code = new Code(config);
         this.codeblocks = new CodeBlockTracker();
+        this.idle_loop_detector = new IdleLoopDetector();
     }
 
     int dick = 0;
@@ -126,13 +129,16 @@ final class Jit {
                 break;
 
             case BlockReturnValue.CpuHalted:
-            error_jit("CPU halted");
+                error_jit("CPU halted");
                 break;
             
             case BlockReturnValue.BranchTaken:
                 break;
             
             case BlockReturnValue.DecrementerChanged:
+                break;
+            
+            case BlockReturnValue.IdleLoopDetected:
                 break;
             
             default:
@@ -158,7 +164,6 @@ final class Jit {
             code_page_table.put(state.pc, JitEntry(func, generate_new_jit_id(), cast(int) bytes.length, num_instructions, 1));
             process_basic_block_link_requests_for_parent(state.pc);
 
-            log_jit("JIT compiled %x %x %x %x", state.pc, cast(u64) func, num_instructions, bytes.length);
             return JitReturnValue(state.cycle_quota, process_jit_function(func, state));
         }
     }
@@ -242,8 +247,6 @@ final class Jit {
             auto patch_point_offset = child_entry.func_size - 48;
             u64 func = cast(u64) parent_entry.func + 15;
             u8* patch_point = cast(u8*) (cast(u64) child_entry.func + patch_point_offset);
-
-            log_jit("Patching %x with %x at offset %x %x %x %s", parent, request.child, patch_point_offset, func, patch_point, child_entry);
 
             for (int i = 0; i < 25; i++) {
                 if (patch_point[i] != 0x90) {

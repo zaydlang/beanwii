@@ -199,38 +199,8 @@ final class Broadway {
 
             if (state.pc == 0x802613e4) {
             }
-            if (state.pc >= 0x802613e4 && state.pc <= 0x80261620) {
-                log_state(&state);
-            }
                 // log_wii("state at: %x", state.pc);
                 // log_state(&state);
-            // }
-            if (state.pc == 0x8025e928) {
-                log_state(&state);
-            }
-            if (state.pc == 0x8025e730) {
-                log_state(&state);
-            }
-            if (state.pc == 0x800653c4) {
-                log_state(&state);
-            }
-            if (state.pc == 0x8006d490) {
-                // log_wii("Comparison between %x and %x", state.gprs[31], state.gprs[0]);
-            }
-            if (state.pc == 0x8006d448) {
-                // log_wii("Debjit.");
-            }
-            if (state.pc == 0x8006d710) {
-                // log_wii("Debjit 3 %x %x", state.gprs[19], state.gprs[17]);
-            }
-
-            if (state.ps[4].ps0 == 0xdf40d1aee7f155cf) {
-                // log_wii("your weenis is showing");
-                // dump_stack();
-            }
-        if (state.pc >= 0x800653A0 && state.pc <= 0x800653c0) {
-            log_state(&state);
-        }
 
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
@@ -240,7 +210,7 @@ final class Broadway {
                 // dump_stack();
             }
 
-            if (jit_return_value.block_return_value == BlockReturnValue.CpuHalted) {
+            if (jit_return_value.block_return_value == BlockReturnValue.IdleLoopDetected) {
                 auto fast_forward = scheduler.tick_to_next_event();
                 scheduler.process_events();
                 elapsed += fast_forward;

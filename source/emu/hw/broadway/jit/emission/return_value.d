@@ -6,4 +6,5 @@ enum BlockReturnValue {
     CpuHalted = 2,
     BranchTaken = 3,
     DecrementerChanged = 4,
+    IdleLoopDetected = 5,
 }
