@@ -111,6 +111,9 @@ class SdlDevice : MultiMediaDevice, Window {
             error_frontend("SDL_GL_CreateContext returned an error: %s\n", SDL_GetError());
         }
 
+        // SDL_GL_SetSwapInterval(1);
+        // SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
+
         loadOpenGL();
 
         glViewport(0, 0, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);

@@ -2486,6 +2486,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_MADDS1X: return emit_ps_madds1x(code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MULX:    return emit_ps_mulx   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MULS0:   return emit_ps_muls0  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_MULS1:   return emit_ps_muls1  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MSUBX:   return emit_ps_msubx  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUM0:    return emit_ps_sum0   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUM1:    return emit_ps_sum1   (code, opcode);
@@ -2751,6 +2752,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
             code.add(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), num_opcodes_processed);
             
             bool in_idle_loop = jit.idle_loop_detector.is_in_idle_loop();
+            // in_idle_loop = false;
             R32 was_branch_taken;
             if (in_idle_loop) {
                 log_jit("IDLE POOP: %x %x", original_address, in_idle_loop);
@@ -2913,7 +2915,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     break;
             }
 
-            if (jit.idle_loop_detector.is_in_idle_loop()) {
+            if (in_idle_loop) {
                 auto not_an_idle_loop = code.fresh_label();
 
                 code.cmp(was_branch_taken, 0);

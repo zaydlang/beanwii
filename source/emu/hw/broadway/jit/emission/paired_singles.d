@@ -515,6 +515,25 @@ EmissionAction emit_ps_muls0(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_ps_muls1(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rc = opcode.bits(6, 10).to_ps;
+    bool rc = opcode.bit(0);
+    assert(rc == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rc, xmm1);
+
+    code.shufpd(xmm1, xmm1, 3);
+    code.mulpd(xmm0, xmm1);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
     abort_if_no_pse(code);
     log_function("BIG DICKS!");

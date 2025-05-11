@@ -133,9 +133,7 @@ void main(void) {
 	color_regs[2] = reg2;
 	color_regs[3] = reg3;
 
-	int nt = num_tev_stages;
-	if (nt > 3) nt = 3;
-	for (int i = 0; i < nt; i++) {
+	for (int i = 0; i < num_tev_stages; i++) {
 		vec3 ca = get_parameter_for_color_stage(stages[i].in_color_a, i, vec4(1));
 		vec3 cb = get_parameter_for_color_stage(stages[i].in_color_b, i, vec4(1));
 		vec3 cc = get_parameter_for_color_stage(stages[i].in_color_c, i, vec4(1));
@@ -163,7 +161,7 @@ void main(void) {
 //  }
 
 	// out_Color = konst_a;
-	// out_Color = texture(wiiscreen, vec2(UV.y, UV.x));
+	// out_Color = texture(wiiscreen0, vec2(UV[0].y, UV[0].x));
 
 	// if (num_tev_stages == 1) {
 		// out_Color = vec4(1.0, 0.0, 0.0, 1.0);

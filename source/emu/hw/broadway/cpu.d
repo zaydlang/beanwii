@@ -215,11 +215,14 @@ final class Broadway {
                 scheduler.process_events();
                 elapsed += fast_forward;
 
+                import std.stdio;
+                writefln("Idle loop detected: %x %x", state.pc, elapsed);
+                handle_pending_interrupts();
+
                 if (elapsed < num_cycles) {
-                    handle_pending_interrupts();
-                    return;
-                } else {
                     continue;
+                } else {
+                    return;
                 }
             }
 

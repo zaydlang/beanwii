@@ -703,6 +703,9 @@ final class Hollywood {
                 break;
 
             case 0x94: .. case 0x97:
+                if (bp_data << 5 == 0x01a4db90) {
+                    error_hollywood("dumb fuck address");
+                }
             log_hollywood("Texture descriptor: %02x %08x", bp_register, bp_data);
                 texture_descriptors[bp_register - 0x94].base_address = bp_data << 5;
                 break;
@@ -778,7 +781,7 @@ final class Hollywood {
                     tev_config.stages[idx].tex_swap_table_index = value.bits(2, 3);
                     break;
                 } else {
-                    log_hollywood("TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", bp_register - 0xc0, bp_data, mem.cpu.state.pc);
+                    log_hollywood("%d TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", shape_groups.length, bp_register - 0xc0, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc0) / 2;
                     tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
                     tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
@@ -803,47 +806,55 @@ final class Hollywood {
                 break;
             
             case 0xe0: .. case 0xe7:
-                if (bp_register.bit(0)) {
-                    int idx = (bp_register - 0xe1) / 2;
-                    // i dont trust D's memory layout
-                    final switch (idx) {
-                    case 0: 
-                        tev_config.reg0[2] = bp_data.bits(0,   7) / 255.0f; 
-                        tev_config.reg0[1] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 1:
-                        tev_config.reg1[2] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg1[1] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 2:
-                        tev_config.reg2[2] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg2[1] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 3:
-                        tev_config.reg3[2] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg3[1] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    }
+                // if (shape_groups.length == 15) {
+                    log_hollywood("%d TEV_COLOR_REG_%x: %08x", shape_groups.length, bp_register - 0xe0, bp_data);
+                // }
+                if (bp_data.bit(23)) {
+                    // set konst
+                    // not yet i dont care
                 } else {
-                    int idx = (bp_register - 0xe0) / 2;
-                    // i dont trust D's memory layout
-                    final switch (idx) {
-                    case 0: 
-                        tev_config.reg0[0] = bp_data.bits(0,   7) / 255.0f; 
-                        tev_config.reg0[3] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 1:
-                        tev_config.reg1[0] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg1[3] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 2:
-                        tev_config.reg2[0] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg2[3] = bp_data.bits(12, 19) / 255.0f;
-                        break;
-                    case 3:
-                        tev_config.reg3[0] = bp_data.bits(0,   7) / 255.0f;
-                        tev_config.reg3[3] = bp_data.bits(12, 19) / 255.0f;
-                        break;
+                    if (bp_register.bit(0)) {
+                        int idx = (bp_register - 0xe1) / 2;
+                        // i dont trust D's memory layout
+                        final switch (idx) {
+                        case 0: 
+                            tev_config.reg0[2] = bp_data.bits(0,   7) / 255.0f; 
+                            tev_config.reg0[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 1:
+                            tev_config.reg1[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg1[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 2:
+                            tev_config.reg2[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg2[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 3:
+                            tev_config.reg3[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg3[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        }
+                    } else {
+                        int idx = (bp_register - 0xe0) / 2;
+                        // i dont trust D's memory layout
+                        final switch (idx) {
+                        case 0: 
+                            tev_config.reg0[0] = bp_data.bits(0,   7) / 255.0f; 
+                            tev_config.reg0[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 1:
+                            tev_config.reg1[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg1[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 2:
+                            tev_config.reg2[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg2[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 3:
+                            tev_config.reg3[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.reg3[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        }
                     }
                 }
                 break;
@@ -992,11 +1003,12 @@ final class Hollywood {
                 break;
             
             case 0xa0: .. case 0xaf:
-                array_bases[register - 0xa0] = value.bits(0, 25);
+                log_hollywood("array_base: %02x %08x", register, value);
+                array_bases[register - 0xa0] = value;
                 break;
 
             case 0xb0: .. case 0xbf:
-                array_strides[register - 0xb0] = value.bits(0, 25);
+                array_strides[register - 0xb0] = value;
                 break;
 
             default:
@@ -1015,8 +1027,12 @@ final class Hollywood {
             case VertexAttributeLocation.Direct:
                 size += vat.position_count * calculate_expected_size_of_coord(vat.position_format);
                 break;
-            case VertexAttributeLocation.Indexed8Bit:  size += 1; break;
-            case VertexAttributeLocation.Indexed16Bit: size += 2; break;
+            case VertexAttributeLocation.Indexed8Bit:  
+                size += 1;
+                break;
+            case VertexAttributeLocation.Indexed16Bit: 
+                size += 2;
+                break;
             case VertexAttributeLocation.NotPresent: break;
         }
 
@@ -1024,8 +1040,12 @@ final class Hollywood {
             case VertexAttributeLocation.Direct:
                 size += vat.normal_count * calculate_expected_size_of_normal(vat.normal_format);
                 break;
-            case VertexAttributeLocation.Indexed8Bit:  size += 1; break;
-            case VertexAttributeLocation.Indexed16Bit: size += 2; break;
+            case VertexAttributeLocation.Indexed8Bit:
+                size += 1;
+                break;
+            case VertexAttributeLocation.Indexed16Bit:
+                size += 2;
+                break;
             case VertexAttributeLocation.NotPresent: break;
         }
 
@@ -1050,8 +1070,12 @@ final class Hollywood {
                 case VertexAttributeLocation.Direct:
                     size += calculate_expected_size_of_color(vat.color_format[i]);
                     break;
-                case VertexAttributeLocation.Indexed8Bit:  size += 1; break;
-                case VertexAttributeLocation.Indexed16Bit: size += 2; break;
+                case VertexAttributeLocation.Indexed8Bit:
+                    size += 1;
+                    break;
+                case VertexAttributeLocation.Indexed16Bit:
+                    size += 2;
+                    break;
                 case VertexAttributeLocation.NotPresent: break;
             }
         }
@@ -1061,8 +1085,12 @@ final class Hollywood {
                 case VertexAttributeLocation.Direct:
                     size += vat.texcoord_count[i] * calculate_expected_size_of_coord(vat.texcoord_format[i]);
                     break;
-                case VertexAttributeLocation.Indexed8Bit:  size += 1; break;
-                case VertexAttributeLocation.Indexed16Bit: size += 2; break;
+                case VertexAttributeLocation.Indexed8Bit:
+                    size += 1;
+                    break;
+                case VertexAttributeLocation.Indexed16Bit:
+                    size += 2;
+                    break;
                 case VertexAttributeLocation.NotPresent: break;
             }
         }
@@ -1257,10 +1285,10 @@ final class Hollywood {
             
             case ColorFormat.RGBA8888:
                 return [
-                    (cast(float) (value.bits(0, 7))) / 0xff,
-                    (cast(float) (value.bits(8, 15))) / 0xff,
-                    (cast(float) (value.bits(16, 23))) / 0xff,
                     (cast(float) (value.bits(24, 31))) / 0xff,
+                    (cast(float) (value.bits(16, 23))) / 0xff,
+                    (cast(float) (value.bits(8, 15))) / 0xff,
+                    (cast(float) (value.bits(0, 7))) / 0xff,
                 ];
         }
     }
@@ -1384,6 +1412,26 @@ final class Hollywood {
     //     }
     // }
 
+    private u32 get_vertex_attribute(VertexAttributeLocation location, size_t offset, size_t size, int arr_idx) {
+        u32 data = 0;
+
+        switch (location) {
+            case VertexAttributeLocation.Indexed8Bit:
+                data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 1), size);
+                break;
+            case VertexAttributeLocation.Indexed16Bit:
+                data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 2), size);
+                break;
+            case VertexAttributeLocation.Direct:
+                data = read_from_shape_data_buffer(offset, size);
+                break;
+            default:
+                error_hollywood("Unimplemented vertex attribute location");
+        }
+
+        return data;
+    }
+
     private u32 read_from_shape_data_buffer(size_t offset, size_t size) {
         u32 data = 0;
         for (int i = 0; i < size; i++) {
@@ -1395,8 +1443,30 @@ final class Hollywood {
         return data;
     }
 
+    private u32 read_from_indexed_array(int array_num, int idx, size_t size) {
+        u32 array_addr = array_bases[array_num];
+        u32 array_stride = array_strides[array_num];
+        u32 array_offset = array_addr + (array_stride * idx);
+        log_hollywood("read_from_indexed_array(%u, %u, %u): %x", array_num, idx, size, array_offset);
+
+        final switch (size) {
+        case 1: return mem.paddr_read_u8(array_offset);
+        case 2: return mem.paddr_read_u16(array_offset);
+        case 4: return mem.paddr_read_u32(array_offset);
+        }
+    }
+
+    private size_t get_size_of_vertex_attribute_in_stream(VertexAttributeLocation location, size_t size_of_attribute) {
+        switch (location) {
+            case VertexAttributeLocation.Indexed8Bit:  return 1;
+            case VertexAttributeLocation.Indexed16Bit: return 2;
+            case VertexAttributeLocation.Direct:       return size_of_attribute;
+            default:                                   return 0;
+        }
+    }
+
     private void process_new_shape() {
-        log_hollywood("process_new_shape %d", shape_groups.length);
+        log_hollywood("process_new_shape %d %s %s", shape_groups.length, vats[current_vat], vertex_descriptors[current_vat]);
         glUseProgram(gl_program);
 
         ShapeGroup shape_group;
@@ -1450,9 +1520,15 @@ final class Hollywood {
             if (vcd.position_location != VertexAttributeLocation.NotPresent) {
                 for (int j = 0; j < vat.position_count; j++) {
                     size_t size = calculate_expected_size_of_coord(vat.position_format);
+                    u32 coord = get_vertex_attribute(vcd.position_location, offset, size, 0);
                     log_hollywood("processing position with size %d", size);
-                    v.position[j] = dequantize_coord(read_from_shape_data_buffer(offset, size), vat.position_format, vat.position_shift);
-                    offset += size;
+                    v.position[j] = dequantize_coord(coord, vat.position_format, vat.position_shift);
+                    offset += get_size_of_vertex_attribute_in_stream(vcd.position_location, size);
+                
+                }
+
+                if (vat.position_count == 2) {
+                    v.position[2] = 0.0;
                 }
             }
 
@@ -1466,13 +1542,14 @@ final class Hollywood {
                 if (vcd.color_location[j] != VertexAttributeLocation.NotPresent) {
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                     log_hollywood("processing color with size %d", size);
-                    color = dequantize_color(read_from_shape_data_buffer(offset, size), vat.color_format[j], 0);
+                    u32 color_data = get_vertex_attribute(vcd.color_location[j], offset, size, j + 2);
+                    color = dequantize_color(color_data, vat.color_format[j], 0);
 
                     if (vat.color_count[j] == 3) {
                         color[3] = 1.0;
                     }
 
-                    offset += size;
+                    offset += get_size_of_vertex_attribute_in_stream(vcd.color_location[j], size);
                 }
 
                 final switch (this.color_configs[j].material_src) {
@@ -1491,8 +1568,9 @@ final class Hollywood {
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        v.texcoord[j][k] = dequantize_coord(read_from_shape_data_buffer(offset, size), vat.texcoord_format[j], vat.texcoord_shift[j]);
-                        offset += size;
+                        u32 texcoord = get_vertex_attribute(vcd.texcoord_location[j], offset, size, j + 4);
+                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
+                        offset += get_size_of_vertex_attribute_in_stream(vcd.texcoord_location[j], size);
                     }
         
                 } else if (vcd.texcoord_location[j] != VertexAttributeLocation.NotPresent) {
@@ -1620,7 +1698,10 @@ final class Hollywood {
         log_hollywood("Rendering %d shape groups", shape_groups.length);
         log_hollywood("Amongus projection matrix: %s", projection_matrix);
         foreach (ShapeGroup shape_group; shape_groups) {
-            if (i == 36 || i == 0) {
+            if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
+                log_hollywood("New Shapegroup: %s", shape_group);
+            }
+            if (i == 16) {
                 log_hollywood("New Shapegroup: %s", shape_group);
             }
             i++;
@@ -1654,20 +1735,6 @@ final class Hollywood {
 
                 final switch (shape_group.texture[i].wrap_s) {
                     case TextureWrap.Clamp:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                        break;
-                    
-                    case TextureWrap.Repeat:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                        break;
-                    
-                    case TextureWrap.Mirror:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                        break;
-                }
-
-                final switch (shape_group.texture[i].wrap_t) {
-                    case TextureWrap.Clamp:
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                         break;
                     
@@ -1677,6 +1744,20 @@ final class Hollywood {
                     
                     case TextureWrap.Mirror:
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+                        break;
+                }
+
+                final switch (shape_group.texture[i].wrap_t) {
+                    case TextureWrap.Clamp:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                        break;
+                    
+                    case TextureWrap.Repeat:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                        break;
+                    
+                    case TextureWrap.Mirror:
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
                         break;
                 }
 

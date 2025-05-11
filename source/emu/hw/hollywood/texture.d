@@ -239,12 +239,12 @@ Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
     u32 current_address = base_address;
     for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
     for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
-        for (int fine_y = 0; fine_y < 8; fine_y++) {
+        for (int fine_y = 0; fine_y < 4; fine_y++) {
         for (int fine_x = 0; fine_x < 8; fine_x++) {
             auto x = tile_x * 8 + fine_x;
-            auto y = tile_y * 8 + fine_y;
+            auto y = tile_y * 4 + fine_y;
 
-            if (x > width || y > height) {
+            if (x >= width || y >= height) {
                 continue;
             }
 
@@ -288,6 +288,10 @@ Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
             
             auto x = tile_x * 4 + fine_x;
             auto y = tile_y * 4 + fine_y;
+
+            if (x >= width || y >= height) {
+                continue;
+            }
 
             texture[x * height + y] = Color(
                 intensity,
@@ -388,6 +392,10 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
 
             for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {
+                if (x + i >= width || y + j >= height) {
+                    continue;
+                }
+
                 auto texture_index = (x + i) * height + (y + j);
                 texture[texture_index] = Color(
                     cast(u8) colors[bits[i + j * 4]][2],
@@ -407,7 +415,7 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
 }
 
 Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
-    log_hollywood("Loading texture: %s", descriptor);
+    log_hollywood("Loading texture %d: %s", mem.mmio.hollywood.shape_groups.length, descriptor);
 
     u64 hash = calculate_texture_hash(descriptor, mem);
     auto cache = texture_cache.require(hash, null);
@@ -415,6 +423,8 @@ Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
         return cache;
     }
 
+    log_hollywood("Loading texture: %s", descriptor);
+ 
     Color[] result;
     switch (descriptor.type) {
         case TextureType.I4:

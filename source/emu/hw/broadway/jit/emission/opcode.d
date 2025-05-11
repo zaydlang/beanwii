@@ -68,6 +68,7 @@ enum PrimaryOp04SecondaryOpcode {
     PS_MERGE11 = 0x270,
     PS_MULX    = 0x019,
     PS_MULS0   = 0x00C,
+    PS_MULS1   = 0x00D,
     PS_MSUBX   = 0x01C,
     PS_NEGX    = 0x028,
     PS_NMADDX  = 0x01F,

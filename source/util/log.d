@@ -28,9 +28,9 @@ enum Whitelist = [
     // LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
-    // LogSource.HOLLYWOOD,
+    LogSource.HOLLYWOOD,
     // LogSource.IPC,
-    LogSource.JIT,
+    // LogSource.JIT,
     // LogSource.MMIO,
     // LogSource.OS_REPORT,
     // LogSource.PE,
@@ -38,7 +38,7 @@ enum Whitelist = [
     // LogSource.SCHEDULER,
     // LogSource.USB,
     // LogSource.WBFS,
-    // LogSource.WII,
+    LogSource.WII,
     // LogSource.WIIMOTE,
 ];
 
