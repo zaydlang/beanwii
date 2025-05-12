@@ -18,7 +18,6 @@ import util.bitop;
 import util.log;
 import util.number;
 import util.ringbuffer;
-import xbyak;
 
 alias ReadHandler  = u32 function(u32 address);
 alias WriteHandler = void function(u32 address, u32 value);
