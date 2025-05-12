@@ -10,6 +10,7 @@ import emu.scheduler;
 import std.conv;
 import std.file;
 import std.format;
+import std.path;
 import std.stdio;
 import util.bitop;
 import util.log;
@@ -68,8 +69,8 @@ final class FileManager {
         std.stdio.File file;
 
         this(string path) {
-            super("/home/zaydq/wii" ~ path);
-            this.file = std.stdio.File("/home/zaydq/wii" ~ path, "r+");
+            super("~/.beanwii/fs".expandTilde ~ path);
+            this.file = std.stdio.File("~/.beanwii/fs".expandTilde ~ path, "r+");
         }
 
         override int read(u8[] buffer, int size) {
@@ -401,14 +402,18 @@ final class FileManager {
     final class DevFS : File {
         this() {
             super("/dev/fs");
+
+            if (!std.file.exists("~/.beanwii/fs".expandTilde)) {
+                try { "~/.beanwii/fs".expandTilde.mkdirRecurse(); } catch (Exception e) {}
+            }
             
             // go and fuck yourself
-            try { "/home/zaydq/wii/tmp".rmdirRecurse(); } catch (Exception e) {}
-            assert_ipc(mkdir("/home/zaydq/wii/tmp", std.conv.octal!"777") == 0, "failed to create /tmp: %d", errno);
+            try { ("~/.beanwii/fs".expandTilde ~ "/tmp").rmdirRecurse(); } catch (Exception e) {}
+            assert_ipc(mkdir(cast(const char*) ("~/.beanwii/fs".expandTilde ~ "/tmp"), std.conv.octal!"777") == 0, "failed to create /tmp: %d", errno);
         }
 
         void set_title_id(u64 title_id) {
-            string title_dir = "/home/zaydq/wii/title/%08x/%08x/data".format(cast(u32) (title_id >> 32), cast(u32) title_id);
+            string title_dir = ("~/.beanwii/fs".expandTilde ~ "/title/%08x/%08x/data").format(cast(u32) (title_id >> 32), cast(u32) title_id);
             try { title_dir.mkdirRecurse(); } catch (Exception e) {}
         }
 
@@ -432,11 +437,11 @@ final class FileManager {
                 log_ipc("DevFS::CreateDir(%s, %d, %d)", filename, owner_id, group_id);
 
                 // does file exist?
-                if (std.file.exists("/home/zaydq/wii" ~ filename)) {
+                if (std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
                     return cast(int) IPCError.EEXIST_DEVFS;
                 }
 
-                try { std.file.mkdir("/home/zaydq/wii" ~ filename); } catch (Exception e) {}
+                try { std.file.mkdir("~/.beanwii/fs".expandTilde ~ filename); } catch (Exception e) {}
             } else if (ioctl == 0x9) {
                 // CreateFile
                 auto owner_id = mem.paddr_read_u32(input_buffer + 0);
@@ -453,7 +458,7 @@ final class FileManager {
                 }
                 log_ipc("DevFS::CreateFile(%s, %d, %d)", filename, owner_id, group_id);
 
-                try { std.file.write("/home/zaydq/wii" ~ filename, new ubyte[0]); } catch (Exception e) {}
+                try { std.file.write("~/.beanwii/fs".expandTilde ~ filename, new ubyte[0]); } catch (Exception e) {}
             } else if (ioctl == 0x5) {
                 log_ipc("Who knows");
             } else if (ioctl == 0x6) {
@@ -482,7 +487,7 @@ final class FileManager {
 
                 log_ipc("DevFS::Dipshit(%s)", filename);
 
-                if (!std.file.exists("/home/zaydq/wii" ~ filename)) {
+                if (!std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
@@ -507,12 +512,12 @@ final class FileManager {
 
                 log_ipc("DevFS::Delete(%s)", filename);
             
-                if (!std.file.exists("/home/zaydq/wii" ~ filename)) {
+                if (!std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
                     log_ipc("DevFS::Delete File does not exist %s", filename);
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-                // try { std.file.remove("/home/zaydq/wii" ~ filename); } catch (Exception e) {
+                // try { std.file.remove("~/.beanwii/fs".expandTilde ~ filename); } catch (Exception e) {
                     // log_ipc("DevFS::Delete failed %s", e.msg);
                 // }
 
@@ -540,20 +545,18 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::Rename(%s, %s)", old_filename, new_filename);
-                // if (std.file.exists("/home/zaydq/wii" ~ new_filename)) {
+                // if (std.file.exists("~/.beanwii/fs.expandTilde" ~ new_filename)) {
                     // log_ipc("DevFS::Rename File exists %s", new_filename);
                     // return cast(int) IPCError.EEXIST_DEVFS;
                 // }
 
-                if (!std.file.exists("/home/zaydq/wii" ~ old_filename)) {
+                if (!std.file.exists("~/.beanwii/fs".expandTilde ~ old_filename)) {
                     log_ipc("DevFS::Rename File does not exist %s", old_filename);
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-                stdin.readln;
-
-                std.file.remove("/home/zaydq/wii" ~ new_filename);
-                try { std.file.rename("/home/zaydq/wii" ~ old_filename, "/home/zaydq/wii" ~ new_filename); } catch (Exception e) {
+                std.file.remove("~/.beanwii/fs".expandTilde ~ new_filename);
+                try { std.file.rename("~/.beanwii/fs".expandTilde ~ old_filename, "~/.beanwii/fs".expandTilde ~ new_filename); } catch (Exception e) {
                     log_ipc("DevFS::Rename failed %s", e.msg);
                 }
             } else {
@@ -597,10 +600,10 @@ final class FileManager {
 
                 log_ipc("DevFS::ReadDir(%s, %d)", filename, count);
 
-                if (!std.file.isDir("/home/zaydq/wii" ~ filename)) {
+                if (!std.file.isDir("~/.beanwii/fs".expandTilde ~ filename)) {
                     result = IPCError.EINVAL_DEVFS;
                 } else {
-                    auto files = std.file.dirEntries("/home/zaydq/wii" ~ filename, SpanMode.shallow);
+                    auto files = std.file.dirEntries("~/.beanwii/fs".expandTilde ~ filename, SpanMode.shallow);
                     if (argcin > 2) {
                         error_ipc("handle argcin %d", argcin);
                     }
@@ -1038,8 +1041,8 @@ final class FileManager {
         }
 
         log_ipc("get_file_by_name(%s) not found in device_files", filename);
-        log_ipc("Checking for file in /home/zaydq/wii%s", filename);
-        if (std.file.exists("/home/zaydq/wii" ~ filename)) {
+        log_ipc("Checking for file in ~/.beanwii/fs%s", filename);
+        if (std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
             return new RealFile(filename);
         }
 
