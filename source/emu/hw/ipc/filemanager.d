@@ -76,17 +76,21 @@ final class FileManager {
             log_ipc("RealFile::read(%s, %d)", path, size);
             
             auto read_buffer = file.rawRead(buffer);
-            buffer[0 .. read_buffer.length] = read_buffer[0 .. read_buffer.length];
+            log_ipc("    Result: %s", read_buffer);
 
             return cast(int) read_buffer.length;
         }
 
         override int write(u8* buffer, int size) {
+            log_ipc("RealFile::write(%s, %d)", path, size);
             file.rawWrite(buffer[0 .. size]);
+            file.flush();
             return size;
         }
 
         override int seek(int offset, int whence) {
+            log_ipc("RealFile::seek(%s, %d, %d)", path, offset, whence);
+
             if (whence == 0) {
                 file.seek(offset, SEEK_SET);
             } else if (whence == 1) {
@@ -425,13 +429,13 @@ final class FileManager {
                 
                     filename ~= cast(char) c;
                 }
+                log_ipc("DevFS::CreateDir(%s, %d, %d)", filename, owner_id, group_id);
 
                 // does file exist?
                 if (std.file.exists("/home/zaydq/wii" ~ filename)) {
                     return cast(int) IPCError.EEXIST_DEVFS;
                 }
 
-                log_ipc("DevFS::CreateDir(%s, %d, %d)", filename, owner_id, group_id);
                 try { std.file.mkdir("/home/zaydq/wii" ~ filename); } catch (Exception e) {}
             } else if (ioctl == 0x9) {
                 // CreateFile
@@ -447,8 +451,8 @@ final class FileManager {
 
                     filename ~= cast(char) c;
                 }
-
                 log_ipc("DevFS::CreateFile(%s, %d, %d)", filename, owner_id, group_id);
+
                 try { std.file.write("/home/zaydq/wii" ~ filename, new ubyte[0]); } catch (Exception e) {}
             } else if (ioctl == 0x5) {
                 log_ipc("Who knows");
@@ -476,11 +480,12 @@ final class FileManager {
                     mem.paddr_write_u8(output++, c);
                 }
 
-                if (!std.file.exists("/home/zaydq/wii/tmp" ~ filename)) {
+                log_ipc("DevFS::Dipshit(%s)", filename);
+
+                if (!std.file.exists("/home/zaydq/wii" ~ filename)) {
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-                log_ipc("DevFS::Dipshit(%s)", filename);
 
                 mem.paddr_write_u8(output++, 0);
                 mem.paddr_write_u8(output++, 0);
@@ -500,7 +505,18 @@ final class FileManager {
                     filename ~= cast(char) c;
                 }
 
-                error_ipc("DevFS::Delete(%s)", filename);
+                log_ipc("DevFS::Delete(%s)", filename);
+            
+                if (!std.file.exists("/home/zaydq/wii" ~ filename)) {
+                    log_ipc("DevFS::Delete File does not exist %s", filename);
+                    return cast(int) IPCError.ENOENT_DEVFS;
+                }
+
+                // try { std.file.remove("/home/zaydq/wii" ~ filename); } catch (Exception e) {
+                    // log_ipc("DevFS::Delete failed %s", e.msg);
+                // }
+
+                return 0;
             } else if (ioctl == 0x8) {
                 // rename
                 string old_filename = "";
@@ -524,15 +540,22 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::Rename(%s, %s)", old_filename, new_filename);
-                if (std.file.exists("/home/zaydq/wii" ~ new_filename)) {
-                    return cast(int) IPCError.EEXIST_DEVFS;
-                }
+                // if (std.file.exists("/home/zaydq/wii" ~ new_filename)) {
+                    // log_ipc("DevFS::Rename File exists %s", new_filename);
+                    // return cast(int) IPCError.EEXIST_DEVFS;
+                // }
 
-                if (!std.file.exists("/home/zaydq/wii/tmp" ~ old_filename)) {
+                if (!std.file.exists("/home/zaydq/wii" ~ old_filename)) {
+                    log_ipc("DevFS::Rename File does not exist %s", old_filename);
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-                std.file.rename("/home/zaydq/wii" ~ old_filename, "/home/zaydq/wii" ~ new_filename);
+                stdin.readln;
+
+                std.file.remove("/home/zaydq/wii" ~ new_filename);
+                try { std.file.rename("/home/zaydq/wii" ~ old_filename, "/home/zaydq/wii" ~ new_filename); } catch (Exception e) {
+                    log_ipc("DevFS::Rename failed %s", e.msg);
+                }
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }

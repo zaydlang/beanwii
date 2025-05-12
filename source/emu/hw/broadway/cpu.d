@@ -188,6 +188,21 @@ final class Broadway {
 
 
             if (state.pc ==0x8006d6f4) {
+            }
+            if (state.pc ==0x8019ea58) {
+                log_ipc("ReadMapFile(%08x %08x %08x)", state.gprs[3], state.gprs[4], state.gprs[5]);
+                u32 str_address = state.gprs[3];
+                string str = "";
+                while (true) {
+                    u8 c = mem.read_be_u8(str_address);
+                    str_address += 1;
+                    if (c == 0) {
+                        break;
+                    }
+                    str ~= cast(char) c;
+                }
+
+                log_ipc("ReadMapFile: %s", str);
                 // log_wii("second comparison mismatch between %x and %x %x %x", state.gprs[18], state.gprs[0], mem.read_be_u16(mem.read_be_u32(state.gprs[24] + 0x10) + 1)
                 // , mem.read_be_u32(state.gprs[24] + 0x10));
             }
