@@ -436,6 +436,34 @@ private EmissionAction emit_cror(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+private EmissionAction emit_creqv(Code code, u32 opcode) {
+    auto crbD = get_cr_index(opcode.bits(21, 25));
+    auto crbA = get_cr_index(opcode.bits(16, 20));
+    auto crbB = get_cr_index(opcode.bits(11, 15));
+    auto cr   = code.get_reg(GuestReg.CR);
+
+    assert(opcode.bit(0) == 0);
+
+    auto tmp1 = code.allocate_register();
+    
+    code.mov(tmp1, cr);
+    code.shr(tmp1, cast(u8) crbA);
+    code.and(tmp1, 1);
+
+    code.shr(cr, cast(u8) crbB);
+    code.and(cr, 1);
+
+    code.xor(cr, tmp1);
+    code.not(cr);
+
+    code.shl(cr, cast(u8) crbD);
+    code.and(code.get_address(GuestReg.CR), ~(1 << crbD));
+    code.or(code.get_address(GuestReg.CR), cr);
+
+    return EmissionAction.Continue;
+}
+
+
 private EmissionAction emit_crxor(Code code, u32 opcode) {
     auto crbD = get_cr_index(opcode.bits(21, 25));
     auto crbA = get_cr_index(opcode.bits(16, 20));
@@ -475,39 +503,39 @@ private EmissionAction emit_dcbst(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_dcbz(Code code, u32 opcode) {
-    // auto guest_ra = opcode.bits(16, 20).to_gpr;
-    // auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
 
-    // assert(opcode.bits(21, 25) == 0);
+    assert(opcode.bits(21, 25) == 0);
 
-    // R32 ra;
-    // if (guest_ra == GuestReg.R0) {
-    //     ra = code.allocate_register();
-    //     code.xor(ra, ra);
-    // } else {
-    //     ra = code.get_reg(guest_ra);
-    // }
+    R32 ra;
+    if (guest_ra == GuestReg.R0) {
+        ra = code.allocate_register();
+        code.xor(ra, ra);
+    } else {
+        ra = code.get_reg(guest_ra);
+    }
 
-    // auto rb = code.get_reg(guest_rb);
+    auto rb = code.get_reg(guest_rb);
 
-    // code.mov(r12d, ra);
-    // code.add(r12d, rb);
-    // code.and(ra, ~31);
+    code.mov(r12d, ra);
+    code.add(r12d, rb);
+    code.and(ra, ~31);
 
-    // code.mov(rb, 0);
+    code.mov(rb, 0);
 
-    // code.push(rdi);
-    // code.enter_stack_alignment_context();
-    //     for (int i = 0; i < 32 / 4; i++) {
-    //         code.mov(rdi, cast(u64) code.config.mem_handler_context);
-    //         code.mov(esi, r12d);
-    //         code.mov(edx, 0);
-    //         code.mov(rax, cast(u64) code.config.write_handler32);
-    //         code.call(rax);
-    //         code.add(r12d, 4);
-    //     }
-    // code.exit_stack_alignment_context();
-    // code.pop(rdi);
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        for (int i = 0; i < 32 / 4; i++) {
+            code.mov(rdi, cast(u64) code.config.mem_handler_context);
+            code.mov(esi, r12d);
+            code.mov(edx, 0);
+            code.mov(rax, cast(u64) code.config.write_handler32);
+            code.call(rax);
+            code.add(r12d, 4);
+        }
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
 
     return EmissionAction.Continue;
 }
@@ -1230,6 +1258,21 @@ private EmissionAction emit_mfcr(Code code, u32 opcode) {
     assert(opcode.bits(11, 20) == 0b00000_00000);
 
     code.set_reg(guest_rd, msr);
+
+    return EmissionAction.Continue;
+}
+
+private EmissionAction emit_mcrf(Code code, u32 opcode) {
+    auto crfd = opcode.bits(23, 25);
+    auto crfs = opcode.bits(18, 20);
+    assert((opcode & 0x0063ffff) == 0);
+
+    auto cr = code.get_reg(GuestReg.CR);
+    code.shr(cr, cast(u8) ((7 - crfs) * 4));
+    code.and(cr, cast(u8) 0xF);
+    code.shl(cr, cast(u8) ((7 - crfd) * 4));
+    code.and(code.get_address(GuestReg.CR), ~(0xF << ((7 - crfd) * 4)));
+    code.or(code.get_address(GuestReg.CR), cr);
 
     return EmissionAction.Continue;
 }
@@ -2523,10 +2566,12 @@ private EmissionAction emit_op_13(Code code, u32 opcode) {
     switch (secondary_opcode) {
         case PrimaryOp13SecondaryOpcode.BCCTR: return emit_bcctr(code, opcode);
         case PrimaryOp13SecondaryOpcode.BCLR:  return emit_bclr (code, opcode);
-        case PrimaryOp13SecondaryOpcode.RFI:   return emit_rfi  (code, opcode);
+        case PrimaryOp13SecondaryOpcode.CREQV: return emit_creqv(code, opcode);
         case PrimaryOp13SecondaryOpcode.CROR:  return emit_cror (code, opcode);
         case PrimaryOp13SecondaryOpcode.CRXOR: return emit_crxor(code, opcode);
         case PrimaryOp13SecondaryOpcode.ISYNC: return emit_isync(code, opcode);
+        case PrimaryOp13SecondaryOpcode.MCRF:  return emit_mcrf (code, opcode);
+        case PrimaryOp13SecondaryOpcode.RFI:   return emit_rfi  (code, opcode);
 
         default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
@@ -2655,6 +2700,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FSUB:   instrument = true; return emit_fsub   (code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNABSX: return emit_fnabsx (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FNEGX:  return emit_fnegx  (code, opcode);
+        case PrimaryOp3FSecondaryOpcode.MFFS:   return emit_mffs   (code, opcode);
         case PrimaryOp3FSecondaryOpcode.MFTSB1: return emit_mftsb1 (code, opcode);
         case PrimaryOp3FSecondaryOpcode.MTFSF:  return emit_mtfsf  (code, opcode);
         default: break;
@@ -2746,9 +2792,12 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
         u32 instruction = mem.read_be_u32(address);
         jit.idle_loop_detector.add(instruction);
         EmissionAction action = disassemble(code, instruction);
+        bool breakpoint_hit = jit.has_breakpoint(address);
 
         num_opcodes_processed++;
-        if (num_opcodes_processed == code.get_max_instructions_per_block() || action != EmissionAction.Continue) {
+        if (num_opcodes_processed == code.get_max_instructions_per_block() || 
+            action != EmissionAction.Continue ||
+            breakpoint_hit) {
             code.add(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), num_opcodes_processed);
             
             bool in_idle_loop = jit.idle_loop_detector.is_in_idle_loop();
@@ -2937,11 +2986,15 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                 code.label(not_an_idle_loop);
             }
 
+            if (breakpoint_hit) {
+                code.or(was_branch_taken, BlockReturnValue.BreakpointHit);
+            }
             break;
         }
 
         address += 4;
         code.free_all_registers();
+
     }
 
     return num_opcodes_processed;

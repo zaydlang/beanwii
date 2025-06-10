@@ -105,6 +105,9 @@ final class DSP {
                     scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
                     log_dsp("DSP init complete: %08x %08x", dsp_microcode_address, dsp_microcode_size);
                     dump_dsp_microcode("dsp.bin");
+                    u32 dsp_microcode_hash = get_dsp_microcode_hash();
+                    log_dsp("DSP microcode hash: %08x", dsp_microcode_hash);
+
                 } else if (commands_left_to_process_at_init == 8) {
                     dsp_microcode_address = mailbox_to_hi << 16 | mailbox_to_lo;
                 } else if (commands_left_to_process_at_init == 4) {
@@ -114,21 +117,10 @@ final class DSP {
                 break;
 
             case State.Ready:
-            if (test == 1) {
-                u32 address = mailbox_to_hi << 16 | mailbox_to_lo;
-                log_dsp("BABE DATA: %08x %08x %08x %08x %08x %08x %08x %08x", mem.read_be_u32(address),
-                    mem.read_be_u32(address + 4),
-                    mem.read_be_u32(address + 8),
-                    mem.read_be_u32(address + 12),
-                    mem.read_be_u32(address + 16),
-                    mem.read_be_u32(address + 20),
-                    mem.read_be_u32(address + 24),
-                    mem.read_be_u32(address + 28));
-            }
                 u32 mailbox_command = mailbox_to_hi << 16 | mailbox_to_lo;
                 switch (mailbox_command) {
                     case CommandFromCpu.TaskIncoming:
-                        error_dsp("Task incoming");
+                        // error_dsp("Task incoming");
                         break;
                     case CommandFromCpu.NoTasksLeft:
                         error_dsp("No tasks left");
@@ -148,13 +140,23 @@ final class DSP {
         }
     }
 
+    u32 get_dsp_microcode_hash() {
+        u32 hash = 0;
+
+        for (int i = 0; i < dsp_microcode_size; i += 4) {
+            hash += mem.paddr_read_u32(dsp_microcode_address + i);
+        }
+
+        return hash;
+    }
+
     void dump_dsp_microcode(string filename) {
         import std.stdio;
 
         auto file = File(filename, "wb");
         log_dsp("Dumping DSP microcode to %s", filename);
         for (int i = 0; i < dsp_microcode_size; i += 4) {
-            u32 value = mem.read_be_u32(dsp_microcode_address + i);
+            u32 value = mem.paddr_read_u8(dsp_microcode_address + i);
             file.write(value);
         }
         file.close();

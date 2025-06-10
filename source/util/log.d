@@ -28,6 +28,7 @@ enum Whitelist = [
     LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
+    // LogSource.GDB,
     // LogSource.HOLLYWOOD,
     // LogSource.IPC,
     // LogSource.JIT,
@@ -73,6 +74,8 @@ enum LogSource {
     FRONTEND,
     WIIMOTE,
     MMIO,
+    GDB,
+    UTIL
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

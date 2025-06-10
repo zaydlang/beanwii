@@ -1,30 +1,62 @@
 module util.ringbuffer;
 
+import util.log;
+
 final class RingBuffer(T) {
     T[] buffer;
-    int current_index;
+    int read_ptr;
+    int write_ptr;
+    int size;
+    int total_size;
 
-    this(size_t size) {
-        current_index = 0;
-        buffer = new T[size];
+    this(int size) {
+        this.read_ptr   = 0;
+        this.write_ptr  = 0;
+        this.size       = 0;
+        this.total_size = size;
+        this.buffer     = new T[size];
+    }
+
+    void add_overwrite(T element) {
+        log_hollywood("Adding element to ring buffer: %s", element);
+        size++;
+
+        buffer[write_ptr] = element;
+        
+        write_ptr++;
+        if (write_ptr >= total_size) write_ptr = 0;
     }
 
     void add(T element) {
-        if (buffer.length == 0) return;
+        assert_util(size < total_size, "Ring buffer is full: %x < %x", size, total_size);
+        add_overwrite(element);
+    }
 
-        buffer[current_index] = element;
-        current_index++;
+    T remove() {
+        assert_util(size > 0, "Ring buffer is empty");
 
-        if (current_index >= buffer.length) current_index = 0;
+        size--;
+
+        T element = buffer[read_ptr];
+
+        read_ptr++;
+        if (read_ptr >= total_size) read_ptr = 0;
+    
+        log_hollywood("Removing element from ring buffer %s", element);
+        return element;
     }
 
     T[] get() {
-        T[] return_buffer = new T[buffer.length];
+        T[] return_buffer = new T[0];
 
-        for (int i = 0; i < buffer.length; i++) {
-            return_buffer[i] = buffer[(i + current_index) % buffer.length];
+        for (int i = read_ptr; i != write_ptr; i = (i + 1) % total_size) {
+            return_buffer ~= buffer[i];
         }
 
         return return_buffer;
+    }
+
+    int get_size() {
+        return size;
     }
 }

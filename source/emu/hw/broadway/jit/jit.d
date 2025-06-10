@@ -90,7 +90,7 @@ final class Jit {
 
     u32[][u32] dependents;
 
-    this(JitConfig config, Mem mem, size_t ringbuffer_size) {
+    this(JitConfig config, Mem mem, int ringbuffer_size) {
         this.mem = mem;
         this.code_page_table = new PageTable!JitEntry();
         this.basic_block_link_requests = new PageTable!(BasicBlockLinkRequest[]);
@@ -98,6 +98,7 @@ final class Jit {
         this.code = new Code(config);
         this.codeblocks = new CodeBlockTracker();
         this.idle_loop_detector = new IdleLoopDetector();
+        this.breakpoints = [];
     }
 
     int dick = 0;
@@ -112,9 +113,8 @@ final class Jit {
 
         BlockReturnValue ret = func(state);
 
-        switch (ret) {
+        switch (ret.value) {
             case BlockReturnValue.ICacheInvalidation: {
-                // log_jit("ICache invalidation %x", state.icbi_address);
                 state.icbi_address &= ~31;
                 
                 for (u32 i = 0; i < 32 + code.get_max_instructions_per_block() - 1; i += 4) {
@@ -306,9 +306,33 @@ final class Jit {
         invalidate_all();
     }
 
+    void exit_single_step_mode() {
+        code.exit_single_step_mode();
+        invalidate_all();
+    }
+
     void invalidate_all() {
         code_page_table = new PageTable!JitEntry();
         basic_block_link_requests = new PageTable!(BasicBlockLinkRequest[]);
         codeblocks = new CodeBlockTracker();
+    }
+
+    u32[] breakpoints;
+    void add_breakpoint(u32 address) {
+        breakpoints ~= address;
+
+        // compilation is really fast, and if im in a debugger i don't care about
+        // performance anyway. lets do something thats definitely correct.
+        invalidate_all(); 
+    }
+
+    bool has_breakpoint(u32 address) {
+        foreach (breakpoint; breakpoints) {
+            if (address == breakpoint) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

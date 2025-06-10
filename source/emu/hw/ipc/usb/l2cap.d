@@ -54,6 +54,7 @@ struct InputReport {
         AcknowledgeOutputReport    acknowledge_output_report;
         ReadMemoryAndRegistersData read_memory_and_registers_data;
         DataReport30               data_report_30;
+        DataReport33               data_report_33;
     }
 }
 
@@ -251,3 +252,13 @@ struct DataReport30 {
 }
 
 static assert(DataReport30.sizeof == 2);
+
+struct DataReport33 {
+    align(1):
+
+    u8[2]  button_state;
+    u8[3]  accelerometer;
+    u8[12] ir_camera;
+}
+
+static assert(DataReport33.sizeof == 17);

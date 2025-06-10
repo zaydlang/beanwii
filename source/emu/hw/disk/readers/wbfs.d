@@ -119,7 +119,7 @@ final class WbfsReader : FileReader {
         log_disk("Found game: %s", cast(char[64]) wii_header.game_title);
 
         WiiPartitionInfoTable* partition_info_table = new WiiPartitionInfoTable();
-        this.disk_read(0, PARTITION_INFO_TABLE_OFFSET, partition_info_table, WiiPartitionInfoTableEntry.sizeof);
+        this.disk_read(0, PARTITION_INFO_TABLE_OFFSET, partition_info_table, WiiPartitionInfoTable.sizeof);
 
         bool wii_loaded = false;
         for (int entry = 0; entry < 4; entry++) {
@@ -132,7 +132,9 @@ final class WbfsReader : FileReader {
                 this.disk_read(0, partition_info_offset, &partition_info, WiiPartitionInfo.sizeof);
 
                 WiiPartitionType partition_type = cast(WiiPartitionType) cast(u32) partition_info.partition_type;
+                log_wbfs("Partition Type: %s %d and offset %x", partition_type, cast(u32) partition_info.partition_type, (cast(u32) partition_info.partition_offset) << 2);
                 if (partition_type != WiiPartitionType.DATA) {
+                    continue;
                     error_disk("This disk uses an unsupported partition type: %s", partition_type);
                 }
 
@@ -214,15 +216,46 @@ final class WbfsReader : FileReader {
         }
     }
 
-    private void disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+    public void encrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        size_t first_sector_number                  = address / 0x7C00;
+        size_t first_sector_offset_within_partition = first_sector_number * 0x8000;
+        size_t offset_within_first_sector           = address % 0x7C00;
+        size_t first_address                        = main_partition_address + first_sector_offset_within_partition;
+    
+        size_t current_address       = first_address;
+        size_t current_sector_offset = offset_within_first_sector;
+
         while (size > 0) {
-            u16 wlba_entry = get_wlba_entry_for_address(disk_slot, address);
+            WiiPartitionData partition_data;
+            log_wbfs("DECRYPT: Reading from address: %x", current_address);
+            this.disk_read(disk_slot, current_address, &partition_data, WiiPartitionData.sizeof);
+
+            size_t num_bytes_to_read = min(size, 0x7C00 - current_sector_offset);
+            memcpy(out_buffer, &partition_data.payload, num_bytes_to_read);
+
+            current_address       += 0x8000;
+            size                  -= num_bytes_to_read;
+            current_sector_offset  = 0;
+
+            out_buffer = cast(void*) cast(size_t) out_buffer + num_bytes_to_read;
+        }
+    }
+
+    public WiiTicket* get_ticket() {
+        return &main_partition_header.ticket;
+    }
+
+    private void disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        log_wbfs("Reading from disk slot %d at address %x with size %x", disk_slot, address, size);
+        while (size > 0) {
+            u64 wlba_entry = cast(u64) get_wlba_entry_for_address(disk_slot, address);
 
             size_t disk_chunk   = wlba_entry << this.wbfs_disk_address_chunk_shift;
             size_t disk_offset  = address & this.wbfs_disk_address_offset_mask;
             size_t disk_address = disk_chunk + disk_offset;
 
             size_t num_bytes_to_read = min(size, this.wbfs_sector_size - disk_offset);
+            log_wbfs("memcpy: %x -> %x %x", this.disk_data + disk_address, out_buffer, num_bytes_to_read);
             memcpy(out_buffer, this.disk_data + disk_address, num_bytes_to_read);
             out_buffer = cast(void*) cast(size_t) out_buffer + num_bytes_to_read;
 
@@ -237,5 +270,9 @@ final class WbfsReader : FileReader {
         wlba_entry_address += (address >> this.wbfs_disk_address_chunk_shift) * u16.sizeof; // get to the entry that corresponds to the address
         
         return disk_data.read_be!u16(wlba_entry_address);
+    }
+
+	public u32 get_tmd_size() {
+        return cast(u32) main_partition_header.tmd_size;
     }
 }

@@ -401,14 +401,26 @@ final class Wiimote {
     }
 
     void send_data_report() {
-        if (reporting_mode != 0x30) {
-            error_wiimote("Data reporting mode is not 0x30 (%x). This is not supported yet.", reporting_mode);
-        }
+        // if (reporting_mode != 0x30) {
+            // error_wiimote("Data reporting mode is not 0x30 (%x). This is not supported yet.", reporting_mode);
+        // }
         // TODO
-        DataReport30 data_report;
-        fill_button_state(&data_report);
+        switch (reporting_mode) {
+            case 0x30:
+                DataReport30 data_report;
+                fill_button_state(&data_report);
+                send_input_report_response(InputReport(InputReportId.DataReport30, data_report_30 : data_report), DataReport30.sizeof);
+                break;
+            
+            case 0x33:
+                DataReport33 data_report;
+                fill_button_state(&data_report);
+                // fill_accelerometer_state(&data_report);
+                send_input_report_response(InputReport(InputReportId.DataReport33, data_report_33 : data_report), DataReport33.sizeof);
+                break;
 
-        send_input_report_response(InputReport(InputReportId.DataReport30, data_report_30 : data_report), DataReport30.sizeof);
+            default: error_wiimote("Data reporting mode is not supported (%x)", reporting_mode);
+        }
     }
 
     void set_button(WiimoteButton button, bool pressed) {

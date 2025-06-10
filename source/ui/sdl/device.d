@@ -37,7 +37,8 @@ class SdlDevice : MultiMediaDevice, Window {
     Widget[] widgets;
     Scroll tri_viewer;
 
-    Wii wii;    Hollywood hollywood;
+    Wii wii;
+    Hollywood hollywood;
 
     enum SCREEN_BORDER_WIDTH    = 10;
     enum DEBUGGER_PANEL_WIDTH   = 250;

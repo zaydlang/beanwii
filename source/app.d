@@ -30,15 +30,17 @@ version (unittest) {} else {
 		// auto device = new RengMultimediaDevice(wii, 1, true);
 
 		auto disk_data = load_file_as_bytes(cli_args.rom_path);
-		log_wii("sysconf path: %s", cli_args.sysconf_path);
-		auto sysconf = load_file_as_bytes(cli_args.sysconf_path);
 
 		wii.connect_multimedia_device(device);
 
 		set_logger_on_error_callback(&logger_on_error_callback);
 
 		parse_and_load_file(wii, disk_data);
-		wii.load_sysconf(sysconf);
+
+		bool hang_in_gdb_at_start = cli_args.hang_in_gdb_at_start;
+		if (hang_in_gdb_at_start) {
+			wii.hang_in_gdb_at_start();
+		}
 
 		new Runner(wii, device).run();
 	}

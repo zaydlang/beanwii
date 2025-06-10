@@ -33,7 +33,8 @@ final class Code {
     Block!true block;
     alias block this;
 
-    private int max_instructions_per_block = 20;
+    enum MAX_INSTRUCTIONS_PER_BLOCK = 20;
+    private int current_max_instructions_per_block = MAX_INSTRUCTIONS_PER_BLOCK;
 
     static const CPU_BASE_REG = rdi;
 
@@ -249,14 +250,14 @@ final class Code {
     }
 
     void enter_single_step_mode() {
-        this.max_instructions_per_block = 1;
+        this.current_max_instructions_per_block = 1;
+    }
+
+    void exit_single_step_mode() {
+        this.current_max_instructions_per_block = MAX_INSTRUCTIONS_PER_BLOCK;
     }
 
     int get_max_instructions_per_block() {
-        if (get_guest_pc >= 0x800653A0 && get_guest_pc <= 0x800653c0) {
-            return 1;
-        }
-
-        return max_instructions_per_block;
+        return current_max_instructions_per_block;
     }
 }

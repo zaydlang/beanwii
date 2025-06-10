@@ -52,7 +52,7 @@ final class IPC {
                 if (printme) {
                     log_ipc("printme2! %x %x", paddr, return_value);
                 }
-                log_ipc("IPC: Finalizing new resopnse");
+                log_ipc("IPC: Finalizing new resopnse %x", mem.paddr_read_u32(paddr));
                 log_ipc("state -> WillSendCpuResponseInSomeTime");
                 state = State.WillSendCpuResponseInSomeTime;
                 ipc.finalize_command(paddr, return_value);
@@ -64,7 +64,7 @@ final class IPC {
             log_ipc("OUTSTANDING: %x", num_outstanding_responses);
             
             if (state == State.Idle && !responses.empty) {
-                log_ipc("IPC: Finalizing new response");
+                log_ipc("IPC: Finalizing new response %x", mem.paddr_read_u32(responses.front.paddr));
                 IPCResponse response = responses.front;
                 if (response.printme) {
                     log_ipc("printme1! %x %x", response.paddr, response.return_value);
@@ -341,6 +341,8 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
             log_ipc("COMMAND[%d]: %08x", i, mem.paddr_read_u32(paddr + i));
         }
 
+        mem.paddr_write_u32(paddr + 8, mem.paddr_read_u32(paddr));
+
         log_ipc("Finalizing command %x with return value %x", paddr, return_value);
         hw_ipc_ppcctrl |= 1 << 2;
 
@@ -351,10 +353,6 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
             log_ipc("Raising IPCIRQ: %x", interrupt_controller.ipc_interrupt_pending());
             interrupt_controller.raise_hollywood_interrupt(HollywoodInterruptCause.IPC);
         }
-    }
-
-    void load_sysconf(ubyte[] sysconf) {
-        file_manager.load_sysconf(sysconf);
     }
 
     void load_file_reader(FileReader reader) {

@@ -3,6 +3,7 @@ module emu.hw.wii;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
+import emu.hw.broadway.gdb;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
@@ -26,6 +27,7 @@ import emu.hw.vi.vi;
 import emu.scheduler;
 import ui.device;
 import util.array;
+import util.dump;
 import util.log;
 import util.number;
 
@@ -45,10 +47,13 @@ final class Wii {
     private IPC               ipc;
     private PixelEngine       pixel_engine;
     private Wiimote           wiimote;
+    private GDBStub          gdb_stub;
 
     private Scheduler        scheduler;
 
-    this(size_t ringbuffer_size) {
+    private u32 entrypoint;
+
+    this(int ringbuffer_size) {
         this.command_processor  = new CommandProcessor();
         this.video_interface    = new VideoInterface();
         this.serial_interface   = new SerialInterface();
@@ -63,10 +68,12 @@ final class Wii {
         this.scheduler          = new Scheduler();
         this.pixel_engine       = new PixelEngine();
         this.wiimote            = new Wiimote();
-
+        this.gdb_stub           = new GDBStub();
+        
         this.broadway.connect_mem(this.mem);
         this.broadway.connect_scheduler(this.scheduler);
         this.broadway.connect_ipc(this.ipc);
+        this.broadway.connect_gdb(this.gdb_stub);
         this.external_interface.connect_mem(this.mem);
         this.video_interface.connect_mem(this.mem);
         this.video_interface.connect_interrupt_controller(this.broadway.get_interrupt_controller());
@@ -97,7 +104,8 @@ final class Wii {
         this.hollywood.connect_mem(this.mem);
         this.hollywood.connect_pixel_engine(this.pixel_engine);
         this.hollywood.connect_scheduler(this.scheduler);
-
+        this.gdb_stub.connect_mem(this.mem);
+        this.gdb_stub.connect_broadway(this.broadway);
         // todo: ew
         this.wiimote.connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);
         this.wiimote.connect_scheduler(this.scheduler);
@@ -108,7 +116,15 @@ final class Wii {
     }
 
     public void cycle(int num_cycles) {
-        this.broadway.cycle(num_cycles);
+        do {
+            BroadwayReturnValue broadway_return_value = this.broadway.cycle(num_cycles);
+            num_cycles -= broadway_return_value.num_cycles_ran;
+
+            if (gdb_stub.needs_handling()) {
+                gdb_stub.enter();
+            }
+        } while (num_cycles > 0);
+
         this.video_interface.scanout();
         this.scheduler.print_state();
     }
@@ -210,11 +226,12 @@ final class Wii {
         log_apploader("Apploader close() returned. Obtained entrypoint: %x", this.broadway.get_gpr(3));
 
         broadway.should_log = true;
-        dump(this.mem.mem1, "mem1.bin");
 
-        u32 entrypoint = this.broadway.get_gpr(3);
+        entrypoint = this.broadway.get_gpr(3);
         assert(entrypoint != 0);
         this.broadway.set_pc(entrypoint);
+
+        create_bean_dump();
     }
 
     private void setup_global_memory_value(u8[] wii_disk_data) {
@@ -285,10 +302,7 @@ final class Wii {
     public void on_error() {
         hollywood.on_error();
         broadway.on_error();
-    }
-
-    public void load_sysconf(u8[] sysconf_data) {
-        this.ipc.load_sysconf(sysconf_data);
+        create_bean_dump();
     }
 
     public void init_opengl() {
@@ -300,13 +314,19 @@ final class Wii {
     }
 
     public void debug_dump_memory() {
-        import util.dump;
-        dump(this.mem.mem1, "mem1.bin");
-        dump(this.mem.mem2, "mem2.bin");
+        create_bean_dump();
     }
 
     public void set_wiimote_button(WiimoteButton button, bool pressed) {
         log_wiimote("wii: %s", wiimote);
         this.wiimote.set_button(button, pressed);
+    }
+
+    public void hang_in_gdb_at_start() {
+        gdb_stub.hang_at_start();
+    }
+
+    void create_bean_dump() {
+        dump(new BeanDump(entrypoint, mem.mem1, mem.mem2));
     }
 }

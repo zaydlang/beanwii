@@ -30,6 +30,7 @@ final class Hollywood {
         DrawQuads         = 0x80,
         DrawTriangleFan   = 0xA0,
         DrawTriangleStrip = 0x98,
+        DrawLines         = 0xA8,
 
         DisplayList       = 0x40,
     }
@@ -45,7 +46,6 @@ final class Hollywood {
         WaitingForVertexData,
         WaitingForDisplayListAddress,
         WaitingForDisplayListSize,
-        Ignore,
     }
 
     enum VertexAttributeLocation {
@@ -267,8 +267,6 @@ final class Hollywood {
     private int number_of_expected_bytes_for_shape;
     private int number_of_received_bytes_for_shape;
     
-    // if this isn't enough, i will eat a toad
-    private u8[0x4000] shape_data;
     private int bazinga;
 
     private GLfloat[16] projection_matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -297,11 +295,17 @@ final class Hollywood {
     }
 
     RingBuffer!FifoDebugValue fifo_debug_history;
+    RingBuffer!u8 pending_fifo_data;
+
+    this() {
+        pending_fifo_data = new RingBuffer!u8(0x100000);
+        fifo_debug_history = new RingBuffer!FifoDebugValue(100);
+        log_hollywood("Hollywood constructor");
+    }
 
     void init_opengl() {
         blitting_processor = new BlittingProcessor();
         gl_object_manager = new GlObjectManager();
-        fifo_debug_history = new RingBuffer!FifoDebugValue(100);
 
         state = State.WaitingForCommand;
 
@@ -356,7 +360,7 @@ final class Hollywood {
     }
 
     void write_GX_FIFO(T)(T value, int offset) {
-        log_hollywood("GX FIFO write: %08x %d", value, offset);
+        log_hollywood("GX FIFO write: %08x %d %d %x %x", value, offset, T.sizeof, mem.cpu.state.pc, mem.cpu.state.lr);
         fifo_write_ptr += T.sizeof;
         while (fifo_write_ptr >= fifo_base_end) {
             fifo_write_ptr -= (fifo_base_end - fifo_base_start);
@@ -366,138 +370,156 @@ final class Hollywood {
         process_fifo_write(value, offset);
     }
 
-    void process_fifo_write(T)(T value, int offset) {
-        fifo_debug_history.add(FifoDebugValue(value, state));
-
-        log_hollywood("GX FIFO write: %08x %d", value, offset);
-        
-        final switch (state) {
-            case State.WaitingForCommand:
-                handle_new_command(value, offset);
-                break;
-
-            case State.WaitingForBPWrite:
-                static if (is(T == u32)) {
-                    handle_new_bp_write(value);
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                state = State.WaitingForCommand;
-                break;
-            
-            case State.WaitingForCPReg:
-                static if (is(T == u8)) {
-                    cp_register = value;
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                state = State.WaitingForCPData;
-                break;
-            
-            case State.WaitingForCPData:
-                static if (is(T == u32)) {
-                    handle_new_cp_write(cp_register, value);
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                state = State.WaitingForCommand;
-                break;
-
-            case State.WaitingForTransformUnitDescriptor:
-                static if (is(T == u32)) {
-                    xf_register       = cast(u16)  value.bits(0, 15);
-                    xf_data_remaining = cast(u16) (value.bits(16, 31) + 1);
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                state = State.WaitingForTransformUnitData;
-                break;
-            
-            case State.WaitingForTransformUnitData:
-                static if (is(T == u32)) {
-                    handle_new_transform_unit_write(xf_register, value);
-
-                    xf_data_remaining -= 1;
-                    xf_register += 1;
-
-                    if (xf_data_remaining == 0) {
-                        state = State.WaitingForCommand;
-                    }
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-                break;
-            
-            case State.Ignore:
-                bazinga--;
-                if (bazinga == 0) {
-                    state = State.WaitingForCommand;
-                }
-
-                break;
-            
-            case State.WaitingForNumberOfVertices:
-                static if (is(T == u16)) {
-                    number_of_expected_vertices = value;
-                    number_of_expected_bytes_for_shape = size_of_incoming_vertex(current_vat) * number_of_expected_vertices;
-                    state = State.WaitingForVertexData;
-                    log_hollywood("vat: %s", vats[current_vat]);
-                    log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
-                    log_hollywood("Number of vertices: %d", number_of_expected_vertices);
-                    log_hollywood("Number of expected bytes for shape: %d", number_of_expected_bytes_for_shape);
-
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                break;
-            
-            case State.WaitingForVertexData:
-                for (int i = 0; i < T.sizeof; i++) {
-                    shape_data[number_of_received_bytes_for_shape + i] = cast(u8) value.get_byte(cast(int) T.sizeof - 1 - i);
-                    log_hollywood("shape_data[%d] = %02x", number_of_received_bytes_for_shape + i, shape_data[number_of_received_bytes_for_shape + i]);
-                }
-                number_of_received_bytes_for_shape += T.sizeof;
-
-                if (number_of_received_bytes_for_shape == number_of_expected_bytes_for_shape) {
-                    process_new_shape();
-                    state = State.WaitingForCommand;
-                    number_of_received_bytes_for_shape = 0;
-                } else if (number_of_received_bytes_for_shape > number_of_expected_bytes_for_shape) {
-                    error_hollywood("Received too many bytes for shape");
-                }
-
-                break;
-            
-            case State.WaitingForDisplayListAddress:
-                static if (is(T == u32)) {
-                    auto address = value.bits(0, 31);
-                    log_hollywood("Display list address: %08x", address);
-                    this.display_list_address = address;
-                    state = State.WaitingForDisplayListSize;
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                break;
-            
-            case State.WaitingForDisplayListSize:
-                static if (is(T == u32)) {
-                    auto size = value.bits(0, 31);
-                    log_hollywood("Display list size: %08x", size);
-                    this.display_list_size = size;
-                    state = State.WaitingForCommand;
-                    process_display_list(this.display_list_address, this.display_list_size);
-                } else {
-                    error_hollywood("Unexpected GX FIFO write");
-                }
-
-                break;
+    T read_from_pending_fifo_data(T)() {
+        if (T.sizeof > pending_fifo_data.get_size()) {
+            error_hollywood("Pending FIFO data does not have enough data. %x requested, %x available", T.sizeof, pending_fifo_data.get_size());
         }
+
+        T value;
+        static foreach(i; 0 .. T.sizeof) {
+            value = cast(T) value.set_byte(T.sizeof - i - 1, pending_fifo_data.remove());
+        }
+
+        log_hollywood("read_from_pending_fifo_data: %x %x", value, pending_fifo_data.get_size());
+
+        return value;
+    }
+
+    void process_fifo_write(T)(T value, int offset) {
+        fifo_debug_history.add_overwrite(FifoDebugValue(value, state));
+
+        static foreach(i; 0 .. T.sizeof) {
+            log_hollywood("pending_fifo_data[%d] = %02x", i, value.get_byte(i));
+            pending_fifo_data.add(value.get_byte(T.sizeof - i - 1));
+        }
+
+        log_hollywood("GX FIFO LOG: %08x %d %s", value, offset, state);
+
+        bool handled = false;
+        do {
+            handled = false;
+            final switch (state) {
+                case State.WaitingForCommand:
+                    if (pending_fifo_data.get_size() >= 1) {
+                        handle_new_command(read_from_pending_fifo_data!u8);
+                        handled = true;
+                    }
+
+                    break;
+
+                case State.WaitingForBPWrite:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        handle_new_bp_write(read_from_pending_fifo_data!u32);
+                        state = State.WaitingForCommand;
+                        handled = true;
+                    }
+
+                    break;
+                
+                case State.WaitingForCPReg:
+                    if (pending_fifo_data.get_size() >= 1) {
+                        cp_register = read_from_pending_fifo_data!u8;
+                        state = State.WaitingForCPData;
+                        handled = true;
+                    }
+
+                    break;
+                
+                case State.WaitingForCPData:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        handle_new_cp_write(cp_register, read_from_pending_fifo_data!u32);
+                        state = State.WaitingForCommand;
+                        handled = true;
+                    }
+
+                    break;
+
+                case State.WaitingForTransformUnitDescriptor:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        u32 data         = read_from_pending_fifo_data!u32;
+                        xf_register       = cast(u16)  data.bits(0, 15);
+                        xf_data_remaining = cast(u16) (data.bits(16, 31) + 1);
+
+                        state = State.WaitingForTransformUnitData;
+                        handled = true;
+                    }
+
+                    break;
+                
+                case State.WaitingForTransformUnitData:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        handle_new_transform_unit_write(xf_register, read_from_pending_fifo_data!u32);
+
+                        xf_data_remaining -= 1;
+                        xf_register += 1;
+
+                        if (xf_data_remaining == 0) {
+                            state = State.WaitingForCommand;
+                        }
+
+                        handled = true;
+                    }
+
+                    break;
+                
+                case State.WaitingForNumberOfVertices:
+                    if (pending_fifo_data.get_size() >= 2) {
+                        u16 data = read_from_pending_fifo_data!u16;
+                        number_of_expected_vertices = data;
+                        number_of_expected_bytes_for_shape = size_of_incoming_vertex(current_vat) * number_of_expected_vertices;
+                        state = State.WaitingForVertexData;
+                        log_hollywood("vat: %s", vats[current_vat]);
+                        log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                        log_hollywood("Number of vertices: %d", number_of_expected_vertices);
+                        log_hollywood("Number of expected bytes for shape: %d", number_of_expected_bytes_for_shape);
+                        handled = true;
+                    }
+
+                    break;
+                
+                case State.WaitingForVertexData:
+                    log_hollywood("%d += %d", number_of_received_bytes_for_shape, T.sizeof);
+                    number_of_received_bytes_for_shape += T.sizeof;
+
+                    if (number_of_received_bytes_for_shape >= number_of_expected_bytes_for_shape) {
+                        process_new_shape();
+                        state = State.WaitingForCommand;
+                        number_of_received_bytes_for_shape = 0;
+                        handled = true;
+                    } else if (number_of_received_bytes_for_shape > number_of_expected_bytes_for_shape) {
+                        error_hollywood("Received too many bytes for shape");
+                    }
+
+                    break;
+                
+                case State.WaitingForDisplayListAddress:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        u32 address = read_from_pending_fifo_data!u32;
+                        log_hollywood("Display list address: %08x", address);
+                        this.display_list_address = address;
+                        state = State.WaitingForDisplayListSize;
+                        handled = true;
+                    } else {
+                        error_hollywood("Unexpected GX FIFO write");
+                    }
+
+                    break;
+                
+                case State.WaitingForDisplayListSize:
+                    if (pending_fifo_data.get_size() >= 4) {
+                        u32 size = read_from_pending_fifo_data!u32;
+                        log_hollywood("Display list size: %08x", size);
+                        this.display_list_size = size;
+                        state = State.WaitingForCommand;
+                        process_display_list(this.display_list_address, this.display_list_size);
+                        handled = true;
+                    } else {
+                        error_hollywood("Unexpected GX FIFO write");
+                    }
+
+                    break;
+            }
+        } while (pending_fifo_data.get_size() > 0 && handled);
     }
 
     private size_t next_expected_size() {
@@ -522,12 +544,10 @@ final class Hollywood {
                 return 4;
             case State.WaitingForDisplayListSize:
                 return 4;
-            case State.Ignore:
-                return 1;
         }
     }
 
-    private void handle_new_command(T)(T value, int offset) {
+    private void handle_new_command(T)(T value) {
         // assert(value.sizeof == 1);
         auto command = cast(GXFifoCommand) value.bits(0, 7);
 
@@ -558,6 +578,15 @@ final class Hollywood {
             
             case GXFifoCommand.DrawTriangleStrip | 0: .. case GXFifoCommand.DrawTriangleStrip | 7:
                 current_draw_command = GXFifoCommand.DrawTriangleStrip;
+                current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vats[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+
+                state = State.WaitingForNumberOfVertices;
+                break;
+            
+            case GXFifoCommand.DrawLines | 0: .. case GXFifoCommand.DrawLines | 7:
+                current_draw_command = GXFifoCommand.DrawLines;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
                 log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
@@ -920,6 +949,7 @@ final class Hollywood {
     void handle_new_cp_write(u8 register, u32 value) {
         switch (register) {
             case 0x50: .. case 0x57:
+                log_hollywood("Setting vertex descriptor %d: %08x", register - 0x50, value);
                 auto vcd = &vertex_descriptors[register - 0x50];
                 
                 vcd.texcoord_location = cast(VertexAttributeLocation) value.bit(0);
@@ -935,6 +965,7 @@ final class Hollywood {
                 vcd.normal_location = cast(VertexAttributeLocation) value.bits(11, 12);
                 vcd.color_location[0] = cast(VertexAttributeLocation) value.bits(13, 14);
                 vcd.color_location[1] = cast(VertexAttributeLocation) value.bits(15, 16);
+                log_hollywood("asdf Setting vertex descriptor %d: %s", register - 0x50, *vcd);
 
                 break;
             
@@ -949,6 +980,7 @@ final class Hollywood {
                 vcd.texcoord_location[5] = cast(VertexAttributeLocation) value.bits(10, 11);
                 vcd.texcoord_location[6] = cast(VertexAttributeLocation) value.bits(12, 13);
                 vcd.texcoord_location[7] = cast(VertexAttributeLocation) value.bits(14, 15);
+                log_hollywood("asdf Setting vertex descriptor %d: %s", register - 0x60, *vcd);
                 break;
             
             case 0x70: .. case 0x77:
@@ -967,7 +999,8 @@ final class Hollywood {
                 vat.texcoord_format[0] = cast(CoordFormat) value.bits(22, 24);
                 vat.texcoord_shift[0] = value.bits(25, 29);
                 assert(value.bits(30, 31) == 0b01);
-                
+                log_hollywood("asdf vat %d: %s", register - 0x70, *vat);
+
                 break;
             
             case 0x80: .. case 0x87:
@@ -983,7 +1016,8 @@ final class Hollywood {
                 vat.texcoord_format[3] = cast(CoordFormat) value.bits(19, 21);
                 vat.texcoord_shift[3] = value.bits(22, 26);
                 vat.texcoord_count[4] = value.bit(27) ? 2 : 1;
-                vat.texcoord_format[4] = cast(CoordFormat) value.bits(28, 30);                
+                vat.texcoord_format[4] = cast(CoordFormat) value.bits(28, 30);      
+                log_hollywood("asdf vat %d: %s", register - 0x80, *vat);          
 
                 break;
             
@@ -1000,6 +1034,7 @@ final class Hollywood {
                 vat.texcoord_count[7] = value.bit(23) ? 2 : 1;
                 vat.texcoord_format[7] = cast(CoordFormat) value.bits(24, 26);
                 vat.texcoord_shift[7] = value.bits(27, 31);
+                log_hollywood("asdf vat %d: %s", register - 0x90, *vat);          
           
                 break;
             
@@ -1100,7 +1135,6 @@ final class Hollywood {
     }
 
     private void handle_new_transform_unit_write(u16 register, u32 value) {
-        
         switch (register) {
             case 0x1018:
                 log_hollywood("geometry_matrix: %08x", value);
@@ -1395,24 +1429,6 @@ final class Hollywood {
         return sizes;
     }
 
-    // private void get_data_from_vertex_attribute_location(VertexAttributeLocation location, u32[] data, int offset, int arr_idx) {
-    //     switch (location) {
-    //         case VertexAttributeLocation.Indexed8Bit:
-    //             data[offset] = mem.read_be_u32[shape_data_offset + shape_data_index];
-    //             break;
-    //         case VertexAttributeLocation.Indexed16Bit:
-    //             data[offset] = shape_data[shape_data_offset + shape_data_index];
-    //             break;
-    //         case VertexAttributeLocation.Direct:
-    //             for (int i = 0; i < vat.position_count; i++) {
-    //                 data[offset + i] = shape_data[shape_data_offset + shape_data_index];
-    //             }
-    //             break;
-    //         default:
-    //             error_hollywood("Unimplemented vertex attribute location");
-    //     }
-    // }
-
     private u32 get_vertex_attribute(VertexAttributeLocation location, size_t offset, size_t size, int arr_idx) {
         u32 data = 0;
 
@@ -1437,7 +1453,7 @@ final class Hollywood {
         u32 data = 0;
         for (int i = 0; i < size; i++) {
             data <<= 8;
-            data |= shape_data[offset + i];
+            data |= pending_fifo_data.remove();
         }
 
         log_hollywood("read_from_shape_data_buffer: %x", data);
@@ -1653,6 +1669,10 @@ final class Hollywood {
                     shape.vertices = [vertices[i], vertices[i + 1], vertices[i + 2]];
                     shape_group.shapes ~= shape;
                 }
+                break;
+            
+            case GXFifoCommand.DrawLines:
+                // i dont care
                 break;
             
             default: error_hollywood("Unimplemented draw command: %s", current_draw_command);

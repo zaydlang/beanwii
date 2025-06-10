@@ -150,6 +150,10 @@ final class SlowMem : MemStrategy {
 
         T result;
 
+        if (address == 0x806577e0) {
+            log_disk("dumbass %x %x", cpu.state.pc, cpu.state.lr);
+        }
+
         final switch (region) {
             case MemoryRegion.MEM1:
                 result = this.mem1.read_be!(T)(memory_access.offset);
@@ -190,6 +194,12 @@ final class SlowMem : MemStrategy {
     }
 
     private void write_be(T, bool translate)(u32 address, T value) {
+        foreach (logged_write; logged_writes) {
+            if (address == logged_write) {
+                import std.stdio;
+                writefln("  Write to 0x%08x = 0x%08x (pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
+            }
+        }
         // log_broadway("statepc: %x", cpu.state.pc);
         static if (translate) {
             auto memory_access = this.translate_vaddr_to_paddr(address);
@@ -457,5 +467,10 @@ final class SlowMem : MemStrategy {
         }
             this.paddr_write_u8(address + i, data[i]);
         }
+    }
+
+    u32[] logged_writes = [];
+    void log_memory_write(u32 address) {
+        logged_writes ~= address;
     }
 }

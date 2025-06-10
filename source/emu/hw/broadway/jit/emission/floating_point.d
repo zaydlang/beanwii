@@ -859,3 +859,17 @@ code.label(end);
 
     return EmissionAction.Continue;
 }
+
+EmissionAction emit_mffs(Code code, u32 opcode) {
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    bool rc = opcode.bit(0);
+
+    assert(opcode.bits(11, 20) == 0);
+    assert(rc == 0);
+
+    auto tmp = code.allocate_register();
+    code.mov(code.get_address(GuestReg.FPSCR), tmp);
+    code.set_fpr(guest_rd, tmp.cvt64);
+
+    return EmissionAction.Continue;
+}

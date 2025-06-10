@@ -1,5 +1,6 @@
 module emu.hw.ipc.filemanager;
 
+import emu.encryption.ticket;
 import emu.hw.disk.readers.filereader;
 import emu.hw.ipc.error;
 import emu.hw.ipc.ipc;
@@ -113,9 +114,42 @@ final class FileManager {
             super("/dev/di");
 
             this.file_reader = file_reader;
+            this.current_drive_status = DriveStatus.StatusOk;
+            this.current_error_code   = ErrorCode.StatusOk;
         }
 
         bool cover_irq_pending = false;
+
+        enum DriveStatus {
+            StatusOk                   = 0x00,
+            StatusLidOpen              = 0x01,
+            StatusNoDiscOrChanged      = 0x02,
+            StatusNoDisc               = 0x03,
+            StatusMotorOff             = 0x04,
+            StatusDiscNotInitialized   = 0x05
+        };
+
+        enum ErrorCode {
+            StatusOk                             = 0x000000,
+            StatusMotorStopped                   = 0x020400,
+            StatusDiskIdNotRead                  = 0x020401,
+            StatusMediumNotPresentOrCoverOpened  = 0x023A00,
+            StatusNoSeekComplete                 = 0x030200,
+            StatusUnrecoveredReadError           = 0x031100,
+            StatusTransferProtocolError          = 0x040800,
+            StatusInvalidCommandOperationCode    = 0x052000,
+            StatusAudioBufferNotSet              = 0x052001,
+            StatusLbaOutOfRange                  = 0x052100,
+            StatusInvalidFieldInCommandPacket    = 0x052400,
+            StatusInvalidAudioCommand            = 0x052401,
+            StatusConfigurationOutOfPeriod       = 0x052402,
+            StatusEndOfUserArea                  = 0x056300,
+            StatusMediumMayHaveChanged           = 0x062800,
+            StatusOperatorMediumRemovalRequest   = 0x0B5A01
+        };
+
+        DriveStatus current_drive_status;
+        ErrorCode   current_error_code;
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
             log_disk("DiskDi::ioctl(%x, %d, %d, %d)", ioctl, input_buffer, input_buffer_length, output_buffer);
@@ -123,6 +157,8 @@ final class FileManager {
 
             if (ioctl == 0x86) {
                 cover_irq_pending = false;
+                this.current_error_code = ErrorCode.StatusOk;
+                return 1;
             } else if (ioctl == 0x12) {
                 u8[] data = [
                     0x00, 0x00, 0x00, 0x00,
@@ -135,10 +171,11 @@ final class FileManager {
                     mem.paddr_write_u8(output_buffer + i, data[i]);
                 }
 
+                this.current_error_code = ErrorCode.StatusOk;
                 return 1;
             } else if (ioctl == 0x71) {
                 u32 size   = mem.paddr_read_u32(input_buffer + 4);
-                u32 offset = mem.paddr_read_u32(input_buffer + 8) << 2;
+                u64 offset = (cast(u64) mem.paddr_read_u32(input_buffer + 8)) << 2;
                 log_disk("Read %x bytes from disk at offset %x to %x (%x)", size, offset, output_buffer, output_buffer_length);
 
                 if (output_buffer_length < size) {
@@ -154,9 +191,69 @@ final class FileManager {
                     }
                 }
                 mem.write_bulk(output_buffer, buffer.ptr, size);
+                this.current_error_code = ErrorCode.StatusOk;
                 return 1;
+            } else if (ioctl == 0x8d) {
+                u32 size   = mem.paddr_read_u32(input_buffer + 4);
+                u64 offset = (cast(u64) mem.paddr_read_u32(input_buffer + 8)) << 2;
+                log_disk("Read %x unencrypted bytes from disk at offset %x to %x (%x)", size, offset, output_buffer, output_buffer_length);
+
+                if (output_buffer_length < size) {
+                    error_ipc("Output buffer too small for read");
+                }
+
+                u64[2][] acceptable_ranges = [
+                    cast(u64[2]) [0x000000000, 0x000050000],
+                    cast(u64[2]) [0x118280000, 0x118280020],
+                    cast(u64[2]) [0x1fb500000, 0x1fb500020]
+                ];
+
+                int range_idx = -1;
+                for (int i = 0; i < acceptable_ranges.length; i++) {
+                    auto start = offset;
+                    auto end   = offset + size;
+                    auto range = acceptable_ranges[i];
+                    if (range[0] <= start && start <= range[1] &&
+                        range[0] <= end   && end   <= range[1]) {
+                        
+                        range_idx = i;
+                    }
+                }
+
+                assert_disk(range_idx != -1, "Read from invalid range %x", offset);
+
+                // see https://wiibrew.org/wiki//dev/di DVDLowUnencryptedRead
+                if (range_idx == 0) {
+                    u8[] buffer = new u8[size];
+                    file_reader.encrypted_disk_read(0, offset, buffer.ptr, size);
+                    mem.write_bulk(output_buffer, buffer.ptr, size);
+                    this.current_error_code = ErrorCode.StatusOk;
+                    return 1;
+                } else {
+                    // from https://wiibrew.org/wiki//dev/di:
+                    // Nintendo titles check on startup if they are running an IOS ≥ 30 (and ≤ 253) and if so, perform some 
+                    // DI checks; specifically, they attempt to read 0x20 bytes from 0x460a0000 (or from 0x7ed40000 if the 
+                    // byte at 0x8000319c is 0x81 — possibly related to dual-layer discs?). If this read attempt returns 
+                    // anything other than 2, the game will refuse to start with the message "An error has occurred. Press 
+                    // the Eject Button, remove the Game Disc, and turn off the power to the console. Please read the Wii 
+                    // Operations Manual for further instructions." If the drive error is anything other than 0x0052100 
+                    // (OK/Logical block address out of range), the game will refuse to start with the message "Error #001, 
+                    // unauthorized device has been detected." 
+                    this.current_error_code = ErrorCode.StatusLbaOutOfRange;
+                    return 2;
+                }
+            } else if (ioctl == 0xe0) {
+                // all good!! :)
+                log_disk("output buffer: %x", (this.current_drive_status << 24) | this.current_error_code);
+                mem.paddr_write_u32(output_buffer, (this.current_drive_status << 24) | this.current_error_code);
+                return 1;
+            } else if (ioctl == 0xa4) {
+                this.current_error_code = ErrorCode.StatusInvalidCommandOperationCode;
+                return 2;
+
             }
 
+            error_ipc("no ioctl found %x", ioctl);
             return 0;
         }
     }
@@ -224,8 +321,10 @@ final class FileManager {
         }
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
+            log_ipc("DevNetKdTime::ioctl(%d, %d, %d, %d)", ioctl, input_buffer, input_buffer_length, output_buffer);
+            
             if (ioctl == 0x17) {
-                return 0;
+                mem.paddr_write_u32(output_buffer, 0);
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }
@@ -235,8 +334,14 @@ final class FileManager {
     }
 
     final class DevES : File {
+        FileReader file_reader;
+
         this() {
             super("/dev/es");
+        }
+
+        void load_file_reader(FileReader file_reader) {
+            this.file_reader = file_reader;
         }
 
         override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
@@ -260,8 +365,24 @@ final class FileManager {
                 }
                 mem.paddr_write_u8(addr + cast(int) title_dir.length, 0);
                 mem.paddr_write_u32(data_paddr + 0xC, cast(u32) title_dir.length);
+            } else if (ioctl == 0x1b) {
+                log_ipc("%x %x %x %x", 
+                    mem.paddr_read_u32(data_paddr),
+                    mem.paddr_read_u32(data_paddr + 4),
+                    mem.paddr_read_u32(data_paddr + 8),
+                    mem.paddr_read_u32(data_paddr + 0xC));
+                log_ipc("ES_DiGetTicketView %x %x %x %x", request_paddr, ioctl, argcin, argcio);
+            } else if (ioctl == 0x16) {
+                // ES_GetConsumption
+            } else if (ioctl == 0x12) {
+                // ES_GetNumTicketViews
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 8), 1);
+            } else if (ioctl == 0x14) {
+                // ES_GetTMDViewSize
+                u32 tmd_size = file_reader.get_tmd_size();
+                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 8), tmd_size);
             } else {
-                error_ipc("Unknown ioctlv %d", ioctl);
+                error_ipc("Unknown ioctlv %x", ioctl);
             }
 
             ipc_response_queue.push_later(request_paddr, 0, 40_000);
@@ -312,12 +433,14 @@ final class FileManager {
         }
     }
 
+    bool scuffed = false;
     final class EventHook : File {
         this() {
             super("/dev/stm/eventhook");
         }
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
+            scuffed = true;
             // this only matters for resetting the wii
             return 0;
         }
@@ -569,9 +692,8 @@ final class FileManager {
         override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
             log_ipc("DevFS::ioctlv(%d, %d, %d, %d)", ioctl, argcin, argcio, data_paddr);
 
+            int result = IPCError.OK;
             if (ioctl == 0x4) {
-                int result = IPCError.OK;
-
                 if (argcin != 1) {
                     error_ipc("Invalid argcin %d", argcin);
                 }
@@ -599,6 +721,11 @@ final class FileManager {
                 }
 
                 log_ipc("DevFS::ReadDir(%s, %d)", filename, count);
+
+                if (!std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
+                    result = IPCError.ENOENT_DEVFS;
+                    goto done;
+                }
 
                 if (!std.file.isDir("~/.beanwii/fs".expandTilde ~ filename)) {
                     result = IPCError.EINVAL_DEVFS;
@@ -638,7 +765,8 @@ final class FileManager {
                 error_ipc("Unknown ioctlv %d", ioctl);
             }
 
-            ipc_response_queue.push_later(request_paddr, 0, 40_000);
+            done:
+            ipc_response_queue.push_later(request_paddr, result, 40_000);
         }
     }
 
@@ -886,8 +1014,8 @@ final class FileManager {
     this(IPCResponseQueue ipc_response_queue) {
         this.ipc_response_queue = ipc_response_queue;
         
-        dev_es = new DevES();
         dev_fs = new DevFS();
+        dev_es = new DevES();
         usb_dev_57e305 = new UsbDev57e305(ipc_response_queue);
 
         generate_settings_txt();
@@ -958,6 +1086,7 @@ final class FileManager {
 
         printme = false;
         
+        scuffed = false;
         int result;
         if (fd in open_files) {
             result = open_files[fd].ioctl(ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
@@ -965,7 +1094,8 @@ final class FileManager {
             result = IPCError.ENOENT;
         }
 
-        ipc_response_queue.push_later(paddr, result, 40_000, printme);
+        if (!scuffed)
+            ipc_response_queue.push_later(paddr, result, 40_000, printme);
     }
 
     void ioctlv(u32 paddr, FileDescriptor fd, int ioctl, int argcin, int argcio, u32 data_paddr) {
@@ -1046,20 +1176,21 @@ final class FileManager {
             return new RealFile(filename);
         }
 
-        error_ipc("File not found: %s", filename);
+        if (filename != "/title/00010004/524d4345/data/rksys.dat" &&
+            filename != "/shared2/menu/FaceLib/RFL_DB.dat") {
+            error_ipc("File not found: %s", filename);
+        }
+
         return null;
     }
 
-    void load_sysconf(ubyte[] sysconf) {
-        this.device_files ~= new DataFile("/shared2/sys/SYSCONF", sysconf);
-    }
-
     void load_file_reader(FileReader file_reader) {
+        dev_es.load_file_reader(file_reader);
         this.device_files ~= new DiskDi(file_reader);
     }
 
     void set_title_id(u64 title_id) {
-        dev_es.set_title_id(title_id);
         dev_fs.set_title_id(title_id);
+        dev_es.set_title_id(title_id);
     }
 }

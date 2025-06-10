@@ -2,6 +2,7 @@ module emu.hw.broadway.cpu;
 
 import core.bitop;
 import emu.hw.broadway.exception_type;
+import emu.hw.broadway.gdb;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
 import emu.hw.broadway.state;
@@ -17,6 +18,11 @@ import util.log;
 import util.number;
 import std.stdio;
 
+struct BroadwayReturnValue {
+    u32 num_cycles_ran;
+    bool should_enter_gdb;
+}
+
 int bazinga = 0;
 __gshared 
     bool biglog = false;
@@ -26,8 +32,8 @@ final class Broadway {
     private Mem                 mem;
     public  Jit                 jit;
     private HleContext          hle_context;
-    public InterruptController interrupt_controller;
-    private size_t              ringbuffer_size;
+    public  InterruptController interrupt_controller;
+    private int                 ringbuffer_size;
 
     public  bool                should_log;
 
@@ -39,11 +45,19 @@ final class Broadway {
     private ulong last_decrementer_update;
     private u64 timebase;
 
-    public this(size_t ringbuffer_size) {
+    private GDBStub gdb_stub;
+
+    private u32 entrypoint;
+
+    public this(int ringbuffer_size) {
         this.ringbuffer_size = ringbuffer_size;
         this.interrupt_controller = new InterruptController();
         this.interrupt_controller.connect_cpu(this);
         this.should_log = false;
+    }
+
+    public void connect_gdb_stub(GDBStub gdb_stub) {
+        this.gdb_stub = gdb_stub;
     }
 
     public void connect_mem(Mem mem) {
@@ -143,89 +157,40 @@ final class Broadway {
 
     bool debjit = false;
     bool had_17 = false;
-    public void cycle(u32 num_cycles) {
+    public BroadwayReturnValue cycle(u32 num_cycles) {
         if (state.halted) {
             log_function("CPU is halted, not running\n");
         }
         
         u32 elapsed = 0;
         while (elapsed < num_cycles) {
-            // sussy_floats();
             exception_raised = false;
             u32 old_pc = state.pc;
 
-            // }
-            if (state.pc == 0x80278764) {
-                // jit.enter_single_step_mode();
-                // debjit = true;
-                // log_wii("MtxMul(%x [%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x], [%08x %08x %08x %08x])",
-                //     state.gprs[5],
-                //     mem.read_be_u32(state.gprs[3] + 0),
-                //     mem.read_be_u32(state.gprs[3] + 4),
-                //     mem.read_be_u32(state.gprs[3] + 8),
-                //     mem.read_be_u32(state.gprs[3] + 12),
-                //     mem.read_be_u32(state.gprs[3] + 16),
-                //     mem.read_be_u32(state.gprs[3] + 20),
-                //     mem.read_be_u32(state.gprs[3] + 24),
-                //     mem.read_be_u32(state.gprs[3] + 28),
-                //     mem.read_be_u32(state.gprs[3] + 32),
-                //     mem.read_be_u32(state.gprs[3] + 36),
-                //     mem.read_be_u32(state.gprs[3] + 40),
-                //     mem.read_be_u32(state.gprs[3] + 44),
-                //     mem.read_be_u32(state.gprs[3] + 48),
-                //     mem.read_be_u32(state.gprs[3] + 52),
-                //     mem.read_be_u32(state.gprs[3] + 56),
-                //     mem.read_be_u32(state.gprs[3] + 60),
-                //     mem.read_be_u32(state.gprs[4] + 0),
-                //     mem.read_be_u32(state.gprs[4] + 4),
-                //     mem.read_be_u32(state.gprs[4] + 8),
-                //     mem.read_be_u32(state.gprs[4] + 12)
-                //     );
+            if (old_pc == 0x8000403c) {
+                log_jit("bad function %x", state.lr);
             }
-
-            // if (debjit)
-            // log_state(&state);
-
-
-            if (state.pc ==0x8006d6f4) {
+            if (old_pc == 0x804c5f88) {
+                log_jit("dickwad: %x", state.gprs[3]);
             }
-            if (state.pc ==0x8019ea58) {
-                log_ipc("ReadMapFile(%08x %08x %08x)", state.gprs[3], state.gprs[4], state.gprs[5]);
-                u32 str_address = state.gprs[3];
-                string str = "";
-                while (true) {
-                    u8 c = mem.read_be_u8(str_address);
-                    str_address += 1;
-                    if (c == 0) {
-                        break;
-                    }
-                    str ~= cast(char) c;
-                }
-
-                log_ipc("ReadMapFile: %s", str);
-                // log_wii("second comparison mismatch between %x and %x %x %x", state.gprs[18], state.gprs[0], mem.read_be_u16(mem.read_be_u32(state.gprs[24] + 0x10) + 1)
-                // , mem.read_be_u32(state.gprs[24] + 0x10));
+            if (old_pc == 0x804a38fc) {
+                log_jit("crash_and_cry()");
             }
-            if (state.pc == 0x800652d4) {
-                // log_wii("broken();");
-                // dump_stack();
-                // log_state(&state);
-            }
-
-            if (state.pc == 0x802613e4) {
-            }
-                // log_wii("state at: %x", state.pc);
-                // log_state(&state);
 
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
             if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
-                log_wii("PC: %x", state.pc);
-                // log_state(&state);
-                // dump_stack();
+                log_jit("PC: %x", state.pc);
+                log_state(&state);
             }
 
-            if (jit_return_value.block_return_value == BlockReturnValue.IdleLoopDetected) {
+            if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
+                gdb_stub.breakpoint_hit(state.pc);
+                return BroadwayReturnValue(elapsed, true);
+            }
+
+            if (jit_return_value.block_return_value.value == BlockReturnValue.IdleLoopDetected &&
+                !jit_return_value.block_return_value.breakpoint_hit) {
                 auto fast_forward = scheduler.tick_to_next_event();
                 scheduler.process_events();
                 elapsed += fast_forward;
@@ -237,11 +202,9 @@ final class Broadway {
                 if (elapsed < num_cycles) {
                     continue;
                 } else {
-                    return;
+                    return BroadwayReturnValue(elapsed, false);
                 }
             }
-
-            // state.dec -= delta;
 
             scheduler.tick(delta);
             scheduler.process_events();
@@ -254,7 +217,7 @@ final class Broadway {
             elapsed += delta;
         }
 
-        // log_function("decrementer: %x %x", state.dec, state.dar);
+        return BroadwayReturnValue(elapsed, false);
     }
 
     // TODO: do single stepping properly
@@ -286,10 +249,6 @@ final class Broadway {
         log_state(&state);
         // dump_stack();
         jit.on_error();
-
-        import util.dump;
-        dump(this.mem.mem1, "mem1.bin");
-        dump(this.mem.mem2, "mem2.bin");
     }
 
     // here are the really annoying-to-write functions:
@@ -525,6 +484,26 @@ final class Broadway {
 
         // log_broadway("Updating timebase: %x %x", delta, timebase);
         timebase += delta / 12;
+    }
+
+    void add_breakpoint(u32 address) {
+        jit.add_breakpoint(address);
+    }
+
+    void connect_gdb(GDBStub gdb_stub) {
+        this.gdb_stub = gdb_stub;
+    }
+
+    bool in_single_step_mode;
+
+    void enter_single_step_mode() {
+        in_single_step_mode = true;
+        jit.enter_single_step_mode();
+    }
+
+    void exit_single_step_mode() {
+        in_single_step_mode = false;
+        jit.exit_single_step_mode();
     }
 }
  

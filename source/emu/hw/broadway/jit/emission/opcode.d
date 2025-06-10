@@ -82,10 +82,12 @@ enum PrimaryOp04SecondaryOpcode {
 enum PrimaryOp13SecondaryOpcode {
     BCCTR  = 0x210,
     BCLR   = 0x010,
-    RFI    = 0x032,
+    CREQV  = 0x121,
     CROR   = 0x1C1,
     CRXOR  = 0x0C1,
     ISYNC  = 0x096,
+    MCRF   = 0x000,
+    RFI    = 0x032,
 }
 
 enum PrimaryOp1FSecondaryOpcode {
@@ -206,6 +208,7 @@ enum PrimaryOp3FSecondaryOpcode {
     FRSQRTEX = 0x01A,
     FSEL     = 0x017,
     FSUB     = 0x014,
+    MFFS     = 0x247,
     MTFSF    = 0x2C7,
     MFTSB1   = 0x026
 }

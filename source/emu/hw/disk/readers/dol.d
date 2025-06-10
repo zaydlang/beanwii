@@ -1,5 +1,6 @@
 module emu.hw.disk.readers.dol;
 
+import emu.encryption.ticket;
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
 import emu.hw.disk.readers.filereader;
@@ -54,5 +55,19 @@ final class DolReader : FileReader {
 
     override public void decrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
         error_dol("Encrypted read not supported for DOL files.");
+    }
+
+    override public void encrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        error_dol("Encrypted read not supported for DOL files.");
+    }
+
+    override public WiiTicket* get_ticket() {
+        error_dol("Ticket not supported for DOL files.");
+        return null;
+    }
+
+	public u32 get_tmd_size() {
+        error_dol("Tmd size not supported for DOL files.");
+        return 0;
     }
 }
