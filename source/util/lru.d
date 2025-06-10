@@ -1,4 +1,4 @@
-// module util.lru;
+module util.lru;
 
 // import util.bitop;
 
