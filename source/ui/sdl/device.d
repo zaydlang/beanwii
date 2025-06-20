@@ -64,6 +64,8 @@ class SdlDevice : MultiMediaDevice, Window {
 
     float[16] projection_matrix;
 
+    SdlButton pause_button;
+
     this(Wii wii, int screen_scale, bool start_debugger) {
         this.wii = wii;
         
@@ -143,17 +145,17 @@ class SdlDevice : MultiMediaDevice, Window {
             this.font_spm_medium = new Font("source/ui/sdl/font/SuperMarioScript2Demo-Regular.ttf", ft, font_shader, 26);
 
             auto button_width = (DEBUGGER_PANEL_WIDTH - SCREEN_BORDER_WIDTH) / 2;
-            auto button = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, SCREEN_BORDER_WIDTH + DEBUGGER_PANEL_HEIGHT - 50, button_width, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Pause", widget_shader,
-                (void* _) { paused = !paused; }, (void* _) {}, null);
-            widgets ~= button;
+            pause_button = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, SCREEN_BORDER_WIDTH + DEBUGGER_PANEL_HEIGHT - 50, button_width, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Pause", widget_shader,
+                (void* _) { paused = !paused; pause_button.text = paused ? "Resume" : "Pause"; }, (void* _) {}, (void* _) {}, null);
+            widgets ~= pause_button;
             auto exit = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 3 + button_width, SCREEN_BORDER_WIDTH + DEBUGGER_PANEL_HEIGHT - 50, button_width, 50, from_hex(0xef9688), from_hex(0x444444), font_spm_medium, "Exit", widget_shader,
-                (void* _) { running = false; }, (void* _) {}, null);
+                (void* _) { running = false; }, (void* _) {}, (void* _) {}, null);
             widgets ~= exit;
             auto reload = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 60, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Reload Shaders", widget_shader,
-                (void* _) { hollywood.debug_reload_shaders(); }, (void* _) {}, null);
+                (void* _) { hollywood.debug_reload_shaders(); }, (void* _) {}, (void* _) {}, null);
             widgets ~= reload;
             auto dump_memory = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 120, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Dump Memory", widget_shader,
-                (void* _) { wii.debug_dump_memory(); }, (void* _) {}, null);
+                (void* _) { wii.debug_dump_memory(); }, (void* _) {}, (void* _) {}, null);
             widgets ~= dump_memory;
 
             tri_viewer = new Scroll(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, SCREEN_BORDER_WIDTH + DEBUGGER_PANEL_HEIGHT - 360, DEBUGGER_PANEL_WIDTH, 300, from_hex(0xCAF0F8), widget_shader, from_hex(0x444444), font_spm_medium, "Triangles");
@@ -251,7 +253,7 @@ class SdlDevice : MultiMediaDevice, Window {
                     
                     for (int i = 0; i < drawn_shape_groups.length; i++) {
                         auto tri = new SdlButton(0, 0, DEBUGGER_PANEL_WIDTH, 30, from_hex(0x90e0ef), from_hex(0x0077b6), font_spm_medium, "Group #%d".format(i), widget_shader,
-                            (void* idx) { create_debug_tri_window(this, cast(int) idx); }, (void* idx) { hovered_shape = cast(int) idx; }, cast(void*) i);
+                            (void* idx) { create_debug_tri_window(this, cast(int) idx); }, (void* idx) { hovered_shape = cast(int) idx; }, (void* idx) { if (hovered_shape == cast(int) idx) hovered_shape = -1; }, cast(void*) i);
                         items ~= tri;
                     }
 
@@ -297,7 +299,6 @@ class SdlDevice : MultiMediaDevice, Window {
                         log_frontend("hovered_shape: %d", hovered_shape);
                         glUseProgram(debug_tri_shader);
                         hollywood.debug_draw_shape_group(drawn_shape_groups[hovered_shape]);
-                        hovered_shape = -1;
                     }
                 }
 
@@ -437,7 +438,7 @@ final class DebugTriWindow : Window {
 
         SDL_GL_MakeCurrent(window, gl_context);
         auto exit_button = new SdlButton(0, 0, DEBUG_TRI_WINDOW_WIDTH, 100, from_hex(0xef9688), from_hex(0x444444), parent.font_spm_medium, "Close", parent.widget_shader,
-            (void* _) { SDL_GL_DeleteContext(gl_context); SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); parent.on_window_close(this); }, (void* _) {}, null);
+            (void* _) { SDL_PumpEvents(); SDL_GL_DeleteContext(gl_context); SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); parent.on_window_close(this); }, (void* _) {}, (void* _) {}, null);
         widgets ~= exit_button;
 
         for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {

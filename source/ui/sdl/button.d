@@ -30,10 +30,11 @@ final class SdlButton : Widget {
     bool clicked = false;
     bool hovered = false;
     void delegate(void*) on_click;
-    void delegate(void*) on_hover;
+    void delegate(void*) on_hover_start;
+    void delegate(void*) on_hover_end;
     void* user_data;
 
-    this(int x, int y, int w, int h, Color background_color, Color text_color, Font font, string text, GLint shader, void delegate(void*) on_click, void delegate(void*) on_hover, void* user_data) {
+    this(int x, int y, int w, int h, Color background_color, Color text_color, Font font, string text, GLint shader, void delegate(void*) on_click, void delegate(void*) on_hover_start, void delegate(void*) on_hover_end, void* user_data) {
         super(x, y, w, h);
 
         this.default_color = background_color;
@@ -53,7 +54,8 @@ final class SdlButton : Widget {
         this.text = text;
 
         this.on_click = on_click;
-        this.on_hover = on_hover;
+        this.on_hover_start = on_hover_start;
+        this.on_hover_end = on_hover_end;
         this.user_data = user_data;
     }
 
@@ -96,13 +98,19 @@ final class SdlButton : Widget {
                 current_color = hover_color;
                 clicked = false;
 
-                hovered = true;
-                on_hover(user_data);
+                if (!hovered) {
+                    hovered = true;
+                    on_hover_start(user_data);
+                }
             }
         } else {
             current_color = default_color;
             clicked = false;
-            hovered = false;
+
+            if (hovered) {
+                on_hover_end(user_data);
+                hovered = false;
+            }
         }
     }
 }
