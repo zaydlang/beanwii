@@ -15,9 +15,11 @@ import ui.device;
 import ui.sdl.button;
 import ui.sdl.color;
 import ui.sdl.font;
+import ui.sdl.hollywood.texturewidget;
 import ui.sdl.rect;
 import ui.sdl.scroll;
 import ui.sdl.shaders.shader;
+import ui.sdl.tab;
 import ui.sdl.widget;
 import ui.sdl.window;
 import util.bitop;
@@ -437,9 +439,9 @@ final class DebugTriWindow : Window {
         }
 
         SDL_GL_MakeCurrent(window, gl_context);
-        auto exit_button = new SdlButton(0, 0, DEBUG_TRI_WINDOW_WIDTH, 100, from_hex(0xef9688), from_hex(0x444444), parent.font_spm_medium, "Close", parent.widget_shader,
-            (void* _) { SDL_PumpEvents(); SDL_GL_DeleteContext(gl_context); SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); parent.on_window_close(this); }, (void* _) {}, (void* _) {}, null);
-        widgets ~= exit_button;
+        // auto exit_button = new SdlButton(0, 0, DEBUG_TRI_WINDOW_WIDTH, 100, from_hex(0xef9688), from_hex(0x444444), parent.font_spm_medium, "Close", parent.widget_shader,
+            // (void* _) { SDL_PumpEvents(); SDL_GL_DeleteContext(gl_context); SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); parent.on_window_close(this); }, (void* _) {}, (void* _) {}, null);
+        // widgets ~= exit_button;
 
         for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
             tev_stage_color_text_handles[i] = parent.font_spm_small.obtain_text_handle();
@@ -452,38 +454,159 @@ final class DebugTriWindow : Window {
 
         tev_stage_title_handle = parent.font_spm_medium.obtain_text_handle();
 
-        widgets ~= new Rect(10, 300, DEBUG_TRI_WINDOW_WIDTH - 20, DEBUG_TRI_WINDOW_HEIGHT - 310, from_hex(0x90e0ef), parent.widget_shader);
+        TextureWidget[8] texture_widgets = new TextureWidget[8];
+        
+        GLint debug_texture_shader = load_shader("source/ui/sdl/shaders/debug_texture");
+        texture_widgets = [
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[0], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[1], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[2], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[3], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[4], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[5], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[6], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[7], parent.font_spm_small),
+        ];
+
+        Rect[8] texture_rects = new Rect[8];
+        texture_rects = [
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
+        ];
+
+        // widgets ~= new Rect(10, 300, DEBUG_TRI_WINDOW_WIDTH - 20, DEBUG_TRI_WINDOW_HEIGHT - 310, from_hex(0x90e0ef), parent.widget_shader);    
+        widgets ~= new TabManager(10, 10, DEBUG_TRI_WINDOW_WIDTH - 20, DEBUG_TRI_WINDOW_HEIGHT - 20, 
+            cast(Widget[]) texture_widgets, from_hex(0x90e0ef), parent.font_spm_small, parent.widget_shader);
+    }
+
+    string generate_optimized_tev_equation(string dest, float scale, float bias, string a, string b, string c, string d) {
+        string equation;
+
+        // equation = (d + ((1 - c) * a + c * b) + bias) * scale
+        // equation = d + ...
+        
+        if (scale == 0) {
+            return "0";
+        }
+
+        if (d != "0") {
+            equation = d;
+        } else {
+            equation = "";
+        }
+
+        // equation += (1 - c) * a + ...
+        if (a == "0" || c == "1") {
+            // do nothing
+        } else if (a == "1") {
+            if (equation != "") equation ~= " + ";
+            equation ~= "(1 - " ~ c ~ ")";
+        } else if (c == "0") {
+            if (equation != "") equation ~= " + ";
+            equation ~= a;
+        } else {
+            if (equation != "") equation ~= " + ";
+            equation ~= "(1 - " ~ c ~ ") * " ~ a;
+        }
+    
+        // equation += c * b + ...
+        if (b == "0" || c == "0") {
+            // do nothing
+        } else if (b == "1") {
+            if (equation != "") equation ~= " + ";
+            equation ~= c;
+        } else if (c == "1") {
+            if (equation != "") equation ~= " + ";
+            equation ~= b;
+        } else {
+            if (equation != "") equation ~= " + ";
+            equation ~= c ~ " * " ~ b;
+        }
+
+        // equation *= scale
+        if (bias != 0) {
+            equation = "(" ~ equation ~ " + %.1f)".format(bias);
+        }
+        
+        if (scale != 1) {
+            equation = "(" ~ equation ~ ") * %.1f".format(scale);
+        }
+        
+        return "%s = %s".format(dest, equation);
     }
 
     string calculate_color_tev_stage_text(int stage) {
-    //     string a = calculate_color_input_text(debug_shape.tev_config.in_color_a[stage]);
-    //     string b = calculate_color_input_text(debug_shape.tev_config.in_color_b[stage]);
-    //     string c = calculate_color_input_text(debug_shape.tev_config.in_color_c[stage]);
-    //     string d = calculate_color_input_text(debug_shape.tev_config.in_color_d[stage]);
-    //     string bias = "%.1f".format(debug_shape.tev_config.bias_color[stage]);
-    //     string scale = "%.1f".format(debug_shape.tev_config.scale_color[stage]);
-    //     int dest = debug_shape.tev_config.color_dest[stage];
+        string a = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_a);
+        string b = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_b);
+        string c = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_c);
+        string d = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_d);
+        float bias_val = debug_shape.tev_config.stages[stage].bias_color;
+        float scale_val = debug_shape.tev_config.stages[stage].scale_color;
+        int dest = debug_shape.tev_config.stages[stage].color_dest;
 
-    //     return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
-    //         dest, d, c, a, c, b, bias, scale
-    //     ));
-    // }
-        return "";
+        return generate_optimized_tev_equation(
+            "r%d".format(dest), 
+            scale_val, 
+            bias_val, 
+            a, b, c, d
+        );
+
+
+        // d + (1 - c) * a + c * b;
+
+        // string equation;
+        
+        // // equation = d + ...
+        // if (d != "0") {
+        //     equation ~= d;
+        // }
+
+        // // equation += (1 - c) * a + ...
+        // if (a == "0" || c == "1") {
+        //     // do nothing
+        // } else if (a == "1") {
+        //     equation ~= " + (1 - " ~ c ~ ")";
+        // } else if (c == "0") {
+        //     equation ~= " + " ~ a;
+        // } else {
+        //     equation ~= " + (1 - " ~ c ~ ") * " ~ a;
+        // }
+    
+        // // equation += c * b + ...
+        // if (b == "0" || c == "0") {
+        //     // do nothing
+        // } else if (b == "1") {
+        //     equation ~= " + " ~ c;
+        // } else if (c == "1") {
+        //     equation ~= " + " ~ b;
+        // } else {
+        //     equation ~= " + " ~ c ~ " * " ~ b;
+        // }
+        
+        // return "r%d = %s".format(dest, equation);
     }
 
     string calculate_alfa_tev_stage_text(int stage) {
-        // string a = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_a[stage]);
-        // string b = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_b[stage]);
-        // string c = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_c[stage]);
-        // string d = calculate_alfa_input_text(debug_shape.tev_config.in_alfa_d[stage]);
-        // string bias = "%.1f".format(debug_shape.tev_config.bias_alfa[stage]);
-        // string scale = "%.1f".format(debug_shape.tev_config.scale_alfa[stage]);
-        // int dest = debug_shape.tev_config.alfa_dest[stage];
+        string a = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_a);
+        string b = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_b);
+        string c = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_c);
+        string d = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_d);
+        float bias_val = debug_shape.tev_config.stages[stage].bias_alfa;
+        float scale_val = debug_shape.tev_config.stages[stage].scale_alfa;
+        int dest = debug_shape.tev_config.stages[stage].alfa_dest;
 
-        // return ("r%d = ((%s + (1 - %s) * %s + %s * %s) + %s) * %s".format(
-        //     dest, d, c, a, c, b, bias, scale
-        // ));
-        return "";
+        return generate_optimized_tev_equation(
+            "a%d".format(dest), 
+            scale_val, 
+            bias_val, 
+            a, b, c, d
+        );
     }
 
     string calculate_color_input_text(int color_input) {
@@ -550,25 +673,25 @@ final class DebugTriWindow : Window {
             widget.draw();
         }
 
-        for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
-            parent.font_spm_small.set_string(
-                tev_stage_color_text_handles[i], from_hex(0x444444), Justify.Left,
-                calculate_color_tev_stage_text(i), 
-                20, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
-            );
+        // for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
+        //     parent.font_spm_small.set_string(
+        //         tev_stage_color_text_handles[i], from_hex(0x444444), Justify.Left,
+        //         calculate_color_tev_stage_text(i), 
+        //         20, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
+        //     );
 
-            parent.font_spm_small.set_string(
-                tev_stage_alfa_text_handles[i], from_hex(0x444444), Justify.Left,
-                calculate_alfa_tev_stage_text(i), 
-                10 + DEBUG_TRI_WINDOW_WIDTH / 2, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
-            );
-        }
+        //     parent.font_spm_small.set_string(
+        //         tev_stage_alfa_text_handles[i], from_hex(0x444444), Justify.Left,
+        //         calculate_alfa_tev_stage_text(i), 
+        //         10 + DEBUG_TRI_WINDOW_WIDTH / 2, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
+        //     );
+        // }
 
-        parent.font_spm_medium.set_string(
-            tev_stage_title_handle, from_hex(0x444444), Justify.Center,
-            "TEV Stages", 
-            20, DEBUG_TRI_WINDOW_HEIGHT - 40, DEBUG_TRI_WINDOW_WIDTH, 30
-        );
+        // parent.font_spm_medium.set_string(
+            // tev_stage_title_handle, from_hex(0x444444), Justify.Center,
+            // "TEV Stages", 
+            // 20, DEBUG_TRI_WINDOW_HEIGHT - 40, DEBUG_TRI_WINDOW_WIDTH, 30
+        // );
 
         for (int i = 0; i < 8; i++) {
             // if (!debug_shape.enabled_textures_bitmap.bit(i)) {

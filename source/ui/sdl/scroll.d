@@ -65,12 +65,14 @@ final class Scroll : Widget {
     void set_items(Widget[] new_items) {
         items = [];
         
-        max_scroll_offset = 5;
+        int total_content_height = 5;
         for (int i = 0; i < new_items.length; i++) {
             items ~= new_items[i];
-            max_scroll_offset += new_items[i].get_h() + 5;
+            total_content_height += new_items[i].get_h() + 5;
         }
-        max_scroll_offset -= h;
+        
+        int scrollable_area = h - 50;
+        max_scroll_offset = total_content_height - scrollable_area;
 
         if (max_scroll_offset < 0) {
             max_scroll_offset = 0;
@@ -112,7 +114,7 @@ final class Scroll : Widget {
 
     override void update(int mouse_x, int mouse, int mouse_state, long mouse_wheel) {
         if (mouse_x >= x && mouse_x <= x + w && mouse >= y && mouse <= y + h) {
-            scroll_offset -= mouse_wheel * 10;
+            scroll_offset -= mouse_wheel * 15;
 
             if (scroll_offset < 0) {
                 scroll_offset = 0;

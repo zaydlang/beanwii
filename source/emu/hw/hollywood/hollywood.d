@@ -16,6 +16,7 @@ import util.ringbuffer;
 
 alias Shape = Hollywood.Shape;
 alias ShapeGroup = Hollywood.ShapeGroup;
+alias Texture = Hollywood.Texture;
 
 final class Hollywood {
     enum GXFifoCommand {
@@ -1952,6 +1953,75 @@ final class Hollywood {
 
     void debug_redraw(ShapeGroup[] shape_groups) {
         draw_shape_groups(shape_groups);
+    }
+
+    void debug_draw_texture(Texture texture, int x, int y, int w, int h) {
+        GLuint texture_id = gl_object_manager.allocate_texture_object();
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture_id);
+        glActiveTexture(GL_TEXTURE0);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) texture.height, cast(GLint) texture.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, texture.data);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        glUniform1i(texture_uniform_locations[0], 0);
+
+        auto xf = cast(float) x;
+        auto yf = cast(float) y;
+        auto wf = cast(float) w;
+        auto hf = cast(float) h;
+
+        log_frontend("x from %f to %f, y from %f to %f, w %f, h %f", xf, xf + wf, yf, yf + hf, wf, hf);
+
+        float display_ratio = wf / hf;
+        float texture_ratio = cast(float) texture.width / cast(float) texture.height;
+        if (display_ratio > texture_ratio) {
+            // display is wider than texture
+            wf = cast(float) texture.width * (hf / cast(float) texture.height);
+        } else if (display_ratio < texture_ratio) {
+            // display is taller than texture
+            auto new_hf = cast(float) texture.height * (wf / cast(float) texture.width);
+            yf += (hf - new_hf);
+            hf = new_hf;
+        }
+
+        // im so goddamn fucking sorry
+        import ui.sdl.device;
+        int screen_width  = DebugTriWindow.DEBUG_TRI_WINDOW_WIDTH;
+        int screen_height = DebugTriWindow.DEBUG_TRI_WINDOW_HEIGHT;
+
+        float[20] vertices = [
+            xf / screen_width * 2 - 1, yf / screen_height * 2 - 1, 0.0,
+            1.0, 0.0,
+            xf / screen_width * 2 - 1, (yf + hf) / screen_height * 2 - 1, 0.0,
+            0.0, 0.0,
+            (xf + wf) / screen_width * 2 - 1, (yf + hf) / screen_height * 2 - 1, 0.0,
+            0.0, 1.0,
+            (xf + wf) / screen_width * 2 - 1, yf / screen_height * 2 - 1, 0.0,
+            1.0, 1.0,
+        ];
+
+        uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
+        uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
+
+        glBindVertexArray(vertex_array_object);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
+
+        auto position_location = glGetAttribLocation(gl_program, "in_Position");
+        glEnableVertexAttribArray(position_location);
+        glVertexAttribPointer(position_location, 3, GL_FLOAT, GL_FALSE, float.sizeof * 5, cast(void*) 0);
+
+        auto uv_location = glGetAttribLocation(gl_program, "texcoord");
+        glEnableVertexAttribArray(uv_location);
+        glVertexAttribPointer(uv_location, 2, GL_FLOAT, GL_FALSE, float.sizeof * 5, cast(void*) (float.sizeof * 3));
+
+        log_frontend("locations: %d %d", position_location, uv_location);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
+        glBufferData(GL_ARRAY_BUFFER, vertices.length * float.sizeof, cast(void*) vertices.ptr, GL_STATIC_DRAW);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
     void debug_reload_shaders() {

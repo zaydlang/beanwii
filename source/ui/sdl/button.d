@@ -86,6 +86,7 @@ final class SdlButton : Widget {
     }
 
     override void update(int mouse_x, int mouse_y, int mouse_state, long mouse_wheel) {
+        log_frontend("update button at (%d, %d) with size (%d, %d)", x, y, w, h);
         if (mouse_x >= x && mouse_x <= x + w && mouse_y >= y && mouse_y <= y + h) {
             if (mouse_state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
                 current_color = click_color;
@@ -112,5 +113,12 @@ final class SdlButton : Widget {
                 hovered = false;
             }
         }
+    }
+
+    void set_default_color(Color color) {
+        this.default_color = color;
+        this.hover_color = darken(color, 0.15f);
+        this.click_color = darken(color, 0.3f);
+        this.current_color = color;
     }
 }

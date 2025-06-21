@@ -22,3 +22,8 @@ Color darken(Color color, float factor) {
     factor = 1.0f - factor;
     return Color(color.r * factor, color.g * factor, color.b * factor, color.a);
 }
+
+Color lighten(Color color, float factor) {
+    factor = 1.0f + factor;
+    return Color(color.r * factor, color.g * factor, color.b * factor, color.a);
+}

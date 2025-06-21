@@ -24,6 +24,7 @@ final class Rect : Widget {
         this.color = color;
         this.shader = shader;
 
+        log_frontend("glUseProgram(%d) for Rect at (%d, %d, %d, %d)", shader, x, y, w, h);
         glUseProgram(shader);
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
