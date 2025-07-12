@@ -22,16 +22,16 @@ final class Checkbox : Widget {
 
         this.font = font;
 
-        border = new Rect(x, y, w, h, border_color, shader);
-        inner = new Rect(x + 3, y + 3, w - 6, h - 6, inner_color, shader);
+        // border = new Rect(x, y, w, h, border_color, shader);
+        // inner = new Rect(x + 2, y + 2, w - 4, h - 4, inner_color, shader);
         on = false;
         text_handle = font.obtain_text_handle();
     }
 
     override void draw() {
-        border.draw();
-        inner.draw();
-        font.set_string(text_handle, on ? from_hex(0xef9688) : from_hex(0xb1ef88), Justify.Center, on ? "O" : "X", x, y, w, h);
+        // border.draw();
+        // inner.draw();
+        font.set_string(text_handle, on ? from_hex(0xb1ef88) : from_hex(0xef9688), Justify.Center, on ? "O" : "X", x, y, w, h);
     }
 
     override void update(int mouse_x, int mouse_y, int mouse_state, long mouse_wheel) {}

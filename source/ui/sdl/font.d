@@ -83,6 +83,7 @@ final class Font {
         load_char(face, '[');
         load_char(face, ']');
         load_char(face, '=');
+        load_char(face, ':');
 
         FT_Done_Face(face);
     }

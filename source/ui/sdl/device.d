@@ -15,7 +15,9 @@ import ui.device;
 import ui.sdl.button;
 import ui.sdl.color;
 import ui.sdl.font;
+import ui.sdl.hollywood.texgenviewer;
 import ui.sdl.hollywood.texturewidget;
+import ui.sdl.matrixviewer;
 import ui.sdl.rect;
 import ui.sdl.scroll;
 import ui.sdl.shaders.shader;
@@ -53,6 +55,7 @@ class SdlDevice : MultiMediaDevice, Window {
     GLint debug_tri_shader;
     Font font_spm_small;
     Font font_spm_medium;
+    Font font_roboto;
 
     bool paused;
     bool running;
@@ -105,7 +108,7 @@ class SdlDevice : MultiMediaDevice, Window {
         SDL_Surface* screen = SDL_GetWindowSurface(window);
         
         if (!screen) {
-            error_frontend("SDL_GetWindowSurface returned an error: %s\n", SDL_GetError());
+            error_frontend("SDL_GetWindoaSurface returned an error: %s\n", SDL_GetError());
         }
 
         frame_buffer = cast(SDL_Color*) screen.pixels;
@@ -146,6 +149,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
             this.font_spm_small  = new Font("source/ui/sdl/font/SuperMarioScript2Demo-Regular.ttf", ft, font_shader, 18);
             this.font_spm_medium = new Font("source/ui/sdl/font/SuperMarioScript2Demo-Regular.ttf", ft, font_shader, 26);
+            this.font_roboto = new Font("source/ui/sdl/font/RobotoMono-VariableFont_wght.ttf", ft, font_shader, 12);
 
             auto button_width = (DEBUGGER_PANEL_WIDTH - SCREEN_BORDER_WIDTH) / 2;
             pause_button = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, SCREEN_BORDER_WIDTH + DEBUGGER_PANEL_HEIGHT - 50, button_width, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Pause", widget_shader,
@@ -390,8 +394,8 @@ class SdlDevice : MultiMediaDevice, Window {
 }
 
 final class DebugTriWindow : Window {
-    enum DEBUG_TRI_WINDOW_WIDTH = 800;
-    enum DEBUG_TRI_WINDOW_HEIGHT = 500;
+    enum DEBUG_TRI_WINDOW_WIDTH = 1000;
+    enum DEBUG_TRI_WINDOW_HEIGHT = 900;
 
     SdlDevice parent;
 
@@ -406,6 +410,7 @@ final class DebugTriWindow : Window {
     RenderedTextHandle tev_stage_title_handle;
     RenderedTextHandle[16] tev_stage_color_text_handles;
     RenderedTextHandle[16] tev_stage_alfa_text_handles;
+    RenderedTextHandle[16] tev_stage_index_text_handles;
     RenderedTextHandle[8]  tex_info_text_handles;
 
     this(SdlDevice parent, int shape_index) {
@@ -453,37 +458,71 @@ final class DebugTriWindow : Window {
             tex_info_text_handles[i] = parent.font_spm_small.obtain_text_handle();
         }
 
+        widgets ~= new Rect(10, DEBUG_TRI_WINDOW_HEIGHT - 10 - (50 + 25 * 16), 580, 50 + 25 * 16, 
+            from_hex(0xCAF0F8), parent.widget_shader);
+        for (int i = 0; i < 16; i++) {
+            Color c = (i & 1) ? darken(from_hex(0x90e0ef), 0.1f) : from_hex(0x90e0ef);
+            tev_stage_index_text_handles[i] = parent.font_spm_small.obtain_text_handle();
+            widgets ~= new Rect(
+                15, DEBUG_TRI_WINDOW_HEIGHT - 25 * (i + 2) - 25, 25, 25, 
+                c, parent.widget_shader
+            );
+        }
+
+        for (int x = 0; x < 2; x++) {
+        for (int y = 0; y < 16; y++) {
+            Color c = ((x ^ y) & 1) ? darken(from_hex(0x90e0ef), 0.1f) : from_hex(0x90e0ef);
+            widgets ~= new Rect(
+                50 + x * (530) / 2,
+                DEBUG_TRI_WINDOW_HEIGHT - 25 * (y + 2) - 25,
+                (530) / 2,
+                25,
+                c, parent.widget_shader
+            );
+        }
+        }
+
+
+
         tev_stage_title_handle = parent.font_spm_medium.obtain_text_handle();
 
         TextureWidget[8] texture_widgets = new TextureWidget[8];
         
         GLint debug_texture_shader = load_shader("source/ui/sdl/shaders/debug_texture");
         texture_widgets = [
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[0], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[1], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[2], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[3], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[4], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[5], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[6], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[7], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[0], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[1], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[2], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[3], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[4], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[5], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[6], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[7], parent.font_spm_small),
         ];
 
-        Rect[8] texture_rects = new Rect[8];
-        texture_rects = [
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-            new Rect(50, 20, DEBUG_TRI_WINDOW_WIDTH - 70, DEBUG_TRI_WINDOW_HEIGHT - 40, Color(0), parent.widget_shader),
-        ];
+        TexGenViewer[8] texgen_viewers = new TexGenViewer[8];
+        for (int i = 0; i < 8; i++) {
+            texgen_viewers[i] = new TexGenViewer(
+            640, 20, 
+            DEBUG_TRI_WINDOW_WIDTH - 660, (DEBUG_TRI_WINDOW_HEIGHT - 300) / 2 - 40,  
+            debug_shape.texture[i], parent.widget_shader, 
+            from_hex(0x90e0ef),
+            parent.font_spm_small, parent.font_roboto);
+        }
 
-        // widgets ~= new Rect(10, 300, DEBUG_TRI_WINDOW_WIDTH - 20, DEBUG_TRI_WINDOW_HEIGHT - 310, from_hex(0x90e0ef), parent.widget_shader);    
-        widgets ~= new TabManager(10, 10, DEBUG_TRI_WINDOW_WIDTH - 20, DEBUG_TRI_WINDOW_HEIGHT - 20, 
+
+        // widgets ~= n
+        // widgets ~= new MatrixViewer(10, 200, DEBUG_TRI_WINDOW_WIDTH - 200, DEBUG_TRI_WINDOW_HEIGHT - 310, from_hex(0x90e0ef), parent.font_roboto, parent.widget_shader, 
+        // [
+            // [ 1.0, 0.0, 0.0, 0.0 ],
+            // [ 0.0, 1.0, 0.0, 0.0 ],
+            // [ 0.0, 0.0, 1.0, 0.0 ],
+            // [ 0.0, 0.0, 0.0, 1.0 ]
+        // ]);    
+        widgets ~= new TabManager(10, 10, 580, DEBUG_TRI_WINDOW_HEIGHT - 520 + 40, 
             cast(Widget[]) texture_widgets, from_hex(0x90e0ef), parent.font_spm_small, parent.widget_shader);
+        widgets ~= new TabManager(600, 10, DEBUG_TRI_WINDOW_WIDTH - 590 - 20, (DEBUG_TRI_WINDOW_HEIGHT - 300) / 2 - 20,
+            cast(Widget[]) texgen_viewers, from_hex(0x90e0ef), parent.font_spm_small, parent.widget_shader);
     }
 
     string generate_optimized_tev_equation(string dest, float scale, float bias, string a, string b, string c, string d) {
@@ -674,25 +713,32 @@ final class DebugTriWindow : Window {
             widget.draw();
         }
 
-        // for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
-        //     parent.font_spm_small.set_string(
-        //         tev_stage_color_text_handles[i], from_hex(0x444444), Justify.Left,
-        //         calculate_color_tev_stage_text(i), 
-        //         20, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
-        //     );
+        for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
+            parent.font_spm_small.set_string(
+                tev_stage_color_text_handles[i], from_hex(0x444444), Justify.Left,
+                calculate_color_tev_stage_text(i),
+                55, DEBUG_TRI_WINDOW_HEIGHT - 25 * (i + 3), 530, 30
+            );
 
-        //     parent.font_spm_small.set_string(
-        //         tev_stage_alfa_text_handles[i], from_hex(0x444444), Justify.Left,
-        //         calculate_alfa_tev_stage_text(i), 
-        //         10 + DEBUG_TRI_WINDOW_WIDTH / 2, DEBUG_TRI_WINDOW_HEIGHT - 30 * (i + 2), DEBUG_TRI_WINDOW_WIDTH, 30
-        //     );
-        // }
+            parent.font_spm_small.set_string(
+                tev_stage_alfa_text_handles[i], from_hex(0x444444), Justify.Left,
+                calculate_alfa_tev_stage_text(i),
+                55 + 530 / 2, DEBUG_TRI_WINDOW_HEIGHT - 25 * (i + 3), 530, 30
+            );
+        }
 
-        // parent.font_spm_medium.set_string(
-            // tev_stage_title_handle, from_hex(0x444444), Justify.Center,
-            // "TEV Stages", 
-            // 20, DEBUG_TRI_WINDOW_HEIGHT - 40, DEBUG_TRI_WINDOW_WIDTH, 30
-        // );
+        for (int i = 0; i < 16; i++) {
+            parent.font_spm_small.set_string(
+                tev_stage_index_text_handles[i], from_hex(0x444444), Justify.Center, "%d.".format(i + 1),
+                15.0f, DEBUG_TRI_WINDOW_HEIGHT - 25.0f * (i + 3), 25.0f, 30.0f
+            );
+        }
+
+        parent.font_spm_medium.set_string(
+            tev_stage_title_handle, from_hex(0x444444), Justify.Center,
+            "TEV Stages", 
+            20, DEBUG_TRI_WINDOW_HEIGHT - 40, 580, 30
+        );
 
         for (int i = 0; i < 8; i++) {
             // if (!debug_shape.enabled_textures_bitmap.bit(i)) {

@@ -104,9 +104,9 @@ final class DSP {
                     scheduler.add_event_relative_to_clock(() => send_command_to_cpu(0xdcd1_0000), 10_000);
                     scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
                     log_dsp("DSP init complete: %08x %08x", dsp_microcode_address, dsp_microcode_size);
-                    dump_dsp_microcode("dsp.bin");
-                    u32 dsp_microcode_hash = get_dsp_microcode_hash();
-                    log_dsp("DSP microcode hash: %08x", dsp_microcode_hash);
+                    // dump_dsp_microcode("dsp.bin");
+                    // u32 dsp_microcode_hash = get_dsp_microcode_hash();
+                    // log_dsp("DSP microcode hash: %08x", dsp_microcode_hash);
 
                 } else if (commands_left_to_process_at_init == 8) {
                     dsp_microcode_address = mailbox_to_hi << 16 | mailbox_to_lo;
