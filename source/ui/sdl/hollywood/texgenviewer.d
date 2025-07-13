@@ -36,7 +36,7 @@ final class TexGenViewer : Widget {
 
         mat_viewer_height = (h - 20 * 2 - 30 - 10 * 2) / 2;
         rect = new Rect(x, y, w, h, from_hex(0xCAF0F8), shader);
-        checkbox = new Checkbox(x + h / 2 + 120, y + 15 + mat_viewer_height + 10 + 40 - 5, 20, 20, background, from_hex(0xCAF0F8), font, shader);
+        checkbox = new Checkbox(x + h / 2 + 140, y + 15 + mat_viewer_height + 10 + 20 - 5, 20, 20, background, from_hex(0xCAF0F8), font, shader);
     
         tex_viewer = new MatrixViewer(x + 10, y + mat_viewer_height + 10 + 30 + 20, w - 20, mat_viewer_height, background, from_hex(0x444444), mat_font, shader, 
             texture.tex_matrix);

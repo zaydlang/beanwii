@@ -482,7 +482,13 @@ final class DebugTriWindow : Window {
         }
         }
 
-
+        widgets ~= new MatrixViewer(
+            600, (DEBUG_TRI_WINDOW_HEIGHT - 300) / 2, 390, 150, 
+            from_hex(0x90e0ef), from_hex(0x444444), parent.font_roboto, parent.widget_shader, 
+            [ 1.0f, 0.0f, 0.0f, 0.0f,
+              0.0f, 1.0f, 0.0f, 0.0f,
+              0.0f, 0.0f, 1.0f, 0.0f],
+        );
 
         tev_stage_title_handle = parent.font_spm_medium.obtain_text_handle();
 

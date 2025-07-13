@@ -199,6 +199,10 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
             auto y = tile_y * 8 + fine_y;
 
             if (x >= width || y >= height) {
+                if (x % 2 != 0) {
+                    current_address += 1;
+                }
+
                 continue;
             }
 
@@ -231,6 +235,7 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
 
 Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
     auto width = descriptor.width;
+    log_hollywood("Loading IA4 texture: %s", descriptor);
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
@@ -247,11 +252,12 @@ Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
             auto x = tile_x * 8 + fine_x;
             auto y = tile_y * 4 + fine_y;
 
+            auto value = mem.paddr_read_u8(cast(u32) current_address);
+            current_address += 1;
+
             if (x >= width || y >= height) {
                 continue;
             }
-
-            auto value = mem.paddr_read_u8(cast(u32) current_address);
 
             texture[x * height + y] = Color(
                 ((value & 0x0f) >> 0) * 0x11,
@@ -259,7 +265,6 @@ Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
                 ((value & 0x0f) >> 0) * 0x11,
                 ((value & 0xf0) >> 4) * 0x11,
             );
-            current_address += 1;
         }
         }
     }

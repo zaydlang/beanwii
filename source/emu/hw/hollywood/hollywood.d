@@ -1679,6 +1679,9 @@ final class Hollywood {
         }
         
         shape_groups ~= shape_group;
+        if (shape_groups.length == 17) {
+            log_hollywood("awni: %s", texture_descriptors[0]);
+        }
     }
 
     bool shit = false;
