@@ -364,14 +364,15 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void interrupt_acknowledged() {
-        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1) && state == State.Idle) {
+        if (!hw_ipc_ppcctrl.bit(2) && !hw_ipc_ppcctrl.bit(1)) {
             if (state == State.WaitingForCpuToGetResponse) {
                 log_ipc("IPC: state -> Idle");
                 state = State.Idle;
             }
 
-            log_ipc("maybe_finalize_new_response");
-            response_queue.maybe_finalize_new_response();
+            if (state == State.Idle) {
+                response_queue.maybe_finalize_new_response();
+            }
         }
     }
 }
