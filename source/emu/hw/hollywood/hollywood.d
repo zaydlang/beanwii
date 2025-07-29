@@ -1434,10 +1434,10 @@ final class Hollywood {
 
         switch (location) {
             case VertexAttributeLocation.Indexed8Bit:
-                data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 1), size);
+                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 1), size);
                 break;
             case VertexAttributeLocation.Indexed16Bit:
-                data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 2), size);
+                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 2), size);
                 break;
             case VertexAttributeLocation.Direct:
                 data = read_from_shape_data_buffer(offset, size);
@@ -1460,11 +1460,10 @@ final class Hollywood {
         return data;
     }
 
-    private u32 read_from_indexed_array(int array_num, int idx, size_t size) {
+    private u32 read_from_indexed_array(int array_num, int idx, int offset, size_t size) {
         u32 array_addr = array_bases[array_num];
         u32 array_stride = array_strides[array_num];
-        u32 array_offset = array_addr + (array_stride * idx);
-        log_hollywood("read_from_indexed_array(%u, %u, %u): %x", array_num, idx, size, array_offset);
+        u32 array_offset = array_addr + (array_stride * idx) + (offset * cast(int) size);
 
         final switch (size) {
         case 1: return mem.paddr_read_u8(array_offset);
@@ -1518,11 +1517,15 @@ final class Hollywood {
 
         int offset = 0;
         Vertex[] vertices;
+            import std.stdio;
+            auto vcd = &vertex_descriptors[current_vat];
+            auto vat = &vats[current_vat];
+            writefln("herb kazzaz %s %s", *vcd, *vat);
         for (int i = 0; i < number_of_expected_vertices; i++) {
             Vertex v;
             
-            auto vcd = &vertex_descriptors[current_vat];
-            auto vat = &vats[current_vat];
+            // auto vcd = &vertex_descriptors[current_vat];
+            // auto vat = &vats[current_vat];
 
             if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
                 error_hollywood("Matrix location not implemented");
@@ -1534,39 +1537,92 @@ final class Hollywood {
                 }
             }
             
-            if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+            final switch (vcd.position_location) {
+            case VertexAttributeLocation.Direct:
+                for (int j = 0; j < vat.position_count; j++) {
+                    v.position[j] = dequantize_coord(
+                        read_from_shape_data_buffer(offset, calculate_expected_size_of_coord(vat.position_format)),
+                        vat.position_format, vat.position_shift);
+                    offset += calculate_expected_size_of_coord(vat.position_format);
+                }
+                break;
+            case VertexAttributeLocation.Indexed8Bit:
+                auto array_offset = read_from_shape_data_buffer(offset, 1);
                 for (int j = 0; j < vat.position_count; j++) {
                     size_t size = calculate_expected_size_of_coord(vat.position_format);
-                    u32 coord = get_vertex_attribute(vcd.position_location, offset, size, 0);
                     log_hollywood("processing position with size %d", size);
-                    v.position[j] = dequantize_coord(coord, vat.position_format, vat.position_shift);
-                    offset += get_size_of_vertex_attribute_in_stream(vcd.position_location, size);
-                
+                    u32 data = read_from_indexed_array(0, array_offset, j, size);
+                    v.position[j] = dequantize_coord(data, vat.position_format, vat.position_shift);
                 }
-
-                if (vat.position_count == 2) {
-                    v.position[2] = 0.0;
+                offset += 1;
+                break;
+            case VertexAttributeLocation.Indexed16Bit:
+                auto array_offset = read_from_shape_data_buffer(offset, 2);
+                for (int j = 0; j < vat.position_count; j++) {
+                    size_t size = calculate_expected_size_of_coord(vat.position_format);
+                    log_hollywood("processing position with size %d", size);
+                    u32 data = read_from_indexed_array(0, array_offset, j, size);
+                    v.position[j] = dequantize_coord(data, vat.position_format, vat.position_shift);
                 }
+                offset += 2;
+                break;
+            case VertexAttributeLocation.NotPresent:
+                break;
+                // error_hollywood("Position location not present");
             }
 
-            if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
-                // error_hollywood("Normal location not implemented");
+            if (vat.position_count == 2) {
+                v.position[2] = 0.0; // z coordinate is always 0 for 2D shapes
+            }            
+
+            final switch (vcd.normal_location) {
+            case VertexAttributeLocation.Direct:
+                size_t size = calculate_expected_size_of_normal(vat.normal_format);
+                for (int j = 0; j < vat.normal_count; j++) {
+                    read_from_shape_data_buffer(offset, size);
+                    offset += size;
+                }
+                break;
+            case VertexAttributeLocation.Indexed8Bit:
+                read_from_shape_data_buffer(offset, 1);
+                offset += 1;
+                break;
+            case VertexAttributeLocation.Indexed16Bit:
+                read_from_shape_data_buffer(offset, 2);
+                offset += 2;
+                break;
+            case VertexAttributeLocation.NotPresent:
+                break;
             }
 
             for (int j = 0; j < 2; j++) {
                 float[4] color;
 
-                if (vcd.color_location[j] != VertexAttributeLocation.NotPresent) {
+                final switch (vcd.color_location[j]) {
+                case VertexAttributeLocation.Direct:
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                     log_hollywood("processing color with size %d", size);
                     u32 color_data = get_vertex_attribute(vcd.color_location[j], offset, size, j + 2);
-                    color = dequantize_color(color_data, vat.color_format[j], 0);
+                    color = dequantize_color(color_data, vat.color_format[j], j);
 
                     if (vat.color_count[j] == 3) {
                         color[3] = 1.0;
                     }
 
                     offset += get_size_of_vertex_attribute_in_stream(vcd.color_location[j], size);
+                    break;
+                
+                case VertexAttributeLocation.Indexed8Bit:
+                    read_from_shape_data_buffer(offset, 1);
+                    offset += 1;
+                    break;
+                
+                case VertexAttributeLocation.Indexed16Bit:  
+                    read_from_shape_data_buffer(offset, 2);
+                    offset += 2;
+                    break;
+                case VertexAttributeLocation.NotPresent:
+                    break;
                 }
 
                 final switch (this.color_configs[j].material_src) {
@@ -1581,7 +1637,8 @@ final class Hollywood {
 
             // for (int j = 0; j < 8; j++) {
             for (int j = 0; j < 8; j++) { 
-                if (vcd.texcoord_location[j] == VertexAttributeLocation.Direct) {
+                final switch (vcd.texcoord_location[j]) {
+                case VertexAttributeLocation.Direct:
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
@@ -1589,9 +1646,29 @@ final class Hollywood {
                         v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
                         offset += get_size_of_vertex_attribute_in_stream(vcd.texcoord_location[j], size);
                     }
-        
-                } else if (vcd.texcoord_location[j] != VertexAttributeLocation.NotPresent) {
-                    // error_hollywood("shit!");
+                    break;
+                case VertexAttributeLocation.Indexed8Bit:
+                    auto array_offset = read_from_shape_data_buffer(offset, 1);
+                    log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
+                    for (int k = 0; k < vat.texcoord_count[j]; k++) {
+                        size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
+                        u32 texcoord = read_from_indexed_array(j + 4, array_offset, k, size);
+                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
+                    }
+                    offset += 1;
+                    break;
+                case VertexAttributeLocation.Indexed16Bit:
+                    auto array_offset = read_from_shape_data_buffer(offset, 2);
+                    log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
+                    for (int k = 0; k < vat.texcoord_count[j]; k++) {
+                        size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
+                        u32 texcoord = read_from_indexed_array(j + 4, array_offset, k, size);
+                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
+                    }
+                    offset += 2;
+                    break;
+                case VertexAttributeLocation.NotPresent:
+                    break;
                 }
             }
 
