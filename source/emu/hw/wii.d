@@ -274,8 +274,8 @@ final class Wii {
         this.mem.write_be_u32(0x8000_3130, 0x933E_0000); // IOS IPC Buffer Start
         this.mem.write_be_u32(0x8000_3134, 0x9340_0000); // IOS IPC Buffer End
         this.mem.write_be_u32(0x8000_3138, 0x0000_0011); // Hollywood Version
-        this.mem.write_be_u32(0x8000_3140, 0x0090_0204); // IOS Version (IOS9, v2.4)
-        this.mem.write_be_u32(0x8000_3144, 0x0006_2507); // IOS Build Date (06/25/2007)
+        this.mem.write_be_u32(0x8000_3140, 0x0035_161f); // IOS Version
+        this.mem.write_be_u32(0x8000_3144, 0x0003_0310); // IOS Build Date (03/03/2010)
         this.mem.write_be_u32(0x8000_3148, 0x9360_0000); // IOS Reserved Heap Start
         this.mem.write_be_u32(0x8000_314C, 0x9362_0000); // IOS Reserved Heap End
         this.mem.write_be_u32(0x8000_3158, 0x0000_FF16); // GDPR Vendor Code
