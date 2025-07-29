@@ -2765,6 +2765,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.STB:     return emit_stb   (code, opcode);
         case PrimaryOpcode.STBU:    return emit_stbu  (code, opcode);
         case PrimaryOpcode.STFD:    return emit_stfd  (code, opcode);
+        case PrimaryOpcode.STFDU:   return emit_stfdu (code, opcode);
         case PrimaryOpcode.STFS:    return emit_stfs  (code, opcode);
         case PrimaryOpcode.STH:     return emit_sth   (code, opcode);
         case PrimaryOpcode.STHU:    return emit_sthu  (code, opcode);

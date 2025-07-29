@@ -36,6 +36,7 @@ enum PrimaryOpcode {
     STB     = 0x26,
     STBU    = 0x27,
     STFD    = 0x36,
+    STFDU   = 0x37,
     STFS    = 0x34,
     STH     = 0x2C,
     STHU    = 0x2D,
