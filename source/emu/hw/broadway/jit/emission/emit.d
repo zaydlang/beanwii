@@ -502,6 +502,10 @@ private EmissionAction emit_dcbst(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+private EmissionAction emit_dcbt(Code code, u32 opcode) {
+    return EmissionAction.Continue;
+}
+
 private EmissionAction emit_dcbz(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -2599,6 +2603,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.DCBF:    return emit_dcbf   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DCBI:    return emit_dcbi   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DCBST:   return emit_dcbst  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.DCBT:    return emit_dcbt   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DCBZ:    return emit_dcbz   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DIVW:    return emit_divwx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.DIVWO:   return emit_divwx  (code, opcode);

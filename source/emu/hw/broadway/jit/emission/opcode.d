@@ -109,6 +109,7 @@ enum PrimaryOp1FSecondaryOpcode {
     DCBF    = 0x056,
     DCBI    = 0x1D6,
     DCBST   = 0x036,
+    DCBT    = 0x116,
     DCBZ    = 0x3F6,
     DIVW    = 0x1EB,
     DIVWO   = 0x3EB,
