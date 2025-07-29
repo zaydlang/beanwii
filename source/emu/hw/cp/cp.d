@@ -31,13 +31,11 @@ final class CommandProcessor {
 
     u8 read_CP_FIFO_WP_HI(int target_byte) {
         u8 result = 0;
-        log_cp("read_CP_FIFO_WP: %x %d PC:%08x LR:%08x", result, target_byte, gwii.broadway.state.pc, gwii.broadway.state.lr);
         return result;
     }
 
     u8 read_CP_FIFO_WP_LO(int target_byte) {
         u8 result = 0;
-        log_cp("read_CP_FIFO_WP: %x %d PC:%08x LR:%08x", result, target_byte, gwii.broadway.state.pc, gwii.broadway.state.lr);
         return result;
     }
 
@@ -59,7 +57,10 @@ final class CommandProcessor {
     void write_CP_FIFO_END(int target_byte, u8 value) {
     }
 
-    void write_CP_FIFO_WP(int target_byte, u8 value) {
+    void write_CP_FIFO_WP_HI(int target_byte, u8 value) {
+    }
+    
+    void write_CP_FIFO_WP_LO(int target_byte, u8 value) {
     }
 
     u32 cp_fifo_distance_lo;
