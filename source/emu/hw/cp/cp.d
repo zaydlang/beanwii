@@ -5,6 +5,8 @@ import util.log;
 import util.number;
 
 final class CommandProcessor {
+    bool fifos_linked = false;
+
     u8 read_CP_FIFO_STATUS(int target_byte) {
         return 0;
     }
@@ -43,6 +45,9 @@ final class CommandProcessor {
     }
 
     void write_CP_CONTROL(int target_byte, u8 value) {
+        if (target_byte == 0) {
+            fifos_linked = value.bit(4);
+        }
     }
 
     void write_CP_CLEAR(int target_byte, u8 value) {

@@ -104,6 +104,7 @@ final class Wii {
         this.hollywood.connect_mem(this.mem);
         this.hollywood.connect_pixel_engine(this.pixel_engine);
         this.hollywood.connect_scheduler(this.scheduler);
+        this.hollywood.connect_command_processor(this.command_processor);
         this.gdb_stub.connect_mem(this.mem);
         this.gdb_stub.connect_broadway(this.broadway);
         // todo: ew

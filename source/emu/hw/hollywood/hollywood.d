@@ -1,6 +1,7 @@
 module emu.hw.hollywood.hollywood;
 
 import bindbc.opengl;
+import emu.hw.cp.cp;
 import emu.hw.hollywood.blitting_processor;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.texture;
@@ -349,6 +350,12 @@ final class Hollywood {
         this.mem = mem;
     }
 
+    // hank do not abbreviate CommandProcessor, haaankkkkkkkk!!!!!!
+    CommandProcessor command_processor;
+    void connect_command_processor(CommandProcessor command_processor) {
+        this.command_processor = command_processor;
+    }
+
     PixelEngine pixel_engine;
     void connect_pixel_engine(PixelEngine pixel_engine) {
         this.pixel_engine = pixel_engine;
@@ -360,6 +367,10 @@ final class Hollywood {
     }
 
     void write_GX_FIFO(T)(T value, int offset) {
+        if (!command_processor.fifos_linked) {
+            return;
+        }
+
         log_hollywood("GX FIFO write: %08x %d %d %x %x", value, offset, T.sizeof, mem.cpu.state.pc, mem.cpu.state.lr);
         fifo_write_ptr += T.sizeof;
         while (fifo_write_ptr >= fifo_base_end) {
