@@ -23,4 +23,7 @@ void dump(BeanDump* bean_dump) {
     auto f = File("bean.bdp", "w+");
     f.rawWrite([*bean_dump]);
     f.close();
+    
+    File("mem1.bin", "w+").rawWrite(bean_dump.mem1);
+    File("mem2.bin", "w+").rawWrite(bean_dump.mem2);
 }
