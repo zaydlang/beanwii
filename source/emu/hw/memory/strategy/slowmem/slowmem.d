@@ -33,7 +33,8 @@ final class SlowMem : MemStrategy {
         HLE_TRAMPOLINE,
         HOLLYWOOD_MMIO,
         BROADWAY_MMIO,
-        EXI_BOOT_CODE
+        EXI_BOOT_CODE,
+        LOCKED_L2_CACHE,
     }
 
     struct MemoryAccess {
@@ -45,6 +46,7 @@ final class SlowMem : MemStrategy {
     public u8[] mem1;
     public u8[] mem2;
     public u8[] hle_trampoline;
+    public u8[] locked_l2_cache;
 
     public Mmio mmio;
     public Broadway cpu;
@@ -53,6 +55,7 @@ final class SlowMem : MemStrategy {
         this.mem1 = new u8[MEM1_SIZE];
         this.mem2 = new u8[MEM2_SIZE];
         this.hle_trampoline = new u8[HLE_TRAMPOLINE_SIZE];
+        this.locked_l2_cache = new u8[0x40000];
         this.mmio = new Mmio();
         // log_wii("mem1 base: %x", this.mem1.ptr);
 
@@ -68,6 +71,8 @@ final class SlowMem : MemStrategy {
             return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
         } else if (0x0C000000 <= address && address <= 0x0C008003) {
             return MemoryAccess(MemoryRegion.BROADWAY_MMIO, address & 0x7FFF);
+        } else if (0xE0000000 <= address && address <= 0xE0040000) {
+            return MemoryAccess(MemoryRegion.LOCKED_L2_CACHE, address & 0x3FFFF);
         } else if (0xFFF00100 <= address && address <= 0xFFF0013F) {
             return MemoryAccess(MemoryRegion.EXI_BOOT_CODE, address & 0x3F);
         } else {
@@ -95,6 +100,8 @@ final class SlowMem : MemStrategy {
                 return MemoryAccess(MemoryRegion.MEM2, address - 0xD0000000);
             } else if (0xCC000000 <= address && address <= 0xCDFFFFFF) {
                 return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
+            } else if (0xE0000000 <= address && address <= 0xE0040000) {
+                return MemoryAccess(MemoryRegion.LOCKED_L2_CACHE, address & 0x3FFFF);
             } else if (0x20000000 <= address && address <= 0x2FFFFFFF) {
                 return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address - 0x20000000);
             } else {
@@ -177,6 +184,10 @@ final class SlowMem : MemStrategy {
 
             case MemoryRegion.EXI_BOOT_CODE:
                 error_slowmem("Read from EXI boot code at 0x%08x", address);
+                break;
+            
+            case MemoryRegion.LOCKED_L2_CACHE:
+                result = this.locked_l2_cache.read_be!(T)(memory_access.offset);
                 break;
         }
 
@@ -284,6 +295,10 @@ final class SlowMem : MemStrategy {
 
             case MemoryRegion.EXI_BOOT_CODE:
                 error_slowmem("Write to EXI boot code at 0x%08x", address);
+                break;
+
+            case MemoryRegion.LOCKED_L2_CACHE:
+                this.locked_l2_cache.write_be!(T)(memory_access.offset, value);
                 break;
         }
 
