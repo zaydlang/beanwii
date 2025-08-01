@@ -506,6 +506,10 @@ private EmissionAction emit_dcbt(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+private EmissionAction emit_dcbzl(Code code, u32 opcode) {
+    return emit_dcbz(code, opcode);
+}
+
 private EmissionAction emit_dcbz(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -2551,6 +2555,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
     secondary_opcode = opcode.bits(1, 10);
 
     switch (secondary_opcode) {
+        case PrimaryOp04SecondaryOpcode.DCBZL:     return emit_dcbzl  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_CMPO0:  instrument = true;  return emit_ps_cmpo0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MR:     instrument = true;  return emit_ps_mr     (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE00:instrument = true;  return emit_ps_merge00(code, opcode);
