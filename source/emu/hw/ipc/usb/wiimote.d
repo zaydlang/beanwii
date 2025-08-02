@@ -412,6 +412,13 @@ final class Wiimote {
                 send_input_report_response(InputReport(InputReportId.DataReport30, data_report_30 : data_report), DataReport30.sizeof);
                 break;
             
+            case 0x31:
+                DataReport31 data_report31;
+                fill_button_state(&data_report31);
+                // fill_accelerometer_state(&data_report31);
+                send_input_report_response(InputReport(InputReportId.DataReport31, data_report_31 : data_report31), DataReport31.sizeof);
+                break;
+            
             case 0x33:
                 DataReport33 data_report;
                 fill_button_state(&data_report);
