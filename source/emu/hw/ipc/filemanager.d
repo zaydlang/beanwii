@@ -40,7 +40,7 @@ final class FileManager {
         }
 
         int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
-            error_ipc("ioctl not implemented for %s", path);
+            error_ipc("ioctl not implemented for %s (ioctl num: %x)", path, ioctl);
             return 0;
         }
 
