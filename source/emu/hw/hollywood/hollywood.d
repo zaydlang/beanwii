@@ -1271,18 +1271,21 @@ final class Hollywood {
     private float dequantize_coord(u32 value, CoordFormat format, int shift) {
         final switch (format) {
             case CoordFormat.U8:
-                return cast(float) ((cast(u8) value) << shift);
+                return (cast(float) cast(u8) value) / (cast(float) (1 << shift));
             
             case CoordFormat.S8:
-                return cast(float) (sext_32((cast(s8) value), 8) << shift);
+                return (cast(float) (sext_32((cast(s8) value), 8))) / (cast(float) (1 << shift));
             
             case CoordFormat.U16:
-                return cast(float) ((cast(u16) value) << shift);
+                return (cast(float) (cast(u16) value)) / (cast(float) (1 << shift));
             
             case CoordFormat.S16:
-                return cast(float) (sext_32((cast(s16) value), 16) << shift);
+                return (cast(float) (sext_32((cast(s16) value), 16))) / (cast(float) (1 << shift));
             
             case CoordFormat.F32:
+                if (shift != 0) {
+                    error_hollywood("Unexpected shift for F32 format: %d", shift);
+                }
                 return force_cast!float(value);
         }
     }
