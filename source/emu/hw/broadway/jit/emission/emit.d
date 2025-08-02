@@ -2725,6 +2725,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FMSUBX:   return emit_fmsubx  (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FMULX:    return emit_fmulx   (code, opcode);
         case PrimaryOp3FSecondaryOpcode.FRSQRTEX: return emit_frsqrtex(code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FSEL:     return emit_fsel    (code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
         default: unimplemented_opcode(opcode); return EmissionAction.Continue;

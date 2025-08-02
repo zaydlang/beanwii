@@ -369,6 +369,38 @@ EmissionAction emit_stfs(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_fsel(Code code, u32 opcode) {
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+    auto guest_rc = opcode.bits(6, 10).to_ps;
+
+    bool rc = opcode.bit(0);
+    assert(rc == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+
+    auto smaller = code.fresh_label();
+    auto end = code.fresh_label();
+
+    code.xorpd(xmm4, xmm4);
+    code.ucomisd(xmm0, xmm4);
+    code.jb(smaller);
+    
+    code.movq(xmm0, xmm2);
+    code.jmp(end);
+
+code.label(smaller);
+    code.movq(xmm0, xmm1);
+
+code.label(end);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_fmulsx(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_ps;
     auto guest_ra = opcode.bits(16, 20).to_ps;
