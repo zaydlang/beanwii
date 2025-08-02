@@ -25,7 +25,7 @@ enum Whitelist = [
     // LogSource.BROADWAY,
     // LogSource.DISK,
     // LogSource.DSP,
-    LogSource.FRONTEND,
+    // LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
     // LogSource.GDB,
