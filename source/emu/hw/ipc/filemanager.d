@@ -105,6 +105,20 @@ final class FileManager {
 
             return cast(int) file.tell();
         }
+
+        override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
+            log_ipc("RealFile::ioctl(%s, %x, %d, %d, %d)", path, ioctl, input_buffer, input_buffer_length, output_buffer);
+            
+            if (ioctl == 0xb) {
+                // get file stats
+                mem.paddr_write_u32(output_buffer + 0, cast(u32) file.size());
+                mem.paddr_write_u32(output_buffer + 4, cast(u32) file.tell());
+                return 0;
+            }
+
+            error_ipc("Unknown ioctl %x for RealFile", ioctl);
+            return 0;
+        }
     }
 
     bool printme = false;
