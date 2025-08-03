@@ -14,6 +14,7 @@ enum PrimaryOpcode {
     LFD     = 0x32,
     LFDU    = 0x33,
     LFS     = 0x30,
+    LFSU    = 0x31,
     LHA     = 0x2A,
     LHAU    = 0x2B,
     LHZ     = 0x28,

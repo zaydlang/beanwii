@@ -2790,6 +2790,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.LFD:     return emit_lfd   (code, opcode);
         case PrimaryOpcode.LFDU:    return emit_lfdu  (code, opcode);
         case PrimaryOpcode.LFS:     return emit_lfs   (code, opcode);
+        case PrimaryOpcode.LFSU:    return emit_lfsu  (code, opcode);
         case PrimaryOpcode.LHA:     return emit_lha   (code, opcode);
         case PrimaryOpcode.LHAU:    return emit_lhau  (code, opcode);
         case PrimaryOpcode.LHZ:     return emit_lhz   (code, opcode);
