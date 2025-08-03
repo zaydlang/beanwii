@@ -56,6 +56,7 @@ enum PrimaryOpcode {
 
 enum PrimaryOp04SecondaryOpcode {
     DCBZL      = 0x3F6,
+    PS_ABS     = 0x108,
     PS_ADD     = 0x015,
     PS_CMPO0   = 0x020,
     PS_DIV     = 0x012,

@@ -183,6 +183,24 @@ EmissionAction emit_psq_lx(Code code, u32 opcode) {
     return code.emit_psq_l_generic(rd, guest_rd, ra, i, w);
 }
 
+EmissionAction emit_ps_abs(Code code, u32 opcode) {
+    abort_if_no_pse(code);
+
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    auto tmp = code.allocate_register();
+    code.mov(tmp.cvt64(), ~0x80000000_00000000);
+    code.movq(xmm0, tmp.cvt64());
+    code.vpbroadcastq(xmm0, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.andpd(xmm1, xmm0);
+    code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_ps_add(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
