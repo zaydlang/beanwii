@@ -342,6 +342,24 @@ EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_ps_cmpu0(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto crfd = opcode.bits(23, 25);
+
+    assert(opcode.bits(21, 22) == 0);
+
+    auto ra = code.get_fpr(guest_ra);
+    auto rb = code.get_fpr(guest_rb);
+
+    code.movq(xmm0, ra);
+    code.movq(xmm1, rb);
+
+    code.ucomisd(xmm0, xmm1);
+    emit_fp_flags_helper(code, crfd, ra.cvt32());
+
+    return EmissionAction.Continue;
+}
 EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
