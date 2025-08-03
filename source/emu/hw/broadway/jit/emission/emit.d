@@ -2558,6 +2558,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_ABS:    return emit_ps_abs    (code, opcode);
         case PrimaryOp04SecondaryOpcode.DCBZL:     return emit_dcbzl  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_CMPU0:  return emit_ps_cmpu0  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_CMPU1:  return emit_ps_cmpu1  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_CMPO0:  instrument = true;  return emit_ps_cmpo0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MR:     instrument = true;  return emit_ps_mr     (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MERGE00:instrument = true;  return emit_ps_merge00(code, opcode);
