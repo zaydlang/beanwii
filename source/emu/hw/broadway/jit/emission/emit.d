@@ -895,6 +895,34 @@ private EmissionAction emit_lha(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+private EmissionAction emit_lhau(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    int  d        = sext_32(opcode.bits(0, 15), 16);
+
+    R32 ra = code.get_reg(guest_ra);
+    code.add(ra, d);
+    code.set_reg(guest_ra, ra);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler16);
+        code.call(rax);
+        code.movsx(eax, ax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+    
+    code.set_reg(guest_rd, eax);
+
+    return EmissionAction.Continue;
+}
+
 private EmissionAction emit_lhax(Code code, u32 opcode) {
     code.reserve_register(esi);
     code.reserve_register(eax);
@@ -2763,6 +2791,7 @@ public EmissionAction disassemble(Code code, u32 opcode) {
         case PrimaryOpcode.LFDU:    return emit_lfdu  (code, opcode);
         case PrimaryOpcode.LFS:     return emit_lfs   (code, opcode);
         case PrimaryOpcode.LHA:     return emit_lha   (code, opcode);
+        case PrimaryOpcode.LHAU:    return emit_lhau  (code, opcode);
         case PrimaryOpcode.LHZ:     return emit_lhz   (code, opcode);
         case PrimaryOpcode.LHZU:    return emit_lhzu  (code, opcode);
         case PrimaryOpcode.LMW:     return emit_lmw   (code, opcode);
