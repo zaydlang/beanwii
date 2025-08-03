@@ -108,6 +108,8 @@ final class Broadway {
         state.tbu    = 0;
         state.tbl    = 0;
         state.sprg0  = 0;
+        state.dmau   = 0;
+        state.dmal   = 0;
 
         state.pc     = 0;
         state.lr     = 0;
@@ -434,6 +436,8 @@ final class Broadway {
             case GuestReg.TBU: update_timebase(); value = timebase >> 32; break;
             case GuestReg.TBL: update_timebase(); value = timebase & 0xFFFF_FFFF; break;
             case GuestReg.DEC: update_decrementer(); value = state.dec; break;
+            case GuestReg.DMAU: value = get_dma_upper(); break;
+            case GuestReg.DMAL: value = get_dma_lower(); break;
             default: error_broadway("Unexpected MFSPR: %s (%x)", spr, spr);
         }
 
@@ -456,7 +460,93 @@ final class Broadway {
                 set_decrementer(value);
                 break;
 
+            case GuestReg.DMAU:
+                set_dma_upper(value);
+                break;
+
+            case GuestReg.DMAL:
+                set_dma_lower(value);
+                break;
+
             default: error_broadway("Unexpected MTSPR: %s (%x)", spr, spr);
+        }
+    }
+
+    struct DmaEvent {
+        u32 lc_address;
+        bool dma_ld;
+        u32 dma_len;
+        u32 mem_addr;
+
+        ulong scheduler_id;
+    }
+
+    DmaEvent[] enqueued_dma_events;
+
+    // DMA Address Register handlers (skeleton implementation)
+    u32 get_dma_upper() {
+        log_broadway("Getting DMA Upper Address: %x", state.dmau);
+        return state.dmau;
+    }
+
+    u32 get_dma_lower() {
+        log_broadway("Getting DMA Lower Address: %x", state.dmal);
+        return state.dmal;
+    }
+
+    void set_dma_upper(u32 value) {
+        log_broadway("Setting DMA Upper Address: %x", value);
+        state.dmau = value;
+    }
+
+    void set_dma_lower(u32 value) {
+        log_broadway("Setting DMA Lower Address: %x", value);
+        state.dmal = value;
+
+        bool flush   = state.dmal.bit(0);
+        bool trigger = state.dmal.bit(1);
+
+        if (flush) {
+            foreach (enqueued_dma_event; enqueued_dma_events) {
+                scheduler.remove_event(enqueued_dma_event.scheduler_id);
+            }
+            enqueued_dma_events = [];
+
+            assert_broadway(!trigger, "DMA flush and trigger are both set. Not sure what to do here.");
+        }
+
+        if (trigger) {
+            u32  lc_address = (state.dmal & ~31);
+            bool dma_ld = state.dmau.bit(4);
+            u32  dma_len = ((state.dmau.bits(0, 4) << 2) | state.dmau.bits(2, 3)) * 32;
+            u32  mem_addr = (state.dmau & ~31);
+
+            DmaEvent dma_event = DmaEvent(
+                lc_address:   lc_address,
+                dma_ld:       dma_ld,
+                dma_len:      dma_len,
+                mem_addr:     mem_addr,
+                scheduler_id: 0
+            );
+
+            dma_event.scheduler_id = scheduler.add_event_relative_to_clock(() => process_dma(dma_event), 1000);
+            enqueued_dma_events ~= dma_event;
+        }
+    }
+
+    void process_dma(DmaEvent dma_event) {
+        log_broadway("Processing DMA: %x %x %x %x", dma_event.lc_address, dma_event.dma_ld, dma_event.dma_len, dma_event.mem_addr);
+
+        if (dma_event.dma_ld) {
+            for (int i = 0; i < dma_event.dma_len; i += 4) {
+                u32 value = mem.paddr_read_u32(dma_event.mem_addr + i);
+                mem.paddr_write_u32(dma_event.lc_address + i, value);
+            }
+        } else {
+            for (int i = 0; i < dma_event.dma_len; i += 4) {
+                u32 value = mem.paddr_read_u32(dma_event.lc_address + i);
+                mem.paddr_write_u32(dma_event.mem_addr + i, value);
+            }
         }
     }
 
