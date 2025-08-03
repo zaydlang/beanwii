@@ -59,6 +59,7 @@ enum PrimaryOp04SecondaryOpcode {
     PS_ABS     = 0x108,
     PS_ADD     = 0x015,
     PS_CMPU0   = 0x000,
+    PS_CMPU1   = 0x040,
     PS_CMPO0   = 0x020,
     PS_DIV     = 0x012,
     PSQ_LX     = 0x006,

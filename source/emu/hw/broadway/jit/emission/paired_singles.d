@@ -360,6 +360,26 @@ EmissionAction emit_ps_cmpu0(Code code, u32 opcode) {
 
     return EmissionAction.Continue;
 }
+
+EmissionAction emit_ps_cmpu1(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto crfd = opcode.bits(23, 25);
+
+    assert(opcode.bits(21, 22) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+
+    code.shufpd(xmm0, xmm0, 1);
+    code.shufpd(xmm1, xmm1, 1);
+
+    code.ucomisd(xmm0, xmm1);
+    emit_fp_flags_helper(code, crfd, code.allocate_register().cvt32());
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
     abort_if_no_pse(code);
 
