@@ -299,6 +299,42 @@ EmissionAction emit_mftsb1(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_lfsu(Code code, u32 opcode) {
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    int imm = sext_32(opcode.bits(0, 15), 16);
+
+    auto ra = code.get_reg(guest_ra);
+    code.add(ra, imm);
+    code.set_reg(guest_ra, ra);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler32);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    code.movq(xmm0, rax);
+    code.cvtss2sd(xmm0, xmm0);
+
+    auto end = code.fresh_label();
+
+    auto hid2 = code.get_reg(GuestReg.HID2);
+    code.test(hid2, 1 << 29);
+    code.jz(end);
+
+    code.vpbroadcastq(xmm0, xmm0);
+
+code.label(end);
+    code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_lfs(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rd = opcode.bits(21, 25).to_ps;
