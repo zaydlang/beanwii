@@ -43,6 +43,8 @@ struct BroadwayState {
     u32     dec;
     u32     dar;
     u32     wpar;
+    u32     dmau;
+    u32     dmal;
 
     u32     lr;
     u32     pc;

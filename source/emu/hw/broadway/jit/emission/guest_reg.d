@@ -56,6 +56,8 @@ enum GuestReg {
     TBU,
 
     WPAR,
+    DMAU,
+    DMAL,
 
     LR,
     PC,
@@ -164,6 +166,8 @@ public size_t get_reg_offset(GuestReg reg) {
         case GuestReg.DAR:   return BroadwayState.dar.offsetof;
 
         case GuestReg.WPAR:  return BroadwayState.wpar.offsetof;
+        case GuestReg.DMAU:  return BroadwayState.dmau.offsetof;
+        case GuestReg.DMAL:  return BroadwayState.dmal.offsetof;
 
         default: assert(0);
     }
@@ -235,6 +239,8 @@ public GuestReg get_spr_from_encoding(int encoding) {
         case 284:  return GuestReg.TBL;
         case 285:  return GuestReg.TBU;
         case 921:  return GuestReg.WPAR;
+        case 922:  return GuestReg.DMAU;
+        case 923:  return GuestReg.DMAL;
 
         default: 
             error_broadway("Unknown SPR: %d (0x%x)", encoding, encoding);

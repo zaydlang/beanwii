@@ -1326,7 +1326,11 @@ private EmissionAction emit_mfspr(Code code, u32 opcode) {
     assert(opcode.bit(0) == 0);
 
     GuestReg src = get_spr_from_encoding(spr);
-    if (src == GuestReg.TBU || src == GuestReg.TBL || src == GuestReg.DEC) {
+    if (src == GuestReg.TBU || 
+        src == GuestReg.TBL || 
+        src == GuestReg.DEC ||
+        src == GuestReg.DMAL ||
+        src == GuestReg.DMAU) {
         code.push(rdi);
         code.enter_stack_alignment_context();
             code.mov(rdi, cast(u64) code.config.spr_handler_context);
@@ -1421,7 +1425,11 @@ private EmissionAction emit_mtspr(Code code, u32 opcode) {
     assert(opcode.bit(0) == 0);
 
     GuestReg sysreg = get_spr_from_encoding(spr);
-    if (sysreg == GuestReg.TBU || sysreg == GuestReg.TBL || sysreg == GuestReg.DEC) {
+    if (sysreg == GuestReg.TBU || 
+        sysreg == GuestReg.TBL || 
+        sysreg == GuestReg.DEC ||
+        sysreg == GuestReg.DMAL ||
+        sysreg == GuestReg.DMAU) {
         code.push(rdi);
         code.enter_stack_alignment_context();
             code.mov(rdi, cast(u64) code.config.spr_handler_context);
