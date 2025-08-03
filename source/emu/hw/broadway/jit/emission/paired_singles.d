@@ -21,7 +21,7 @@ EmissionAction emit_psq_st_generic(Code code, R32 address, GuestReg guest_rs, in
         quantize(code, xmm0, address, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
     } else {
         code.cvtsd2ss(xmm1, xmm0);
-        quantize(code, xmm1, address, gqr, code.allocate_register(), code.allocate_register(), xmm1, true);
+        quantize(code, xmm1, address, gqr, code.allocate_register(), code.allocate_register(), xmm2, true);
         
         code.get_ps(guest_rs, xmm0);
         code.shufpd(xmm0, xmm0, 0b00000001);
@@ -101,7 +101,7 @@ EmissionAction emit_psq_l_generic(Code code, R64 dest, GuestReg guest_rd, R32 ad
     if (w) {
         dequantize(code, xmm0, address, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
         code.cvtss2sd(xmm0, xmm0);
-        code.mov(dest, 0x3ff0_0000_000_0000UL);
+        code.mov(dest, 0x3ff0_0000_0000_0000UL);
         code.movq(xmm1, dest);
         code.punpcklqdq(xmm0, xmm1);
         code.set_ps(guest_rd, xmm0);
@@ -589,8 +589,10 @@ EmissionAction emit_ps_nmsubx(Code code, u32 opcode) {
 void dequantize(Code code, XMM dest, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM tmp_xmm, bool increment_address) {
     code.mov(tmp1, gqr);
     code.mov(tmp2, gqr);
-    code.and(tmp1, 0b111111 << 18);
-    code.and(tmp2, 0b111 << 29);
+    code.and(tmp1, 0b111111 << 24);
+    code.shr(tmp1, 24);
+    code.and(tmp2, 0b111 << 16);
+    code.shr(tmp2, 16);
 
     auto dequantize_float = code.fresh_label();
     auto dequantize_u8 = code.fresh_label();
@@ -603,9 +605,11 @@ void dequantize(Code code, XMM dest, R32 address, R32 gqr, R32 tmp1, R32 tmp2, X
     code.je(dequantize_float);
     
     // materialize 2^(tmp1)
-    code.shl(tmp1, 14);
-    code.sar(tmp1, 3);    
-    code.add(tmp1, 127 << 23);
+    code.shl(tmp1, 26);
+    code.sar(tmp1, 26);
+    code.add(tmp1, 127);
+    code.shl(tmp1, 23); 
+
     code.movd(tmp_xmm, tmp1);
     
     code.cmp(tmp2, 4);
@@ -627,7 +631,7 @@ code.label(dequantize_float);
 code.label(dequantize_u8);
     load_8(code, address, tmp1);
     code.movzx(tmp1, tmp1.cvt8());
-    code.movd(dest, tmp1);
+    code.cvtsi2ss(dest, tmp1);
     code.divss(dest, tmp_xmm);
     if (increment_address) code.add(address, 1);
     code.jmp(end);
@@ -635,7 +639,7 @@ code.label(dequantize_u8);
 code.label(dequantize_u16);
     load_16(code, address, tmp1);
     code.movzx(tmp1, tmp1.cvt16());
-    code.movd(dest, tmp1);
+    code.cvtsi2ss(dest, tmp1);
     code.divss(dest, tmp_xmm);
     if (increment_address) code.add(address, 2);
     code.jmp(end);
@@ -643,7 +647,7 @@ code.label(dequantize_u16);
 code.label(dequantize_s8);
     load_8(code, address, tmp1);
     code.movsx(tmp1, tmp1.cvt8());
-    code.movd(dest, tmp1);
+    code.cvtsi2ss(dest, tmp1);
     code.divss(dest, tmp_xmm);
     if (increment_address) code.add(address, 1);
     code.jmp(end);
@@ -651,7 +655,7 @@ code.label(dequantize_s8);
 code.label(dequantize_s16);
     load_16(code, address, tmp1);
     code.movsx(tmp1, tmp1.cvt16());
-    code.movd(dest, tmp1);
+    code.cvtsi2ss(dest, tmp1);
     code.divss(dest, tmp_xmm);
     if (increment_address) code.add(address, 2);
 
@@ -661,8 +665,9 @@ code.label(end);
 void quantize(Code code, XMM src, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM tmp_xmm, bool increment_address) {
     code.mov(tmp1, gqr);
     code.mov(tmp2, gqr);
-    code.and(tmp1, 0b111111 << 18);
-    code.and(tmp2, 0b111 << 29);
+    code.and(tmp1, 0b111111 << 8);
+    code.shr(tmp1, 8);
+    code.and(tmp2, 0b111 << 0);
 
     auto quantize_float = code.fresh_label();
     auto quantize_u8 = code.fresh_label();
@@ -675,10 +680,11 @@ void quantize(Code code, XMM src, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM 
     code.je(quantize_float);
     
     // materialize 2^(tmp1)
-    code.shl(tmp1, 14);
-    code.sar(tmp1, 3);    
-    code.add(tmp1, 127 << 23);
-    
+    code.shl(tmp1, 26);
+    code.sar(tmp1, 26);
+    code.add(tmp1, 127);
+    code.shl(tmp1, 23); 
+
     code.movd(tmp_xmm, tmp1);
     code.mulss(tmp_xmm, src);
     code.cvtss2si(tmp1, tmp_xmm);
@@ -700,8 +706,8 @@ code.label(quantize_float);
     code.jmp(end);
 
 code.label(quantize_u8);
-    code.cmp(tmp1, 255);
-    code.mov(tmp2, 255);
+    code.cmp(tmp1, cast(u32) 0x000000FF);
+    code.mov(tmp2, cast(u8) 255);
     code.cmovg(tmp1, tmp2);
     code.cmp(tmp1, 0);
     code.mov(tmp2, 0);
@@ -711,8 +717,8 @@ code.label(quantize_u8);
     code.jmp(end);
 
 code.label(quantize_u16);
-    code.cmp(tmp1, 65535);
-    code.mov(tmp2, 65535);
+    code.cmp(tmp1, cast(u16) 65535);
+    code.mov(tmp2, cast(u16) 65535);
     code.cmovg(tmp1, tmp2);
     code.cmp(tmp1, 0);
     code.mov(tmp2, 0);

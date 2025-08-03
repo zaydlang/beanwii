@@ -970,8 +970,8 @@ public:
             }
                 static if (args.length > 0) {
                     static if (is(typeof(args[0]) == int)) {
-                        if (cast(ubyte)args[0] == 0x66) {
-                            buffer ~= 0x66;
+                        if (cast(ubyte)args[0] == 0x66 || cast(ubyte)args[0] == 0xf2 || cast(ubyte)args[0] == 0xf3) {
+                            buffer ~= cast(ubyte)args[0];
                         }
                     }
                 }
@@ -1060,7 +1060,7 @@ public:
                 if (ct-- > 0)
                     continue;
                 static if (is(typeof(arg) == int)) {
-                    if (i != 0 || cast(ubyte)arg != 0x66) {
+                    if (!(i == 0 && (cast(ubyte)arg == 0x66 || cast(ubyte)arg == 0xf2 || cast(ubyte)arg == 0xf3))) {
                     buffer ~= cast(ubyte)arg;
                     } }
                 else static if (is(typeof(arg) == long))
@@ -2323,12 +2323,12 @@ import std.stdio;
     auto divps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x5e, dst, src);
     auto divpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x5e, dst, src);
 
-    auto cvtss2sd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x5a, dst, src);
-    auto cvtsd2ss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x5a, dst, src);
-    auto cvtss2si(RM)(RM dst, XMM src) if (valid!(RM, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x2d, dst, src);
-    auto cvtsd2si(RM)(RM dst, XMM src) if (valid!(RM, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x2d, dst, src);
-    auto cvtsi2sd(RM)(XMM dst, RM src) if (valid!(RM, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x2a, dst, src);
-    auto cvtsi2sd(RM)(XMM dst, RM src) if (valid!(RM, 64)) => emit!(0, SSE)(0xf2, 0x0f, 0x2a, dst, src);
+    auto cvtss2sd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf3, 0x0f, 0x5a, dst, src);
+    auto cvtsd2ss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf2, 0x0f, 0x5a, dst, src);
+    auto cvtss2si(RM)(RM dst, XMM src) if (valid!(RM, 32)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf3, 0x0f, 0x2d, dst, src);
+    auto cvtsd2si(RM)(RM dst, XMM src) if (valid!(RM, 64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf2, 0x0f, 0x2d, dst, src);
+    auto cvtsi2ss(RM)(XMM dst, RM src) if (valid!(RM, 32)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf3, 0x0f, 0x2a, dst, src);
+    auto cvtsi2sd(RM)(XMM dst, RM src) if (valid!(RM, 64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0xf2, 0x0f, 0x2a, dst, src);
     auto comiss(XMM src1, XMM src2) => emit!(0, SSE)(0x0f, 0x2f, src1, src2);
     auto ucomiss(XMM src1, XMM src2) => emit!(0, SSE)(0x0f, 0x2e, src1, src2);
     auto comisd(XMM src1, XMM src2) => emit!(0, SSE)(0x66, 0x0f, 0x2f, src1, src2);
@@ -3576,6 +3576,25 @@ unittest {
         "C4627959C0" ~
         "C4427959C0");
 }
+
+@("cvtsi2ss")
+unittest {
+    Block!true block;
+    with (block) {
+        cvtsi2ss(xmm0, ecx);
+        cvtsi2ss(xmm0, r9d);
+        cvtsi2ss(xmm8, ecx);
+        cvtsi2ss(xmm8, r9d);
+    }
+    import std.stdio;
+    //(block.finalize().toHexString);
+    assert(block.finalize().toHexString == 
+        "F30F2AC1" ~
+        "F3410F2AC1" ~
+        "F3440F2AC1" ~
+        "F3450F2AC1");
+}
+
 // unittest
 // {
 //     Block!true block;
