@@ -518,7 +518,7 @@ final class Broadway {
         if (trigger) {
             u32  lc_address = (state.dmal & ~31);
             bool dma_ld = state.dmau.bit(4);
-            u32  dma_len = ((state.dmau.bits(0, 4) << 2) | state.dmau.bits(2, 3)) * 32;
+            u32  dma_len = ((state.dmau.bits(0, 4) << 2) | state.dmal.bits(2, 3)) * 32;
             u32  mem_addr = (state.dmau & ~31);
 
             DmaEvent dma_event = DmaEvent(
