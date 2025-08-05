@@ -1,0 +1,51 @@
+NOP * 0000 0000 0000 0000
+DAR * 0000 0000 0000 01aa
+IAR * 0000 0000 0000 10aa
+ADDARN * 0000 0000 0001 bbaa
+HALT * 0000 0000 0010 0001
+LOOP * 0000 0000 010r rrrr
+BLOOP * 0000 0000 011r rrrr
+LRI * 0000 0000 100r rrrr iiii iiii iiii iiii
+LR * 0000 0000 110r rrrr mmmm mmmm mmmm mmmm
+SR * 0000 0000 111r rrrr mmmm mmmm mmmm mmmm
+IF cc * 0000 0010 0111 cccc
+JMP cc * 0000 0010 1001 cccc
+CALL cc * 0000 0010 1011 cccc
+RET cc * 0000 0010 1101 cccc
+ADDI * 0000 001r 0000 0000 iiii iiii iiii iiii
+XORI * 0000 001r 0010 0000 iiii iiii iiii iiii
+ANDI * 0000 001r 0100 0000 iiii iiii iiii iiii
+ORI * 0000 001r 0110 0000 iiii iiii iiii iiii
+CMPI * 0000 001r 1000 0000 iiii iiii iiii iiii
+ANDCF * 0000 001r 1010 0000 iiii iiii iiii iiii
+ANDF * 0000 001r 1100 0000 iiii iiii iiii iiii
+ILRR * 0000 001r 0001 mmaa
+ADDIS * 0000 010d iiii iiii
+CMPIS * 0000 011d iiii iiii
+LRIS * 0000 1rrr iiii iiii
+LOOPI * 0001 0000 iiii iiii aaaa aaaa aaaa aaaa
+BLOOPI * 0001 0001 iiii iiii aaaa aaaa aaaa aaaa
+SBSET bit set * 0001 0010 ???? ?iii
+SBCLR bit clear * 0001 0011 ???? ?iii
+LSL/LSR * 0001 010r 0sss ssss
+ASL/ASR * 0001 010r 1sss ssss
+SI * 0001 0110 iiii iiii mmmm mmmm mmmm mmmm
+CALLR * 0001 0111 rrr1 1111
+JMPR * 0001 0111 rrr0 1111
+LRR(I|D|X) * 0001 100x xaar rrrr
+SRR(I|D|X) * 0001 101x xaar rrrr
+MRR * 0001 11dd ddds ssss
+LRS * 0010 0rrr mmmm mmmm
+SRS * 0010 1rrr mmmm mmmm
+XORR * 0011 00sr xxxx xxxx
+ANDR * 0011 01sr xxxx xxxx
+ORR * 0011 10sr xxxx xxxx
+ANDC * 0011 110r xxxx xxxx
+ORC * 0011 111r xxxx xxxx
+ADDR * 0100 0ssd xxxx xxxx
+ADDAX * 0100 10sd xxxx xxxx
+ADD * 0100 110d xxxx xxxx
+ADDP * 0100 111d xxxx xxxx
+SUBR * 0101 0ssd xxxx xxxx
+SUBAX * 0101 10sd xxxx xxxx
+SUB * 0101 110d xxxx xxxx
