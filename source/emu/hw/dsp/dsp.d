@@ -1,6 +1,8 @@
 module emu.hw.dsp.dsp;
 
 import emu.hw.broadway.interrupt;
+import emu.hw.dsp.jit.jit;
+import emu.hw.dsp.state;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import util.bitop;
@@ -35,9 +37,15 @@ final class DSP {
     InterruptController interrupt_controller;
     Mem mem;
 
+    DspJit jit;
+    DspState dsp_state;
+
     this() {
         state = State.Init;
         this.commands_left_to_process_at_init = 10;
+
+        this.jit = new DspJit();
+        this.jit.run(&this.dsp_state);
     }
 
     void connect_scheduler(Scheduler scheduler) {
