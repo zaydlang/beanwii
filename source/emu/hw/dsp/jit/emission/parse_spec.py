@@ -12,11 +12,14 @@ class Instruction:
         self.opcode = '_'.join(line.split('*')[0].split()).strip()
         self.operands = []
         self.fixed_repr = 0
+        self.fixed_mask = 0
 
         high_index = 31
         prev_char = ''
         representation = ''.join(line.split('*')[1].strip().split())
         assert len(representation) == 16 or len(representation) == 32
+
+        self.size = len(representation)
 
         for i in range(len(representation)):
             char = representation[i]
@@ -26,6 +29,7 @@ class Instruction:
             
             if char == '0' or char == '1':
                 self.fixed_repr |= (int(char) << (len(representation) - 1 - i))
+                self.fixed_mask |= (1 << (len(representation) - 1 - i))
                 continue
                 
             if char != prev_char:
