@@ -25,15 +25,17 @@ CMPIS * 0000 011d iiii iiii
 LRIS * 0000 1rrr iiii iiii
 LOOPI * 0001 0000 iiii iiii aaaa aaaa aaaa aaaa
 BLOOPI * 0001 0001 iiii iiii aaaa aaaa aaaa aaaa
-SBSET bit set * 0001 0010 ???? ?iii
-SBCLR bit clear * 0001 0011 ???? ?iii
-LSL/LSR * 0001 010r 0sss ssss
-ASL/ASR * 0001 010r 1sss ssss
+SBSET bit set * 0001 0010 0000 0iii
+SBCLR bit clear * 0001 0011 0000 0iii
+LSL * 0001 010r 00ss ssss
+LSR * 0001 010r 01ss ssss
+ASL * 0001 010r 10ss ssss
+ASR * 0001 010r 11ss ssss
 SI * 0001 0110 iiii iiii mmmm mmmm mmmm mmmm
 CALLR * 0001 0111 rrr1 1111
 JMPR * 0001 0111 rrr0 1111
-LRR(I|D|X) * 0001 100x xaar rrrr
-SRR(I|D|X) * 0001 101x xaar rrrr
+LRR * 0001 100x xaar rrrr
+SRR * 0001 101x xaar rrrr
 MRR * 0001 11dd ddds ssss
 LRS * 0010 0rrr mmmm mmmm
 SRS * 0010 1rrr mmmm mmmm
