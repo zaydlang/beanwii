@@ -22,12 +22,37 @@ instructions = []
         operands = instruction.operands
 
         f.write(f'''    
-def {opcode}({', '.join([f'{op.char.lower()}' for op in operands])}):
-\t{'\n\t'.join([generate_operand_assertion(op) for op in operands])}
+def {opcode.lower()}({', '.join([f'{op.char.lower()}' for op in reversed(operands)])}):
+\t{'\n\t'.join([generate_operand_assertion(op) for op in reversed(operands)])}
         
 \tinstruction = {hex(instruction.fixed_repr)}
-\t{'\n\t'.join([generate_operand_insertion(op) for op in operands])}
-\tinstructions.append(instruction)
+\t{'\n\t'.join([generate_operand_insertion(op) for op in reversed(operands)])}
+\tinstructions.append((instruction, {instruction.size}))
 ''')
     
-    
+    f.write(f'''
+
+def get_label():
+    return sum(i[1] for i in instructions) // 16
+
+def assemble():
+    byte_list = []
+    length = 0
+
+    for instruction in instructions:
+        length += instruction[1] // 8
+        for byte in range(instruction[1] // 8):
+            byte_list.append((instruction[0] >> ((instruction[1] // 8 - byte - 1) * 8)) & 0xff)
+
+    return (byte_list, length)
+
+def get_num_bytes():
+    return sum(i[1] // 8 for i in instructions)
+
+def get_num_instructions():
+    return len(instructions)
+            
+def reset():
+    global instructions
+    instructions = []
+''')

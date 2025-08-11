@@ -9,7 +9,7 @@ LRI * 0000 0000 100r rrrr iiii iiii iiii iiii
 LR * 0000 0000 110r rrrr mmmm mmmm mmmm mmmm
 SR * 0000 0000 111r rrrr mmmm mmmm mmmm mmmm
 IF cc * 0000 0010 0111 cccc
-JMP cc * 0000 0010 1001 cccc
+JMP cc * 0000 0010 1001 cccc aaaa aaaa aaaa aaaa
 CALL cc * 0000 0010 1011 cccc
 RET cc * 0000 0010 1101 cccc
 ADDI * 0000 001r 0000 0000 iiii iiii iiii iiii
