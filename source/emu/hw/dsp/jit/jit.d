@@ -25,13 +25,11 @@ final class DspJit {
     }
 
     DspJitResult run(DspState* state) {
-        u16 pc = state.addressing_register;
-        
-        if (page_table.has(pc)) {
-            DspJitEntry entry = page_table.get(pc);
+        if (page_table.has(state.pc)) {
+            DspJitEntry entry = page_table.get(state.pc);
             return execute_compiled_block(entry.func, state);
         } else {
-            return compile_and_execute(state, pc);
+            return compile_and_execute(state, state.pc);
         }
     }
 
