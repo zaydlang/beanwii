@@ -4,6 +4,7 @@ import emu.hw.dsp.jit.page_table;
 import emu.hw.broadway.jit.emission.codeblocks;
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.emit;
+import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import util.log;
 import util.number;
@@ -17,11 +18,13 @@ final class DspJit {
     DspPageTable page_table;
     CodeBlockTracker codeblocks;
     DspCode code;
+    DspMemory dsp_memory;
 
     this() {
         page_table = new DspPageTable();
         codeblocks = new CodeBlockTracker();
         code       = new DspCode();
+        dsp_memory = new DspMemory();
     }
 
     DspJitResult run(DspState* state) {
@@ -44,7 +47,7 @@ final class DspJit {
     DspJitResult compile_and_execute(DspState* state, u16 pc) {
         code.init();
 
-        DspEmissionResult emission_result = emit_dsp_block(code, pc);
+        DspEmissionResult emission_result = emit_dsp_block(code, dsp_memory, pc);
         u8[] bytes = code.get();
 
         void* executable_code = codeblocks.put(bytes.ptr, bytes.length);
@@ -63,5 +66,14 @@ final class DspJit {
     DspJitResult execute_compiled_block(DspJitFunction func, DspState* state) {
         u32 result = func(cast(void*) state);
         return cast(DspJitResult) result;
+    }
+
+    void upload_iram(u16[] iram) {
+        dsp_memory.upload_iram(iram);
+    }
+
+    // used for tests
+    void single_step_until_halt(DspState* state) {
+        while (compile_and_execute(state, state.pc) != DspJitResult.DspHalted) {}
     }
 }

@@ -58,6 +58,16 @@ public s32 sext_32(T)(T value, u32 size) {
     return result;
 }
 
+public s16 sext_16(T)(T value, u32 size) {
+    assert(is_number!T);
+    
+    auto negative = value.bit(size - 1);
+    s16 result = value;
+
+    if (negative) result |= (((1 << (16 - size)) - 1) << size);
+    return result;
+}
+
 public u8 get_byte(T)(T value, int index) {
     assert(is_number!T);
     assert(index < T.sizeof);

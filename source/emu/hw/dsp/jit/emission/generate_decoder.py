@@ -89,6 +89,7 @@ def write_out_instruction_structs(f, instructions):
     f.write(
 f'''struct DspInstruction {{
     DspOpcode opcode;
+    size_t size;
 
     union {{
         {'\n\t\t'.join([f"{i.opcode.upper()} {i.opcode.lower()};" for i in reversed(instructions)])}
@@ -108,7 +109,10 @@ f'''struct {i.opcode.upper()} {{
 
 def get_operand_decoding_string(operand, instruction_size):
     if instruction_size == 16:
-        return f'instruction.bits({operand.low_index}, {operand.high_index})'
+        if operand.low_index == operand.high_index:
+            return f'instruction.bit({operand.low_index})'
+        else:
+            return f'instruction.bits({operand.low_index}, {operand.high_index})'
     else:
         if operand.low_index == 0 and operand.high_index == 15:
             return 'next_instruction'
@@ -132,7 +136,7 @@ def write_out_table(f, function_name, table):
     for case_number in range(table.size):
         if isinstance(table[case_number], parse_spec.Instruction):
             instruction = table[case_number]
-            f.write(f'\t\tcase {case_number}: return DspInstruction(DspOpcode.{instruction.opcode.upper()}, {instruction.opcode.lower()} : {instruction.opcode.upper()}({", ".join([get_operand_decoding_string(op, instruction.size) for op in reversed(instruction.operands)])}));\n')
+            f.write(f'\t\tcase {case_number}: return DspInstruction(DspOpcode.{instruction.opcode.upper()}, {instruction.size}, {instruction.opcode.lower()} : {instruction.opcode.upper()}({", ".join([get_operand_decoding_string(op, instruction.size) for op in reversed(instruction.operands)])}));\n')
         elif table[case_number] is None:
             pass
         else:

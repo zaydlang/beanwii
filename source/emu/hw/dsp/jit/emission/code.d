@@ -1,6 +1,7 @@
 module emu.hw.dsp.jit.emission.code;
 
 import core.bitop;
+import emu.hw.dsp.state;
 import gallinule.x86;
 import std.conv;
 import util.log;
@@ -79,5 +80,9 @@ final class DspCode {
 
     int get_max_instructions_per_block() {
         return current_max_instructions_per_block;
+    }
+
+    Address!16 get_pc_addr() {
+        return wordPtr(rdi, cast(int) DspState.pc.offsetof);
     }
 }

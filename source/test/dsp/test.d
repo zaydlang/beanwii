@@ -43,7 +43,7 @@ struct DspTestCase {
 
 struct DspTestFile {
     u16 instruction_length;
-    u8[] instructions;
+    u16[] instructions;
     DspTestCase[] test_cases;
 }
 
@@ -56,7 +56,7 @@ DspTestFile parse_test_file(string filepath) {
     test_file.instruction_length = (cast(u16[]) file_data[offset..offset + 2])[0];
     offset += 2;
     
-    test_file.instructions = file_data[offset..offset + test_file.instruction_length];
+    test_file.instructions = cast(u16[]) file_data[offset..offset + test_file.instruction_length];
     offset += test_file.instruction_length;
     
     while (offset + (31 * 2 * 2) <= file_data.length) {
@@ -83,7 +83,7 @@ DspTestState get_actual_dsp_state(DSP dsp) {
     
     for (int i = 0; i < 31; i++) {
         int dsp_reg_index = (i < 18) ? i : i + 1;
-        state.reg[i] = dsp.dsp_state.reg[dsp_reg_index];
+        state.reg[i] = dsp.dsp_state.get_reg(dsp_reg_index);
     }
     
     return state;
@@ -92,7 +92,7 @@ DspTestState get_actual_dsp_state(DSP dsp) {
 void set_dsp_state(DSP dsp, DspTestState state) {
     for (int i = 0; i < 31; i++) {
         int dsp_reg_index = (i < 18) ? i : i + 1;
-        dsp.dsp_state.reg[dsp_reg_index] = state.reg[i];
+        dsp.dsp_state.set_reg(dsp_reg_index, state.reg[i]);
     }
 }
 
@@ -136,22 +136,27 @@ string to_hex_string(u16 value) {
 }
 
 void pretty_print_dsp_state(DspTestState state, DspDiffRepresentation diff) {
-    for (int i = 0; i < 31; i += 8) {
-        int end_i = (i + 7 < 31) ? i + 7 : 30;
-        cwrite("\tRegs %02d-%02d: ".format(i, end_i));
+    for (int i = 0; i < 32; i += 8) {
+        int end_i = (i + 7 < 32) ? i + 7 : 31;
+        cwrite("\tRegs x%02d-x%02d: ".format(i, end_i));
         
-        for (int j = i; j <= end_i && j < 31; j++) {
-            cwrite(colorize(state.reg[j].to_hex_string, diff.reg[j]));
-            if (j < end_i && j < 30) cwrite(" ");
+        for (int j = i; j <= end_i && j < 32; j++) {
+            if (j == 18) {
+                cwrite("----");
+            } else {
+                int reg_index = (j < 18) ? j : j - 1;
+                cwrite(colorize(state.reg[reg_index].to_hex_string, diff.reg[reg_index]));
+            }
+            if (j < end_i && j < 31) cwrite(" ");
         }
         cwriteln("");
     }
 }
 
-string format_instructions(u8[] instructions) {
+string format_instructions(u16[] instructions) {
     string result = "";
     for (int i = 0; i < instructions.length; i++) {
-        result ~= "%02x".format(instructions[i]);
+        result ~= "%04x".format(instructions[i]);
         if (i < instructions.length - 1) result ~= " ";
     }
     return result;
@@ -166,6 +171,12 @@ void run_dsp_test(string test_name) {
         
         set_dsp_state(dsp, test_case.initial_state);
         DspTestState previous_state = test_case.initial_state;
+
+        // upload instructions + halt 
+        writefln("Running DSP test %s, case %d", test_file.instructions, test_case_idx);
+        dsp.jit.upload_iram(test_file.instructions ~ [cast(ushort) 0x0021]);
+        dsp.dsp_state.pc = 0;
+        dsp.jit.single_step_until_halt(&dsp.dsp_state);
         
         DspTestState actual_state = get_actual_dsp_state(dsp);
         auto diff = get_dsp_diff(previous_state, test_case.expected_state, actual_state);
