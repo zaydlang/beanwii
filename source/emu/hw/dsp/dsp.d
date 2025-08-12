@@ -45,7 +45,6 @@ final class DSP {
         this.commands_left_to_process_at_init = 10;
 
         this.jit = new DspJit();
-        this.jit.run(&this.dsp_state);
     }
 
     void connect_scheduler(Scheduler scheduler) {
