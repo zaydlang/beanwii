@@ -37,13 +37,13 @@ bool is_failure(DspDiffRepresentation diff) {
 }
 
 struct DspTestCase {
+    u16[] instructions;
     DspTestState initial_state;
     DspTestState expected_state;
 }
 
 struct DspTestFile {
     u16 instruction_length;
-    u16[] instructions;
     DspTestCase[] test_cases;
 }
 
@@ -56,19 +56,19 @@ DspTestFile parse_test_file(string filepath) {
     test_file.instruction_length = (cast(u16[]) file_data[offset..offset + 2])[0];
     offset += 2;
     
-    test_file.instructions = cast(u16[]) file_data[offset..offset + test_file.instruction_length];
-    offset += test_file.instruction_length;
-    
-    while (offset + (31 * 2 * 2) <= file_data.length) {
+    while (offset + test_file.instruction_length + (31 * 2 * 2) <= file_data.length) {
         DspTestCase test_case;
         
+        test_case.instructions = cast(u16[]) file_data[offset..offset + test_file.instruction_length];
+        offset += test_file.instruction_length;
+        
         for (int i = 0; i < 31; i++) {
-            test_case.initial_state.reg[i] = (cast(u16[]) file_data[offset..offset + 2])[0];
+            test_case.expected_state.reg[i] = (cast(u16[]) file_data[offset..offset + 2])[0];
             offset += 2;
         }
         
         for (int i = 0; i < 31; i++) {
-            test_case.expected_state.reg[i] = (cast(u16[]) file_data[offset..offset + 2])[0];
+            test_case.initial_state.reg[i] = (cast(u16[]) file_data[offset..offset + 2])[0];
             offset += 2;
         }
         
@@ -151,6 +151,32 @@ void pretty_print_dsp_state(DspTestState state, DspDiffRepresentation diff) {
         }
         cwriteln("");
     }
+    
+    // Display long accumulators (AC0 and AC1)
+    cwrite("\tAC0: ");
+    cwrite(colorize(state.reg[16].to_hex_string, diff.reg[16]));
+    cwrite(":");
+    cwrite(colorize(state.reg[29].to_hex_string, diff.reg[29]));
+    cwrite(":");
+    cwrite(colorize(state.reg[27].to_hex_string, diff.reg[27]));
+    cwrite("  AC1: ");
+    cwrite(colorize(state.reg[17].to_hex_string, diff.reg[17]));
+    cwrite(":");
+    cwrite(colorize(state.reg[30].to_hex_string, diff.reg[30])); 
+    cwrite(":");
+    cwrite(colorize(state.reg[28].to_hex_string, diff.reg[28]));
+    cwriteln("");
+    
+    // Display short accumulators (AX0 and AX1)
+    cwrite("\tAX0: ");
+    cwrite(colorize(state.reg[25].to_hex_string, diff.reg[25])); // AX0 hi
+    cwrite(":");
+    cwrite(colorize(state.reg[23].to_hex_string, diff.reg[23])); // AX0 lo
+    cwrite("  AX1: ");
+    cwrite(colorize(state.reg[26].to_hex_string, diff.reg[26])); // AX1 hi
+    cwrite(":");
+    cwrite(colorize(state.reg[24].to_hex_string, diff.reg[24])); // AX1 lo
+    cwriteln("");
 }
 
 string format_instructions(u16[] instructions) {
@@ -173,8 +199,7 @@ void run_dsp_test(string test_name) {
         DspTestState previous_state = test_case.initial_state;
 
         // upload instructions + halt 
-        writefln("Running DSP test %s, case %d", test_file.instructions, test_case_idx);
-        dsp.jit.upload_iram(test_file.instructions ~ [cast(ushort) 0x0021]);
+        dsp.jit.upload_iram(test_case.instructions ~ [cast(ushort) 0x0021]);
         dsp.dsp_state.pc = 0;
         dsp.jit.single_step_until_halt(&dsp.dsp_state);
         
@@ -184,7 +209,7 @@ void run_dsp_test(string test_name) {
         if (is_failure(diff)) {
             writefln("===== DSP Test %s Failed! =====", test_name);
             writefln("Test case: %d", test_case_idx);
-            writefln("Instructions: %s", format_instructions(test_file.instructions));
+            writefln("Instructions: %s", format_instructions(test_case.instructions));
 
             writefln("Initial state:");
             pretty_print_dsp_state(test_case.initial_state, diff);
@@ -198,11 +223,12 @@ void run_dsp_test(string test_name) {
 }
 
 enum dsp_tests = [
+    "sanity",
     "add",
 ];
 
 static foreach (test; dsp_tests) {
-    @(test)
+    @("dsp_" ~ test)
     unittest {
         run_dsp_test(test);
     }
