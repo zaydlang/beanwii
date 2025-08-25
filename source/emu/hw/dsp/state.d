@@ -73,7 +73,7 @@ struct DspState {
         
         case 16:
         case 17:
-            ac[index - 16].hi = sext_16(value, 8);
+            ac[index - 16].hi = sext_16(cast(u16) (value & 0xff), 8);
             break;
         
         case 18:
@@ -81,7 +81,7 @@ struct DspState {
             break;
         
         case 19:
-            sr = value;
+            sr = value & ~(1 << 8);
             break;
         
         case 20:
@@ -93,7 +93,7 @@ struct DspState {
             break;
         
         case 22:
-            prod_hi = value;
+            prod_hi = value & 0xff;
             break;
 
         case 23:
@@ -107,7 +107,7 @@ struct DspState {
         
         case 26:
         case 27:
-            ax[index - 26].hi = sext_16(value, 8);
+            ax[index - 26].hi = value;
             break;
 
         case 28:
