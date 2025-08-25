@@ -41,6 +41,7 @@ enum Whitelist = [
     // LogSource.WBFS,
     // LogSource.WII,
     // LogSource.WIIMOTE,
+    LogSource.NONE
 ];
 
 enum LogSource {
@@ -75,7 +76,9 @@ enum LogSource {
     WIIMOTE,
     MMIO,
     GDB,
-    UTIL
+    UTIL,
+
+    NONE // dummy
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();
