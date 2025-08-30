@@ -238,7 +238,7 @@ void* httpd(void* arg) {
                             for (int j = 0; j < 31; j++) {
                                 while(!DSP_CheckMailFrom());
                                 uint32_t mb = DSP_ReadMailFrom();
-                                result_data[i * num_test_cases + j] = mb & 0xFFFF;
+                                result_data[i * 31 + j] = mb & 0xFFFF;
                             }
                             printf("Test case %d done\n", i + 1);
                         }
