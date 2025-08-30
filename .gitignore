@@ -13,3 +13,6 @@ beanwii-test-*
 *.o
 *.obj
 *.lst
+tools/dsp_fuzzer/server/build/*
+*.dol
+*.elf
