@@ -8,9 +8,6 @@ import struct
 sys.path.append('/home/zaydq/projects/beanwii/source/emu/hw/dsp/jit/emission')
 import assembler
 
-NUM_TESTS = 1
-
-
 def generate_pseudo_values(count):
     values = []
     for i in range(count):
@@ -95,9 +92,9 @@ def store_accumulators():
         assembler.andf(0, 0x8000)
         assembler.jmp_cc(0b1101, label)
 
-def do_tests(instruction_generator):
+def do_tests(instruction_generator, num_tests):
     assembler.reset()
-    [instruction_generator() for _ in range(NUM_TESTS)]
+    [instruction_generator() for _ in range(num_tests)]
     tests_bytes = assembler.assemble()[0]
     test_size = assembler.get_num_bytes() // assembler.get_num_instructions()
 
@@ -116,11 +113,11 @@ def do_tests(instruction_generator):
 
     bytes_data, length = assembler.assemble()
 
-    test_cases_accumulators = generate_pseudo_values(31 * NUM_TESTS)
+    test_cases_accumulators = generate_pseudo_values(31 * num_tests)
 
-    return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes
+    return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes, num_tests
 
-def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data):
+def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data, num_tests):
     print("Original Accumulators:", [hex(x) for x in test_cases_accumulators])
     # print([hex(x) for x in iram_code_bytes])
     ip = sys.argv[1]
@@ -130,7 +127,7 @@ def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_i
     packet.extend(struct.pack('>H', 0xBEEF))  # magic
     packet.extend(struct.pack('>H', test_case_length))  # test_case_length
     packet.extend(struct.pack('>H', test_case_index))  # test_case_index
-    packet.extend(struct.pack('>H', NUM_TESTS))  # num_test_cases
+    packet.extend(struct.pack('>H', num_tests))  # num_test_cases
     packet.extend(struct.pack('>H', iram_code_length))  # iram_code_length
     packet.extend(iram_code_bytes)  # iram_code
     for val in test_cases_accumulators:
@@ -143,12 +140,19 @@ def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_i
     s.connect((ip, port))
     s.sendall(packet)
 
-    data = s.recv(31 * NUM_TESTS * 2)
-    print("Received:", len(data), "bytes")
+    # wait to receive 31 * num_tests * 2 bytes
+    expected_bytes = 31 * num_tests * 2
+    data = bytearray()
+    while len(data) < expected_bytes:
+        chunk = s.recv(expected_bytes - len(data))
+        if not chunk:
+            print("Connection closed prematurely")
+            return
+        data.extend(chunk)
 
     results = struct.unpack(f'>{len(data)//2}H', data)
     print("Result Accumulators:  ", [hex(x) for x in results])
 
     s.close()
 
-send_to_wii(*do_tests(lambda: assembler.nop()))
+send_to_wii(*do_tests(lambda: assembler.nop(), 100))
