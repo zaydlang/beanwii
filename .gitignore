@@ -16,3 +16,4 @@ beanwii-test-*
 tools/dsp_fuzzer/server/build/*
 *.dol
 *.elf
+tools/dsp_codegen/__pycache__
