@@ -117,7 +117,7 @@ def do_tests(instruction_generator, num_tests):
     return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes, num_tests
 
 def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data, num_tests):
-    print("Original Accumulators:", [hex(x) for x in test_cases_accumulators])
+    # print("Original Accumulators:", [hex(x) for x in test_cases_accumulators])
     # print([hex(x) for x in iram_code_bytes])
     port = 1234
 
@@ -149,7 +149,7 @@ def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_lengt
         data.extend(chunk)
 
     results = struct.unpack(f'>{len(data)//2}H', data)
-    print("Result Accumulators:  ", [hex(x) for x in results])
+    # print("Result Accumulators:  ", [hex(x) for x in results])
 
     s.close()
 
