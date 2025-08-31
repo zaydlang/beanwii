@@ -66,9 +66,12 @@ struct DspState {
         
         case 12:
         case 13:
-        case 14:
         case 15:
             st[index - 12] = value;
+            break;
+
+        case 14:
+            // cant write to $st2 directly
             break;
         
         case 16:
