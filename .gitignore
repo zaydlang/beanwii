@@ -17,3 +17,4 @@ tools/dsp_fuzzer/server/build/*
 *.dol
 *.elf
 tools/dsp_codegen/__pycache__
+tools/dsp_fuzzer/client/__pycache__
