@@ -1,12 +1,11 @@
-import socket
-import sys
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/dsp_codegen")
+
+import assembler
+import socket
 import random
 import struct
-
-# cry about it
-sys.path.append('/home/zaydq/projects/beanwii/source/emu/hw/dsp/jit/emission')
-import assembler
 
 def generate_pseudo_values(count):
     values = []
@@ -117,10 +116,9 @@ def do_tests(instruction_generator, num_tests):
 
     return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes, num_tests
 
-def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data, num_tests):
+def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data, num_tests):
     print("Original Accumulators:", [hex(x) for x in test_cases_accumulators])
     # print([hex(x) for x in iram_code_bytes])
-    ip = sys.argv[1]
     port = 1234
 
     packet = bytearray()
@@ -157,7 +155,7 @@ def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_i
 
     expected = results
 
-    with open(f"{sys.argv[2]}", "wb+") as f:
+    with open(f"{filename}", "wb+") as f:
         f.write(test_case_length.to_bytes(2, 'little'))
         for i in range(num_tests):
             for j in range(0, test_case_length, 2):
