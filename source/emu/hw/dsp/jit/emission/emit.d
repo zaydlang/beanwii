@@ -27,12 +27,17 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
     return DspEmissionResult(1); // 1 instruction emitted
 }
 
+DspJitResult emit_nop(DspCode code) {
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code) {
     return DspJitResult.DspHalted;
 }
 
 DspJitResult emit_instruction(DspCode code, DspInstruction dsp_instruction) {
     switch (dsp_instruction.opcode) {
+        case DspOpcode.NOP:  return emit_nop(code);
         case DspOpcode.HALT: return emit_halt(code);
         
         // do nothing for now
