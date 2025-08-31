@@ -12,36 +12,36 @@ def generate_pseudo_values(count):
     values = []
     for i in range(count):
         match random.randint(0, 20):
-            # case 0:
-            #     values.append(0)
-            # case 1:
-            #     values.append(1)
-            # case 2:
-            #     values.append(0xfe)
-            # case 3:
-            #     values.append(0xff)
-            # case 4:
-            #     values.append(0x100)
-            # case 4:
-            #     values.append(0x101)
-            # case 5:
-            #     values.append(0x7f)
-            # case 6:
-            #     values.append(0x80)
-            # case 7:
-            #     values.append(0x81)
-            # case 8:
-            #     values.append(0xfffe)
-            # case 9:
-            #     values.append(0xffff)
-            # case 10:
-            #     values.append(0x7f00)
-            # case 11:
-            #     values.append(0x7fff)
-            # case 12:
-            #     values.append(0)
-            # case 13:
-            #     values.append(0)
+            case 0:
+                values.append(0)
+            case 1:
+                values.append(1)
+            case 2:
+                values.append(0xfe)
+            case 3:
+                values.append(0xff)
+            case 4:
+                values.append(0x100)
+            case 4:
+                values.append(0x101)
+            case 5:
+                values.append(0x7f)
+            case 6:
+                values.append(0x80)
+            case 7:
+                values.append(0x81)
+            case 8:
+                values.append(0xfffe)
+            case 9:
+                values.append(0xffff)
+            case 10:
+                values.append(0x7f00)
+            case 11:
+                values.append(0x7fff)
+            case 12:
+                values.append(0)
+            case 13:
+                values.append(0)
             case _:
                 values.append(random.randint(0, 0xffff))
     
