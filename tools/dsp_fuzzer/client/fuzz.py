@@ -155,4 +155,17 @@ def send_to_wii(iram_code_bytes, iram_code_length, test_case_length, test_case_i
 
     s.close()
 
-send_to_wii(*do_tests(lambda: assembler.nop(), 100))
+    expected = results
+
+    with open(f"{sys.argv[2]}", "wb+") as f:
+        f.write(test_case_length.to_bytes(2, 'little'))
+        for i in range(num_tests):
+            for j in range(0, test_case_length, 2):
+                f.write((test_cases_data[i * test_case_length + j + 1] + (test_cases_data[i * test_case_length + j] << 8)).to_bytes(2, 'little'))
+
+            for j in range(31):
+                f.write(expected[i * 31 + j].to_bytes(2, 'little'))
+            
+            for j in range(31):
+                f.write(test_cases_accumulators[i * 31 + j].to_bytes(2, 'little'))
+

@@ -1,6 +1,6 @@
 from parse_spec import *
 
-instructions = get_instructions('spec')
+instructions = get_instructions('tools/dsp_codegen/spec')
 
 def generate_operand_assertion(operand):
     size = operand.high_index - operand.low_index + 1
