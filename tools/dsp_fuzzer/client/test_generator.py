@@ -12,11 +12,15 @@ def r(low, high):
 def sanity():
     assembler.nop()
 
+def abs():
+    assembler.abs(r(0, 1), 0)
+
 def add():
     assembler.add(r(0, 1), 0)
 
 test_cases = [
     sanity,
+    abs,
     add
 ]
 

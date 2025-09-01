@@ -224,6 +224,7 @@ void run_dsp_test(string test_name) {
 
 enum dsp_tests = [
     "sanity",
+    "abs",
     "add",
 ];
 
