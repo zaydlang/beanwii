@@ -21,25 +21,28 @@ class Instruction:
 
         self.size = len(representation)
 
+        ass = self.opcode == 'ABS'
+
         for i in range(len(representation)):
             char = representation[i]
-
-            if char == ' ':
-                continue
             
             if char == '0' or char == '1':
                 self.fixed_repr |= (int(char) << (len(representation) - 1 - i))
                 self.fixed_mask |= (1 << (len(representation) - 1 - i))
-                continue
-                
+            
             if char != prev_char:
-                if prev_char != '':
+                if prev_char != '0' and prev_char != '1' and prev_char != '':
                     self.operands.append(Operand(len(representation) - i, high_index - 1, prev_char))
                 high_index = len(representation) - i
-                prev_char = char
+
+
+            prev_char = char
         
-        if prev_char != '':
+        if prev_char != '' and prev_char != '0' and prev_char != '1':
             self.operands.append(Operand(0, high_index - 1, prev_char))
+
+            if ass:
+                print(prev_char)
         
         self.operands.reverse()  # Reverse to have the lowest index first
 

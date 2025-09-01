@@ -63,7 +63,7 @@ DECM * 0111 100d xxxx xxxx
 DEC * 0111 101d xxxx xxxx
 NEG * 0111 110d xxxx xxxx
 MOVNP * 0111 111d xxxx xxxx
-NX * 1000 x000 xxxx xxxx
+NX * 1000 y000 xxxx xxxx
 CLR * 1000 r001 xxxx xxxx
 CMP * 1000 0010 xxxx xxxx
 MULAXH * 1000 0011 xxxx xxxx
