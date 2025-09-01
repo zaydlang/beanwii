@@ -9,14 +9,11 @@ import random
 def r(low, high):
     return random.randint(low, high)
 
-def unused(bitlength):
-    return random.randint(0, (1 << bitlength) - 1)
-
 def sanity():
     assembler.nop()
 
 def add():
-    assembler.add(r(0, 1), unused(8))
+    assembler.add(r(0, 1), 0)
 
 test_cases = [
     sanity,

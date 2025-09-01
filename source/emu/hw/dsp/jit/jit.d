@@ -6,6 +6,7 @@ import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.emit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
+import util.bitop;
 import util.log;
 import util.number;
 
@@ -28,12 +29,19 @@ final class DspJit {
     }
 
     DspJitResult run(DspState* state) {
-        if (page_table.has(state.pc)) {
-            DspJitEntry entry = page_table.get(state.pc);
+        u32 config_bitfield = get_config_bitfield(state);
+        if (page_table.has(state.pc, config_bitfield)) {
+            DspJitEntry entry = page_table.get(state.pc, config_bitfield);
             return execute_compiled_block(entry.func, state);
         } else {
             return compile_and_execute(state, state.pc);
         }
+    }
+
+    private u32 get_config_bitfield(DspState* state) {
+        u32 bitfield = 0;
+        if (state.sr_upper.bit(14 - 8)) bitfield |= 1; // sr_SXM
+        return bitfield;
     }
 
     void invalidate_code_cache() {
@@ -45,7 +53,7 @@ final class DspJit {
     }
 
     DspJitResult compile_and_execute(DspState* state, u16 pc) {
-        code.init();
+        code.init(state);
 
         DspEmissionResult emission_result = emit_dsp_block(code, dsp_memory, pc);
         u8[] bytes = code.get();
@@ -58,7 +66,8 @@ final class DspJit {
             cast(u16) emission_result.instruction_count,
             true
         );
-        page_table.put(pc, entry);
+        u32 config_bitfield = get_config_bitfield(state);
+        page_table.put(pc, config_bitfield, entry);
         
         return execute_compiled_block(func, state);
     }
