@@ -104,7 +104,7 @@ f'''enum DspOpcode {{
     for i in instructions:
         f.write(
 f'''struct {i.opcode.upper()} {{
-    {'\n\t'.join([f'u16 {op.char.lower()};' for op in i.operands])}
+    {'\n\t'.join([f'u16 {op.char.lower()};' for op in reversed(i.operands)])}
 }}\n\n''')
 
 def get_operand_decoding_string(operand, instruction_size):

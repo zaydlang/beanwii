@@ -1,17 +1,22 @@
 module emu.hw.dsp.jit.emission.code;
 
 import core.bitop;
+import emu.hw.dsp.jit.emission.config;
 import emu.hw.dsp.state;
 import gallinule.x86;
 import std.conv;
+import util.bitop;
 import util.log;
 import util.number;
+import util.x86;
 
 // Import x86 registers
 public import gallinule.x86 : rax, rbx, rcx, rdx, rsi, rdi, rbp, rsp, r8, r9, r10, r11, r12, r13, r14, r15;
 
+
 final class DspCode {
     Block!true block;
+    DspCodeConfig config;
     alias block this;
 
     enum MAX_INSTRUCTIONS_PER_BLOCK = 10;
@@ -21,9 +26,12 @@ final class DspCode {
         block = Block!true();
     }
 
-    void init() {
+    void init(DspState* state) {
         block.reset();
         this.emit_prologue();
+        free_all_registers();
+
+        config.sr_SXM = state.sr_upper.bit(14 - 8);
     }
 
     void emit_prologue() {
@@ -84,5 +92,41 @@ final class DspCode {
 
     Address!16 get_pc_addr() {
         return wordPtr(rdi, cast(int) DspState.pc.offsetof);
+    }
+
+    // bitfield
+    u16 allocated_regs;
+    R64 allocate_register() {
+        if (allocated_regs == 0xFFFF) {
+            error_jit("No free registers available");
+        }
+
+        int reg = core.bitop.bsf(~allocated_regs);
+        allocated_regs |= 1 << reg;
+        return u16_to_reg64(cast(u16) reg);
+    }
+
+    void reserve_register(R64 reg) {
+        allocated_regs |= 1 << reg64_to_u16(reg);
+    }
+
+    void free_register(R64 reg) {
+        allocated_regs &= ~(1 << reg64_to_u16(reg));
+    }
+
+    void free_all_registers() {
+        allocated_regs = 0;
+        this.reserve_register(rdi);
+    }
+
+    Address!64 ac_full_address(int index) {
+        log_dsp("offset = %d + %d * %d + %d", DspState.ac.offsetof, index, DspState.LongAcumulator.sizeof, DspState.LongAcumulator.full.offsetof);
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.full.offsetof;
+        return qwordPtr(rdi, cast(int) offset);
+    }
+
+    Address!16 ac_lo_address(int index) {
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.lo.offsetof;
+        return wordPtr(rdi, cast(int) offset);
     }
 }

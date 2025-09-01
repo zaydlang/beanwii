@@ -2,32 +2,12 @@ module emu.hw.broadway.jit.emission.code;
 
 import core.bitop;
 import emu.hw.broadway.jit.emission.guest_reg;
-import emu.hw.broadway.jit.emission.x86;
 import emu.hw.broadway.jit.jit;
 import gallinule.x86;
 import std.conv;
 import util.log;
 import util.number;
-
-Reg!to cvt(ushort to, ushort from)(Reg!from r) {
-    return Reg!to(r.index, (r.index & 4) && to == 8);
-}
-
-R64 cvt64(ushort T)(Reg!T r) {
-    return cvt!(cast(ushort) 64, T)(r);
-}
-
-R32 cvt32(ushort T)(Reg!T r) {
-    return cvt!(cast(ushort) 32, T)(r);
-}
-
-R16 cvt16(ushort T)(Reg!T r) {
-    return cvt!(cast(ushort) 16, T)(r);
-}
-
-R8 cvt8(ushort T)(Reg!T r) {
-    return cvt!(cast(ushort) 8, T)(r);
-}
+import util.x86;
 
 final class Code {
     Block!true block;

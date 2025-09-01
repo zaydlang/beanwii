@@ -7,6 +7,26 @@ import std.typecons;
 import tern.algorithm;
 import tern.state;
 
+Reg!to cvt(ushort to, ushort from)(Reg!from r) {
+    return Reg!to(r.index, (r.index & 4) && to == 8);
+}
+
+R64 cvt64(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 64, T)(r);
+}
+
+R32 cvt32(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 32, T)(r);
+}
+
+R16 cvt16(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 16, T)(r);
+}
+
+R8 cvt8(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 8, T)(r);
+}
+
 /* ====== ADDRESSING ====== */
 
 private enum Mode
@@ -2504,6 +2524,11 @@ import std.stdio;
     auto add(RM)(RM dst, R16 src) if (valid!(RM, 16)) => emit!0(0x01, dst, src);
     auto add(RM)(RM dst, R32 src) if (valid!(RM, 32)) => emit!0(0x01, dst, src);
     auto add(RM)(RM dst, R64 src) if (valid!(RM, 64)) => emit!0(0x01, dst, src);
+
+    auto add(R8 src, Address!8 dst) => emit!0(0x02, dst, src);
+    auto add(R16 src, Address!16 dst) => emit!0(0x03, dst, src);
+    auto add(R32 src, Address!32 dst) => emit!0(0x03, dst, src);
+    auto add(R64 src, Address!64 dst) => emit!0(0x03, dst, src);
 
     // auto add(R8 dst, Address!8 src) => emit!0(0x02, dst, src);
     // auto add(R16 dst, Address!16 src) => emit!0(0x03, dst, src);

@@ -2,8 +2,11 @@ module emu.hw.dsp.jit.emission.emit;
 
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.decoder;
+import emu.hw.dsp.jit.emission.flags;
 import emu.hw.dsp.jit.jit;
 import emu.hw.dsp.jit.memory;
+import emu.hw.dsp.state;
+import gallinule.x86;
 import util.number;
 import util.log;
 
@@ -27,18 +30,43 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
     return DspEmissionResult(1); // 1 instruction emitted
 }
 
-DspJitResult emit_nop(DspCode code) {
+void maybe_handle_sr_sxm(DspCode code, int ac_index) {
+    if (code.config.sr_SXM) {
+        code.mov(code.ac_lo_address(ac_index), 0);
+    }
+}
+
+DspJitResult emit_add(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp1, code.ac_full_address(1 - instruction.add.d));
+    code.mov(tmp2, code.ac_full_address(instruction.add.d));
+    code.sal(tmp1, 64 - 40);
+    code.sal(tmp2, 64 - 40);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags(AllFlagsButLZ, code, tmp1, tmp2);
+    code.sar(tmp1, 64 - 40);
+
+    code.mov(code.ac_full_address(instruction.add.d), tmp1);
+ 
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_halt(DspCode code) {
+DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
+}
+
+DspJitResult emit_nop(DspCode code, DspInstruction instruction) {
+    return DspJitResult.Continue;
 }
 
 DspJitResult emit_instruction(DspCode code, DspInstruction dsp_instruction) {
     switch (dsp_instruction.opcode) {
-        case DspOpcode.NOP:  return emit_nop(code);
-        case DspOpcode.HALT: return emit_halt(code);
+        case DspOpcode.ADD:  return emit_add(code, dsp_instruction);
+        case DspOpcode.HALT: return emit_halt(code, dsp_instruction);
+        case DspOpcode.NOP:  return emit_nop(code, dsp_instruction);
         
         // do nothing for now
         default: return DspJitResult.Continue;

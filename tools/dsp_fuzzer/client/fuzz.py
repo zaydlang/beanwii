@@ -121,6 +121,15 @@ def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_lengt
     # print([hex(x) for x in iram_code_bytes])
     port = 1234
 
+    # test_cases_accumulators = [
+    #     0xfffe, 0x007f, 0x22b5, 0x0001, 0x0000, 0x0001, 0x3afe, 0x0000,
+    #     0xc41b, 0x00fe, 0x7f00, 0x490d, 0x1e03, 0xe1c0, 0x00ff, 0x7f00,
+    #     0x00ff, 0x00fe, 0x9834, 0x0100, 0x0100, 0x0080, 0x0000,
+    #     0x6baa, 0x5dc9, 0xfffe, 0x00ff, 0xfffe, 0x7fff, 0x9216, 0x007f,
+    # ]
+
+    # test_cases_data = [ 0x4d, 0x64 ]
+
     packet = bytearray()
     packet.extend(struct.pack('>H', 0xBEEF))  # magic
     packet.extend(struct.pack('>H', test_case_length))  # test_case_length
@@ -166,4 +175,3 @@ def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_lengt
             
             for j in range(31):
                 f.write(test_cases_accumulators[i * 31 + j].to_bytes(2, 'little'))
-

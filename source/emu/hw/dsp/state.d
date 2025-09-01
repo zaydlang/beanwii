@@ -1,5 +1,6 @@
 module emu.hw.dsp.state;
 
+import emu.hw.dsp.jit.emission.flags;
 import util.bitop;
 import util.number;
 
@@ -9,7 +10,7 @@ struct DspState {
     u16[4] r8_to_11;
     u16[4] st;
     u16 config;
-    u16 sr;
+    u16 sr_upper;
 
     u16 prod_hi;
     u16 prod_m1;
@@ -18,10 +19,10 @@ struct DspState {
 
     union LongAcumulator {
         struct {
-            u16 padding;
-            u16 hi;
-            u16 md;
             u16 lo;
+            u16 md;
+            u16 hi;
+            u16 padding;
         };
 
         u64 full;
@@ -29,8 +30,8 @@ struct DspState {
 
     union ShortAccumulator {
         struct {
-            u16 hi;
             u16 lo;
+            u16 hi;
         };
 
         u32 full;
@@ -39,6 +40,8 @@ struct DspState {
     LongAcumulator[2] ac;
     ShortAccumulator[2] ax;
 
+    FlagState flag_state;
+    
     u16 pc;
 
     void set_reg(int index, u16 value) {
@@ -84,7 +87,8 @@ struct DspState {
             break;
         
         case 19:
-            sr = value & ~(1 << 8);
+            sr_upper = (value >> 8) & ~1;
+            flag_state.set(value & 0xff);
             break;
         
         case 20:
@@ -115,12 +119,12 @@ struct DspState {
 
         case 28:
         case 29:
-            ac[index - 28].md = value;
+            ac[index - 28].lo = value;
             break;
         
         case 30:
         case 31:
-            ac[index - 30].lo = value;
+            ac[index - 30].md = value;
             break;
         }
     }
@@ -159,7 +163,7 @@ struct DspState {
             return config;
         
         case 19:
-            return sr;
+            return cast(ushort) ((sr_upper << 8) | flag_state.get());
         
         case 20:
             return prod_lo;
@@ -183,11 +187,11 @@ struct DspState {
 
         case 28:
         case 29:
-            return ac[index - 28].md;
+            return ac[index - 28].lo;
         
         case 30:
         case 31:
-            return ac[index - 30].lo;
+            return ac[index - 30].md;
         }
     }
 }
