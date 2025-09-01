@@ -9,6 +9,10 @@ import emu.hw.dsp.state;
 import gallinule.x86;
 import util.number;
 import util.log;
+import std.conv;
+import std.meta;
+import std.traits;
+import std.uni;
 
 struct DspEmissionResult {
     u32 instruction_count;
@@ -64,11 +68,17 @@ DspJitResult emit_nop(DspCode code, DspInstruction instruction) {
 
 DspJitResult emit_instruction(DspCode code, DspInstruction dsp_instruction) {
     switch (dsp_instruction.opcode) {
-        case DspOpcode.ADD:  return emit_add(code, dsp_instruction);
-        case DspOpcode.HALT: return emit_halt(code, dsp_instruction);
-        case DspOpcode.NOP:  return emit_nop(code, dsp_instruction);
-        
-        // do nothing for now
-        default: return DspJitResult.Continue;
+        static foreach (opcode; EnumMembers!DspOpcode) {{
+            enum bool is_target(alias T) = T == "emit_" ~ opcode.stringof.toLower;
+            
+            static if (Filter!(is_target, __traits(allMembers, emu.hw.dsp.jit.emission.emit)).length > 0) {
+                case opcode:
+                    mixin("return emit_" ~ opcode.stringof.toLower ~ "(code, dsp_instruction);");
+            }
+        }}
+
+        default: 
+            error_dsp("Unimplemented DSP instruction: %s", dsp_instruction);
+            return DspJitResult.DspHalted;
     }
 }
