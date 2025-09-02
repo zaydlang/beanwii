@@ -113,75 +113,75 @@ def ret_cc(c):
 	instructions.append((instruction, 16))
     
 def addi(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2000000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def xori(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2200000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def andi(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2400000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def ori(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2600000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def cmpi(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2800000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def andcf(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2a00000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def andf(r, i):
-	assert 0 <= r and r < 512
+	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2c00000
-	instruction |= (r << 16)
+	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
 def ilrr(r, m, a):
-	assert 0 <= r and r < 32
+	assert 0 <= r and r < 2
 	assert 0 <= m and m < 4
 	assert 0 <= a and a < 4
         
 	instruction = 0x210
-	instruction |= (r << 4)
+	instruction |= (r << 8)
 	instruction |= (m << 2)
 	instruction |= (a << 0)
 	instructions.append((instruction, 16))
@@ -246,38 +246,38 @@ def sbclr_bit_clear(i):
 	instructions.append((instruction, 16))
     
 def lsl(r, s):
-	assert 0 <= r and r < 8
+	assert 0 <= r and r < 2
 	assert 0 <= s and s < 64
         
 	instruction = 0x1400
-	instruction |= (r << 6)
+	instruction |= (r << 8)
 	instruction |= (s << 0)
 	instructions.append((instruction, 16))
     
 def lsr(r, s):
-	assert 0 <= r and r < 8
+	assert 0 <= r and r < 2
 	assert 0 <= s and s < 64
         
 	instruction = 0x1440
-	instruction |= (r << 6)
+	instruction |= (r << 8)
 	instruction |= (s << 0)
 	instructions.append((instruction, 16))
     
 def asl(r, s):
-	assert 0 <= r and r < 8
+	assert 0 <= r and r < 2
 	assert 0 <= s and s < 64
         
 	instruction = 0x1480
-	instruction |= (r << 6)
+	instruction |= (r << 8)
 	instruction |= (s << 0)
 	instructions.append((instruction, 16))
     
 def asr(r, s):
-	assert 0 <= r and r < 8
+	assert 0 <= r and r < 2
 	assert 0 <= s and s < 64
         
 	instruction = 0x14c0
-	instruction |= (r << 6)
+	instruction |= (r << 8)
 	instruction |= (s << 0)
 	instructions.append((instruction, 16))
     
@@ -291,17 +291,17 @@ def si(i, m):
 	instructions.append((instruction, 32))
     
 def callr(r):
-	assert 0 <= r and r < 256
+	assert 0 <= r and r < 8
         
 	instruction = 0x171f
-	instruction |= (r << 0)
+	instruction |= (r << 5)
 	instructions.append((instruction, 16))
     
 def jmpr(r):
-	assert 0 <= r and r < 256
+	assert 0 <= r and r < 8
         
 	instruction = 0x170f
-	instruction |= (r << 0)
+	instruction |= (r << 5)
 	instructions.append((instruction, 16))
     
 def lrr(x, a, r):
@@ -589,19 +589,21 @@ def movnp(d, x):
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
-def nx(x):
-	assert 0 <= x and x < 4096
+def nx(y, x):
+	assert 0 <= y and y < 2
+	assert 0 <= x and x < 256
         
 	instruction = 0x8000
+	instruction |= (y << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def clr(r, x):
-	assert 0 <= r and r < 16
+	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x8100
-	instruction |= (r << 8)
+	instruction |= (r << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
@@ -685,181 +687,181 @@ def set40(x):
 	instructions.append((instruction, 16))
     
 def mul(s, x):
-	assert 0 <= s and s < 16
+	assert 0 <= s and s < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x9000
-	instruction |= (s << 8)
+	instruction |= (s << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def asr16(r, x):
-	assert 0 <= r and r < 16
+	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x9100
-	instruction |= (r << 8)
+	instruction |= (r << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulmvz(s, r, x):
-	assert 0 <= s and s < 8
+	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x9200
-	instruction |= (s << 9)
+	instruction |= (s << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulac(s, r, x):
-	assert 0 <= s and s < 8
+	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x9400
-	instruction |= (s << 9)
+	instruction |= (s << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulmv(s, r, x):
-	assert 0 <= s and s < 8
+	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0x9600
-	instruction |= (s << 9)
+	instruction |= (s << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulx(s, t, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 16
+	assert 0 <= t and t < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xa000
 	instruction |= (s << 12)
-	instruction |= (t << 8)
+	instruction |= (t << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def abs(d, x):
-	assert 0 <= d and d < 16
+	assert 0 <= d and d < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xa100
-	instruction |= (d << 8)
+	instruction |= (d << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def tst(r, x):
-	assert 0 <= r and r < 16
+	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xb100
-	instruction |= (r << 8)
+	instruction |= (r << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulxmvz(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xa200
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulxac(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xa400
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulxmv(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xa600
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulc(s, t, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 16
+	assert 0 <= t and t < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xc000
 	instruction |= (s << 12)
-	instruction |= (t << 8)
+	instruction |= (t << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def cmpaxh(r, s, x):
 	assert 0 <= r and r < 2
-	assert 0 <= s and s < 16
+	assert 0 <= s and s < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xc100
 	instruction |= (r << 12)
-	instruction |= (s << 8)
+	instruction |= (s << 11)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulcmvz(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xc200
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulcac(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xc400
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
 def mulcmv(s, t, r, x):
 	assert 0 <= s and s < 2
-	assert 0 <= t and t < 8
+	assert 0 <= t and t < 2
 	assert 0 <= r and r < 2
 	assert 0 <= x and x < 256
         
 	instruction = 0xc600
 	instruction |= (s << 12)
-	instruction |= (t << 9)
+	instruction |= (t << 11)
 	instruction |= (r << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
