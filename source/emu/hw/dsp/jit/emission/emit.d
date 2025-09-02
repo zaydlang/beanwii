@@ -40,6 +40,24 @@ void maybe_handle_sr_sxm(DspCode code, int ac_index) {
     }
 }
 
+DspJitResult emit_abs(DspCode code, DspInstruction instruction) {
+    R64 tmp = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp, code.ac_full_address(instruction.abs.d));
+    code.sal(tmp, 64 - 40);
+    code.mov(tmp2, tmp);
+    code.neg(tmp);
+    code.cmovs(tmp, tmp2);
+
+    emit_set_flags(AllFlagsButLZAndC, Flag.C, code, tmp, tmp2);
+
+    code.sar(tmp, 64 - 40);
+    code.mov(code.ac_full_address(instruction.abs.d), tmp);
+
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_add(DspCode code, DspInstruction instruction) {
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
@@ -50,7 +68,7 @@ DspJitResult emit_add(DspCode code, DspInstruction instruction) {
     code.sal(tmp2, 64 - 40);
     code.add(tmp1, tmp2);
 
-    emit_set_flags(AllFlagsButLZ, code, tmp1, tmp2);
+    emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
     code.sar(tmp1, 64 - 40);
 
     code.mov(code.ac_full_address(instruction.add.d), tmp1);
