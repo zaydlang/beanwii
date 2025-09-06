@@ -136,7 +136,7 @@ DspJitResult emit_addarn(DspCode code, DspInstruction instruction) {
     code.cmp(carry, 0);
     code.je(done);
 
-    // let SUM be SUM + WR - 1
+    // let SUM be SUM - WR - 1
     code.add(wr, 1);
     code.sub(sum, wr);
     code.jmp(done);
