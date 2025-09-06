@@ -7,7 +7,7 @@ import util.number;
 struct DspState {
     u16[4] ar;
     u16[4] ix;
-    u16[4] r8_to_11;
+    u16[4] wr;
     u16[4] st;
     u16 config;
     u16 sr_upper;
@@ -64,7 +64,7 @@ struct DspState {
         case 9:
         case 10:
         case 11:
-            r8_to_11[index - 8] = value;
+            wr[index - 8] = value;
             break;
         
         case 12:
@@ -147,7 +147,7 @@ struct DspState {
         case 9:
         case 10:
         case 11:
-            return r8_to_11[index - 8];
+            return wr[index - 8];
         
         case 12:
         case 13:
