@@ -9,6 +9,9 @@ import random
 def r(low, high):
     return random.randint(low, high)
 
+def i(low, high):
+    return random.randint(low, high)
+
 def sanity():
     assembler.nop()
 
@@ -18,17 +21,52 @@ def abs():
 def add():
     assembler.add(r(0, 1), 0)
 
+def addarn():
+    assembler.addarn(r(0, 3), r(0, 3))
+
+def addax():
+    assembler.addax(r(0, 1), r(0, 1), 0)
+
+def addaxl():
+    assembler.addaxl(r(0, 1), r(0, 1), 0)
+
+def addi():
+    assembler.addi(r(0, 1), i(0, 0xffff))
+
+def addis():
+    assembler.addis(r(0, 1), i(0, 0xff))
+
+def addp():
+    assembler.addp(r(0, 1), 0)
+
+def addpaxz():
+    assembler.addpaxz(r(0, 1), r(0, 1), 0)
+
+def addr():
+    assembler.addr(r(0, 3), r(0, 1), 0)
+
 test_cases = [
     sanity,
     abs,
-    add
+    addarn,
+    addax,
+    addaxl,
+    addi,
+    addis,
+    addp,
+    addpaxz,
+    addr,
 ]
 
-test_cases = [tc for tc in test_cases if tc.__name__ in sys.argv[2] or len(sys.argv) == 2]
+test_cases = [tc for tc in test_cases if sys.argv[2] in tc.__name__ or len(sys.argv) == 2]
 
 if len(test_cases) == 0:
     print("No test cases matched the filter.")
     exit(0)
+
+# check for compilation first
+for test_case in test_cases:
+    test_case()
 
 for test_case in test_cases:
     print("Generating test case:", test_case.__name__)
