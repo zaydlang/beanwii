@@ -22,7 +22,7 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
     log_dsp("Emitting DSP block at PC: 0x%04x", pc);
 
     u16 current_instruction = dsp_mem.read(pc);
-    u16 next_instruction    = dsp_mem.read(cast(u16) (pc + 2));
+    u16 next_instruction    = dsp_mem.read(cast(u16) (pc + 1));
     DspInstruction dsp_instruction = decode_instruction(current_instruction, next_instruction);
 
     DspJitResult result = emit_instruction(code, dsp_instruction);
