@@ -114,7 +114,12 @@ def get_operand_decoding_string(operand, instruction_size):
         else:
             return f'instruction.bits({operand.low_index}, {operand.high_index})'
     else:
-        if operand.low_index == 0 and operand.high_index == 15:
+        if operand.low_index == operand.high_index:
+            if operand.low_index < 16:
+                return f'next_instruction.bit({operand.low_index})'
+            else:
+                return f'instruction.bit({operand.low_index - 16})'
+        elif operand.low_index == 0 and operand.high_index == 15:
             return 'next_instruction'
         else:
             assert operand.low_index >= 16 and operand.high_index >= 16, f'Invalid operand indices: {operand.low_index}, {operand.high_index}'

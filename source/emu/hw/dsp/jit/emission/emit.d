@@ -7,6 +7,7 @@ import emu.hw.dsp.jit.jit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import gallinule.x86;
+import util.bitop;
 import util.number;
 import util.log;
 import std.conv;
@@ -203,7 +204,26 @@ DspJitResult emit_addaxl(DspCode code, DspInstruction instruction) {
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
     code.sar(tmp1, 64 - 40);
 
-    code.mov(code.ac_full_address(instruction.addax.d), tmp1);
+    code.mov(code.ac_full_address(instruction.addaxl.d), tmp1);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_addi(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    log_dsp("ADDI d=%d i=0x%04x", instruction.addi.d, instruction.addi.i);
+    code.mov(tmp1.cvt32(), code.ac_hm_address(instruction.addi.d));
+    code.mov(tmp2, sext_64(instruction.addi.i, 16) << 40);
+
+    code.sal(tmp1, 64 - 24);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
+    code.sar(tmp1, 64 - 24);
+
+    code.mov(code.ac_hm_address(instruction.addi.d), tmp1.cvt32());
 
     return DspJitResult.Continue;
 }
