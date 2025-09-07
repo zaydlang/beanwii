@@ -172,7 +172,7 @@ DspJitResult emit_addax(DspCode code, DspInstruction instruction) {
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
-    code.mov(tmp1, code. ac_full_address(instruction.addax.d));
+    code.mov(tmp1, code.ac_full_address(instruction.addax.d));
     code.mov(tmp2.cvt32(), code.ax_full_address(instruction.addax.s));
     code.movsxd(tmp2, tmp2.cvt32());
 
@@ -192,8 +192,8 @@ DspJitResult emit_addaxl(DspCode code, DspInstruction instruction) {
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
-    code.mov(tmp1, code. ac_full_address(instruction.addax.d));
-    code.mov(tmp2.cvt16(), code.ax_lo_address(instruction.addax.s));
+    code.mov(tmp1, code.ac_full_address(instruction.addaxl.d));
+    code.mov(tmp2.cvt16(), code.ax_lo_address(instruction.addaxl.s));
     code.movzx(tmp2, tmp2.cvt16());
 
     code.sal(tmp1, 64 - 40);
