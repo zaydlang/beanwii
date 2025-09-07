@@ -188,6 +188,26 @@ DspJitResult emit_addax(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
+DspJitResult emit_addaxl(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp1, code. ac_full_address(instruction.addax.d));
+    code.mov(tmp2.cvt16(), code.ax_lo_address(instruction.addax.s));
+    code.movzx(tmp2, tmp2.cvt16());
+
+    code.sal(tmp1, 64 - 40);
+    code.sal(tmp2, 64 - 40);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
+    code.sar(tmp1, 64 - 40);
+
+    code.mov(code.ac_full_address(instruction.addax.d), tmp1);
+
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
 }
