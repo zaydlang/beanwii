@@ -230,6 +230,7 @@ enum dsp_tests = [
     "addax",
     "addaxl",
     "addi",
+    "addis",
 ];
 
 static foreach (test; dsp_tests) {
