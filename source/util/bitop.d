@@ -48,6 +48,16 @@ public bool bit(T)(T value, size_t index) {
     return (value >> index) & 1;
 }
 
+public s64 sext_64(T)(T value, u32 size) {
+    assert(is_number!T);
+    
+    auto negative = value.bit(size - 1);
+    s32 result = value;
+
+    if (negative) result |= (((1 << (64 - size)) - 1) << size);
+    return result;
+}
+
 public s32 sext_32(T)(T value, u32 size) {
     assert(is_number!T);
     
