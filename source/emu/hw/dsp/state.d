@@ -12,10 +12,10 @@ struct DspState {
     u16 config;
     u16 sr_upper;
 
-    u16 prod_hi;
+    u16 prod_lo;
     u16 prod_m1;
     u16 prod_m2;
-    u16 prod_lo;
+    u16 prod_hi;
 
     union LongAcumulator {
         struct {
