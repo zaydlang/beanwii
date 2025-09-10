@@ -77,7 +77,6 @@ DspJitResult emit_add(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-
 DspJitResult emit_addarn(DspCode code, DspInstruction instruction) {
     code.reserve_register(rcx);
 
@@ -241,6 +240,35 @@ DspJitResult emit_addis(DspCode code, DspInstruction instruction) {
     code.sar(tmp1, 64 - 24);
 
     code.mov(code.ac_hm_address(instruction.addis.d), tmp1.cvt32());
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_addp(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
+    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
+    code.sal(tmp1, 24);
+    code.sal(tmp2, 40);
+    code.add(tmp1, tmp2);
+    code.setc(tmp3.cvt8());
+    code.seto(tmp4.cvt8());
+    // code.mov(tmp3.cvt8(), 0);
+    // code.mov(tmp4.cvt8(), 0);
+
+    code.mov(tmp2, code.ac_full_address(instruction.addp.d));
+    code.sal(tmp2, 64 - 40);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags_with_auxiliaries(AllFlagsButLZ, 0, code, tmp1, tmp3, tmp4, tmp2, tmp5);
+    code.sar(tmp1, 64 - 40);
+
+    code.mov(code.ac_full_address(instruction.addp.d), tmp1);
 
     return DspJitResult.Continue;
 }

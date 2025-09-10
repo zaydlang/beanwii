@@ -159,4 +159,12 @@ final class DspCode {
         auto offset = DspState.ix.offsetof + index * u16.sizeof;
         return wordPtr(rdi, cast(int) offset);
     }
+
+    Address!32 prod_lo_m1_address() {
+        return dwordPtr(rdi, cast(int) DspState.prod_lo.offsetof);
+    }
+
+    Address!32 prod_m2_hi_address() {
+        return dwordPtr(rdi, cast(int) DspState.prod_m2.offsetof);
+    }
 }
