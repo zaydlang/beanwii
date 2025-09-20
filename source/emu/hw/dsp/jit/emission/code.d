@@ -140,6 +140,11 @@ final class DspCode {
         return dwordPtr(rdi, cast(int) offset);
     }
 
+    Address!16 ax_hi_address(int index) {
+        auto offset = DspState.ax.offsetof + index * DspState.ShortAccumulator.sizeof + DspState.ShortAccumulator.hi.offsetof;
+        return wordPtr(rdi, cast(int) offset);
+    }
+
     Address!16 ax_lo_address(int index) {
         auto offset = DspState.ax.offsetof + index * DspState.ShortAccumulator.sizeof + DspState.ShortAccumulator.lo.offsetof;
         return wordPtr(rdi, cast(int) offset);
@@ -166,5 +171,9 @@ final class DspCode {
 
     Address!32 prod_m2_hi_address() {
         return dwordPtr(rdi, cast(int) DspState.prod_m2.offsetof);
+    }
+
+    Address!16 prod_m1_address() {
+        return wordPtr(rdi, cast(int) DspState.prod_m1.offsetof);
     }
 }
