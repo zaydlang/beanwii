@@ -177,6 +177,17 @@ void pretty_print_dsp_state(DspTestState state, DspDiffRepresentation diff) {
     cwrite(":");
     cwrite(colorize(state.reg[24].to_hex_string, diff.reg[24])); // AX1 lo
     cwriteln("");
+    
+    // Display PROD register (H:M2:M1:L)
+    cwrite("\tPROD: ");
+    cwrite(colorize(state.reg[21].to_hex_string, diff.reg[21])); // prod_hi (H)
+    cwrite(":");
+    cwrite(colorize(state.reg[22].to_hex_string, diff.reg[22])); // prod_m2 (M2)
+    cwrite(":");
+    cwrite(colorize(state.reg[20].to_hex_string, diff.reg[20])); // prod_m1 (M1)
+    cwrite(":");
+    cwrite(colorize(state.reg[19].to_hex_string, diff.reg[19])); // prod_lo (L)
+    cwriteln("");
 }
 
 string format_instructions(u16[] instructions) {
@@ -232,6 +243,8 @@ enum dsp_tests = [
     "addi",
     "addis",
     "addp",
+    "addpaxz",
+    "addr"
 ];
 
 static foreach (test; dsp_tests) {

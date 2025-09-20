@@ -3,6 +3,7 @@ module emu.hw.dsp.jit.emission.emit;
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.decoder;
 import emu.hw.dsp.jit.emission.flags;
+import emu.hw.dsp.jit.emission.helpers;
 import emu.hw.dsp.jit.jit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
@@ -80,89 +81,16 @@ DspJitResult emit_add(DspCode code, DspInstruction instruction) {
 DspJitResult emit_addarn(DspCode code, DspInstruction instruction) {
     code.reserve_register(rcx);
 
-    R16 ar   = code.allocate_register().cvt16();
-    R16 wr   = code.allocate_register().cvt16();
-    R16 ix   = code.allocate_register().cvt16();
-    R16 n    = code.allocate_register().cvt16();
-    R16 mask = code.allocate_register().cvt16();
-    R16 sum  = code.allocate_register().cvt16();
-    R16 tmp  = code.allocate_register().cvt16();
+    R16 ar = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 ix = code.allocate_register().cvt16();
 
     code.mov(ix, code.ix_address(instruction.addarn.s));
     code.mov(wr, code.wr_address(instruction.addarn.d));
     code.mov(ar, code.ar_address(instruction.addarn.d));
 
-    code.movzx(ix.cvt32(), ix);
-    code.movzx(wr.cvt32(), wr);
-    code.movzx(ar.cvt32(), ar);
-
-    // source for this algorithm, the legendary duo:
-    //    https://github.com/hrydgard for coming up with the initial algorithm     
-    //    https://github.com/calc84maniac for refining it to this form
-
-    // let N be the number of significant bits in WR, with a minimum of 1
-    code.mov(n, wr);
-    code.or(n, 1);
-    code.bsr(n, n);
-    code.add(n, 1);
-
-    // create a mask out of N
-    code.mov(mask, 1);
-    code.mov(cl, n.cvt8());
-    code.shl(mask.cvt32());
-    code.sub(mask.cvt32(), 1);
-
-    // let SUM be REG + IX...
-    code.mov(sum.cvt32(), ar.cvt32());
-    code.add(sum.cvt32(), ix.cvt32());
-
-    // and let CARRY be the carry out of the low N bits of that addition
-    R16 carry = ar;
-    code.and(ar, mask);
-    code.movzx(tmp.cvt32(), ix);
-    code.and(tmp, mask);
-    code.add(carry.cvt32(), tmp.cvt32());
-    code.shr(carry.cvt32());
-    code.and(carry, 1);
-
-    // if IX >= 0 ...
-    auto ix_negative = code.fresh_label();
-    auto done = code.fresh_label();
-
-    code.cmp(ix, 0);
-    code.jl(ix_negative);
-
-    // if CARRY == 1:
-    code.cmp(carry, 0);
-    code.je(done);
-
-    // let SUM be SUM - WR - 1
-    code.add(wr, 1);
-    code.sub(sum, wr);
-    code.jmp(done);
-
-code.label(ix_negative);
-    // if CARRY == 0 or the low N bits of SUM is less than the low N bits of ~WR:
-    auto underflow = code.fresh_label();
-    code.cmp(carry, 0);
-    code.je(underflow);
-    code.mov(tmp, wr);
-    code.not(tmp);
-
-    // reuse ix since it's no longer needed
-    code.mov(ix, sum);
-    code.and(ix, mask);
-    code.and(tmp, mask);
-    code.cmp(ix, tmp);
-    code.jb(underflow);
-    code.jmp(done);
-
-code.label(underflow);
-    // let SUM be SUM + (WR + 1)
-    code.add(wr, 1);
-    code.add(sum, wr);
-
-code.label(done);
+    R16 sum = code.allocate_register().cvt16();
+    emit_wrapping_register_add(code, ar, wr, ix, sum);
     code.mov(code.ar_address(instruction.addarn.d), sum);
     
     return DspJitResult.Continue;
@@ -258,17 +186,80 @@ DspJitResult emit_addp(DspCode code, DspInstruction instruction) {
     code.add(tmp1, tmp2);
     code.setc(tmp3.cvt8());
     code.seto(tmp4.cvt8());
-    // code.mov(tmp3.cvt8(), 0);
-    // code.mov(tmp4.cvt8(), 0);
 
     code.mov(tmp2, code.ac_full_address(instruction.addp.d));
     code.sal(tmp2, 64 - 40);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_with_auxiliaries(AllFlagsButLZ, 0, code, tmp1, tmp3, tmp4, tmp2, tmp5);
+    emit_set_flags_addp(AllFlagsButLZ, 0, code, tmp1, tmp3, tmp4, tmp2, tmp5);
     code.sar(tmp1, 64 - 40);
 
     code.mov(code.ac_full_address(instruction.addp.d), tmp1);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_addpaxz(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
+    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
+    code.sal(tmp1, 24);
+    code.sal(tmp2, 40);
+    code.add(tmp1, tmp2);
+    code.setc(tmp5.cvt8());
+    code.seto(tmp2.cvt8());
+    code.mov(tmp3, tmp1);
+    code.mov(tmp4, 0x10000UL << 24);
+    code.and(tmp3, tmp4);
+    code.sar(tmp3, 16);
+    code.add(tmp1, tmp3);
+    code.mov(tmp4, 0x7fffUL << 24);
+    code.add(tmp1, tmp4);
+    code.sar(tmp1, 40);
+    code.sal(tmp1, 40);
+
+    code.mov(tmp3.cvt16(), code.ax_hi_address(instruction.addpaxz.s));
+    code.movsx(tmp3, tmp3.cvt16());
+    code.sal(tmp3, 64 - 24);
+
+    code.add(tmp1, tmp3);
+
+    emit_set_flags_addpaxz(AllFlagsButLZ, 0, code, tmp1, tmp5, tmp2, tmp4, tmp3);
+
+    code.sar(tmp1, 64 - 40);
+    code.mov(code.ac_full_address(instruction.addpaxz.d), tmp1);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_addr(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    final switch (instruction.addr.s) {
+    case 0: code.mov(tmp1.cvt16(), code.ax_lo_address(0)); break;
+    case 1: code.mov(tmp1.cvt16(), code.ax_lo_address(1)); break;
+    case 2: code.mov(tmp1.cvt16(), code.ax_hi_address(0)); break;
+    case 3: code.mov(tmp1.cvt16(), code.ax_hi_address(1)); break;
+    }
+
+    code.movzx(tmp1, tmp1.cvt16());
+
+    code.mov(tmp2, code.ac_full_address(instruction.addr.d));
+    code.sal(tmp1, 48);
+    code.sar(tmp1, 8);
+    code.sal(tmp2, 64 - 40);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
+
+    code.sar(tmp1, 64 - 40);
+    code.mov(code.ac_full_address(instruction.addr.d), tmp1);
 
     return DspJitResult.Continue;
 }
