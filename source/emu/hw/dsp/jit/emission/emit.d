@@ -287,9 +287,9 @@ DspJitResult emit_andc(DspCode code, DspInstruction instruction) {
 DspJitResult emit_andcf(DspCode code, DspInstruction instruction) {
     R64 tmp1 = code.allocate_register();
     
-    code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andf.r));
+    code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andcf.r));
     code.not(tmp1.cvt16());
-    code.and(tmp1.cvt16(), instruction.andf.i);
+    code.and(tmp1.cvt16(), instruction.andcf.i);
 
     code.sete(tmp1.cvt8());
     code.mov(FlagState.flag_lz_addr(code), tmp1.cvt8());
