@@ -245,6 +245,7 @@ enum dsp_tests = [
     "addp",
     "addpaxz",
     "addr",
+    "andc",
     "andcf",
     "andf",
     "andi"
