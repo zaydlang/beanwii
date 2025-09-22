@@ -25,13 +25,13 @@ def iar(a):
 	instruction |= (a << 0)
 	instructions.append((instruction, 16))
     
-def addarn(b, a):
-	assert 0 <= b and b < 4
-	assert 0 <= a and a < 4
+def addarn(s, d):
+	assert 0 <= s and s < 4
+	assert 0 <= d and d < 4
         
 	instruction = 0x10
-	instruction |= (b << 2)
-	instruction |= (a << 0)
+	instruction |= (s << 2)
+	instruction |= (d << 0)
 	instructions.append((instruction, 16))
     
 def halt():
@@ -112,12 +112,12 @@ def ret_cc(c):
 	instruction |= (c << 0)
 	instructions.append((instruction, 16))
     
-def addi(r, i):
-	assert 0 <= r and r < 2
+def addi(d, i):
+	assert 0 <= d and d < 2
 	assert 0 <= i and i < 65536
         
 	instruction = 0x2000000
-	instruction |= (r << 24)
+	instruction |= (d << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
@@ -161,7 +161,7 @@ def andcf(r, i):
 	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
-	instruction = 0x2a00000
+	instruction = 0x2c00000
 	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
@@ -170,7 +170,7 @@ def andf(r, i):
 	assert 0 <= r and r < 2
 	assert 0 <= i and i < 65536
         
-	instruction = 0x2c00000
+	instruction = 0x2a00000
 	instruction |= (r << 24)
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))

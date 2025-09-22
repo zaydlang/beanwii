@@ -244,7 +244,10 @@ enum dsp_tests = [
     "addis",
     "addp",
     "addpaxz",
-    "addr"
+    "addr",
+    "andcf",
+    "andf",
+    "andi"
 ];
 
 static foreach (test; dsp_tests) {

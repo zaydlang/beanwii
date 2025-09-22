@@ -45,6 +45,18 @@ def addpaxz():
 def addr():
     assembler.addr(r(0, 3), r(0, 1), 0)
 
+def andc():
+    assembler.andc(r(0, 1), 0)
+
+def andcf():
+    assembler.andcf(r(0, 1), i(0, 0xffff))
+
+def andf():
+    assembler.andf(r(0, 1), i(0, 0xffff))
+
+def andi():
+    assembler.andi(r(0, 1), i(0, 0xffff))
+
 test_cases = [
     sanity,
     abs,
@@ -56,6 +68,10 @@ test_cases = [
     addp,
     addpaxz,
     addr,
+    andc,
+    andcf,
+    andf,
+    andi
 ]
 
 test_cases = [tc for tc in test_cases if sys.argv[2] in tc.__name__ or len(sys.argv) == 2]

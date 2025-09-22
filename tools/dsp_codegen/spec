@@ -17,8 +17,8 @@ XORI * 0000 001r 0010 0000 iiii iiii iiii iiii
 ANDI * 0000 001r 0100 0000 iiii iiii iiii iiii
 ORI * 0000 001r 0110 0000 iiii iiii iiii iiii
 CMPI * 0000 001r 1000 0000 iiii iiii iiii iiii
-ANDCF * 0000 001r 1010 0000 iiii iiii iiii iiii
-ANDF * 0000 001r 1100 0000 iiii iiii iiii iiii
+ANDCF * 0000 001r 1100 0000 iiii iiii iiii iiii
+ANDF * 0000 001r 1010 0000 iiii iiii iiii iiii
 ILRR * 0000 001r 0001 mmaa
 ADDIS * 0000 010d iiii iiii
 CMPIS * 0000 011d iiii iiii
