@@ -264,7 +264,6 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
             if (c == 0) break;
             path ~= cast(char) c;
         }
-        writefln("IOS::Open paddr: %x, path: %s, mode: %d, uid: %d, gid: %d\n", paddr, path, mode, uid, gid);
         file_manager.open(paddr, path, cast(OpenMode) mode, uid, gid);
     }
 

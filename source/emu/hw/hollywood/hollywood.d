@@ -1531,10 +1531,8 @@ final class Hollywood {
 
         int offset = 0;
         Vertex[] vertices;
-            import std.stdio;
             auto vcd = &vertex_descriptors[current_vat];
             auto vat = &vats[current_vat];
-            writefln("herb kazzaz %s %s", *vcd, *vat);
         for (int i = 0; i < number_of_expected_vertices; i++) {
             Vertex v;
             
