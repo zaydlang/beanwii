@@ -130,6 +130,11 @@ final class DspCode {
         return dwordPtr(rdi, cast(int) offset);
     }
 
+    Address!16 ac_m_address(int index) {
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.md.offsetof;
+        return wordPtr(rdi, cast(int) offset);
+    }
+
     Address!16 ac_lo_address(int index) {
         auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.lo.offsetof;
         return wordPtr(rdi, cast(int) offset);

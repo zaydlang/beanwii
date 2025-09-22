@@ -715,12 +715,13 @@ public:
             {
 
                 import std.stdio;
+            // writefln("debjit %x", is(DST == Reg!16));
                 static if (is(ARGS[0] == int) && is(ARGS[1] == int)) {
                     if (is(DST == Reg!16) && !(args[0] == 0x0f && (args[1] == 0xb7 || args[1] == 0xbf || 
                     args[1] == 0xb6 || args[1] == 0xbe || args[1] == 0xb7 || args[1] == 0xb6)))
                         buffer ~= 0x66;
                 } else {
-                    if (is(DST == Reg!16))
+                    if (is(DST == Reg!16) || is(SRC == Reg!16))
                         buffer ~= 0x66;
                 }
                 

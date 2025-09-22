@@ -264,6 +264,49 @@ DspJitResult emit_addr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
+DspJitResult emit_andcf(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    
+    code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andf.r));
+    code.not(tmp1.cvt16());
+    code.and(tmp1.cvt16(), instruction.andf.i);
+
+    code.sete(tmp1.cvt8());
+    code.mov(FlagState.flag_lz_addr(code), tmp1.cvt8());
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_andf(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    
+    code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andf.r));
+    code.and(tmp1.cvt16(), instruction.andf.i);
+
+    code.sete(tmp1.cvt8());
+    code.mov(FlagState.flag_lz_addr(code), tmp1.cvt8());
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_andi(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    
+    code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andi.r));
+    code.and(tmp1.cvt16(), instruction.andi.i);
+    
+    code.mov(code.ac_m_address(instruction.andi.r), tmp1.cvt16());
+    code.mov(tmp3, code.ac_full_address(instruction.andi.r));
+
+    code.sal(tmp3, 24);
+    code.sal(tmp1, 48);
+    emit_set_flags_andi(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
 }

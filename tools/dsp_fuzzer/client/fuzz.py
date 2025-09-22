@@ -88,7 +88,7 @@ def store_accumulators():
 
         label = assembler.get_label()
         assembler.lrs(6, 0xfc)
-        assembler.andf(0, 0x8000)
+        assembler.andcf(0, 0x8000)
         assembler.jmp_cc(0b1101, label)
 
 def do_tests(instruction_generator, num_tests):
@@ -117,52 +117,61 @@ def do_tests(instruction_generator, num_tests):
     return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes, num_tests
 
 def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_length, test_case_index, accumulator_indices, test_cases_accumulators, test_cases_data, num_tests):
-    # print("Original Accumulators:", [hex(x) for x in test_cases_accumulators])
-    # print([hex(x) for x in iram_code_bytes])
+    MAX_PACKET_SIZE = 60000
     port = 1234
 
-    # test_cases_accumulators = [
-    #     0xfffe, 0x007f, 0x22b5, 0x0001, 0x0000, 0x0001, 0x3afe, 0x0000,
-    #     0xc41b, 0x00fe, 0x7f00, 0x490d, 0x1e03, 0xe1c0, 0x00ff, 0x7f00,
-    #     0x00ff, 0x00fe, 0x9834, 0x0100, 0x0100, 0x0080, 0x0000,
-    #     0x6baa, 0x5dc9, 0xfffe, 0x00ff, 0xfffe, 0x7fff, 0x9216, 0x007f,
-    # ]
+    header_size = 2 + 2 + 2 + 2 + 2  # magic + test_case_length + test_case_index + num_tests + iram_code_length
+    fixed_size = header_size + iram_code_length + len(accumulator_indices) * 2
+    test_data_per_test = 31 * 2 + test_case_length  # 31 accumulator values + test case data
+    
+    max_tests_per_packet = (MAX_PACKET_SIZE - fixed_size) // test_data_per_test
+    
+    if max_tests_per_packet <= 0:
+        raise ValueError("Packet size too large even for a single test case")
+    
+    all_results = []
+    
+    for batch_start in range(0, num_tests, max_tests_per_packet):
+        batch_end = min(batch_start + max_tests_per_packet, num_tests)
+        batch_size = batch_end - batch_start
+        
+        print(f"Sending batch {batch_start//max_tests_per_packet + 1}: tests {batch_start} to {batch_end-1}")
+        
+        packet = bytearray()
+        packet.extend(struct.pack('>H', 0xBEEF))  # magic
+        packet.extend(struct.pack('>H', test_case_length))  # test_case_length
+        packet.extend(struct.pack('>H', test_case_index))  # test_case_index
+        packet.extend(struct.pack('>H', batch_size))  # num_test_cases (for this batch)
+        packet.extend(struct.pack('>H', iram_code_length))  # iram_code_length
+        packet.extend(iram_code_bytes)  # iram_code
+        
+        for i in range(batch_start * 31, batch_end * 31):
+            packet.extend(struct.pack('>H', test_cases_accumulators[i]))  # test_cases_accumulators
+        
+        for val in accumulator_indices:
+            packet.extend(struct.pack('>H', val))  # test_cases_accumulator_indices
+        
+        batch_test_data = test_cases_data[batch_start * test_case_length:batch_end * test_case_length]
+        packet.extend(batch_test_data)  # test_cases_data
 
-    # test_cases_data = [ 0x4d, 0x64 ]
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((ip, port))
+        print("packet size:", len(packet))
+        s.sendall(packet)
 
-    packet = bytearray()
-    packet.extend(struct.pack('>H', 0xBEEF))  # magic
-    packet.extend(struct.pack('>H', test_case_length))  # test_case_length
-    packet.extend(struct.pack('>H', test_case_index))  # test_case_index
-    packet.extend(struct.pack('>H', num_tests))  # num_test_cases
-    packet.extend(struct.pack('>H', iram_code_length))  # iram_code_length
-    packet.extend(iram_code_bytes)  # iram_code
-    for val in test_cases_accumulators:
-        packet.extend(struct.pack('>H', val))  # test_cases_accumulators
-    for val in accumulator_indices:
-        packet.extend(struct.pack('>H', val))  # test_cases_accumulator_indices
-    packet.extend(test_cases_data)  # test_cases_data
+        expected_bytes = 31 * batch_size * 2
+        data = bytearray()
+        while len(data) < expected_bytes:
+            chunk = s.recv(expected_bytes - len(data))
+            if not chunk:
+                print("Connection closed prematurely")
+                return
+            data.extend(chunk)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((ip, port))
-    s.sendall(packet)
-
-    # wait to receive 31 * num_tests * 2 bytes
-    expected_bytes = 31 * num_tests * 2
-    data = bytearray()
-    while len(data) < expected_bytes:
-        chunk = s.recv(expected_bytes - len(data))
-        if not chunk:
-            print("Connection closed prematurely")
-            return
-        data.extend(chunk)
-
-    results = struct.unpack(f'>{len(data)//2}H', data)
-    # print("Result Accumulators:  ", [hex(x) for x in results])
-
-    s.close()
-
-    expected = results
+        batch_results = struct.unpack(f'>{len(data)//2}H', data)
+        all_results.extend(batch_results)
+        
+        s.close()
 
     with open(f"{filename}", "wb+") as f:
         f.write(test_case_length.to_bytes(2, 'little'))
@@ -171,7 +180,10 @@ def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_lengt
                 f.write((test_cases_data[i * test_case_length + j + 1] + (test_cases_data[i * test_case_length + j] << 8)).to_bytes(2, 'little'))
 
             for j in range(31):
-                f.write(expected[i * 31 + j].to_bytes(2, 'little'))
+                f.write(all_results[i * 31 + j].to_bytes(2, 'little'))
             
             for j in range(31):
                 f.write(test_cases_accumulators[i * 31 + j].to_bytes(2, 'little'))
+
+if __name__ == "__main__":
+    send_to_wii(sys.argv[1], "test.bin", *do_tests(lambda: assembler.nop(), 1))
