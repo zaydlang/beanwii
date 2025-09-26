@@ -249,7 +249,8 @@ enum dsp_tests = [
     "andcf",
     "andf",
     "andi",
-    "andr"
+    "andr",
+    "asl"
 ];
 
 static foreach (test; dsp_tests) {
