@@ -60,6 +60,9 @@ def andi():
 def andr():
     assembler.andr(r(0, 1), r(0, 1), 0)
 
+def asl():
+    assembler.asl(r(0, 1), i(0, 63))
+
 test_cases = [
     sanity,
     abs,
@@ -75,7 +78,8 @@ test_cases = [
     andcf,
     andf,
     andi,
-    andr
+    andr,
+    asl,
 ]
 
 test_cases = [tc for tc in test_cases if sys.argv[2] in tc.__name__ or len(sys.argv) == 2]

@@ -345,6 +345,23 @@ DspJitResult emit_andr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
+DspJitResult emit_asl(DspCode code, DspInstruction instruction) {
+    R64 tmp = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp, code.ac_full_address(instruction.asl.r));
+    code.sal(tmp, 64 - 40);
+    code.mov(tmp2, tmp);
+    code.sal(tmp, cast(u8) instruction.asl.s);
+
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
+
+    code.sar(tmp, 64 - 40);
+    code.mov(code.ac_full_address(instruction.asl.r), tmp);
+
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
 }
