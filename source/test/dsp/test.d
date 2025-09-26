@@ -136,57 +136,101 @@ string to_hex_string(u16 value) {
 }
 
 void pretty_print_dsp_state(DspTestState state, DspDiffRepresentation diff) {
-    for (int i = 0; i < 32; i += 8) {
-        int end_i = (i + 7 < 32) ? i + 7 : 31;
-        cwrite("\tRegs x%02d-x%02d: ".format(i, end_i));
-        
-        for (int j = i; j <= end_i && j < 32; j++) {
-            if (j == 18) {
-                cwrite("----");
-            } else {
-                int reg_index = (j < 18) ? j : j - 1;
-                cwrite(colorize(state.reg[reg_index].to_hex_string, diff.reg[reg_index]));
-            }
-            if (j < end_i && j < 31) cwrite(" ");
-        }
-        cwriteln("");
+    // Address registers (AR0-AR3)
+    cwrite("\tAR: ");
+    for (int i = 0; i < 4; i++) {
+        cwrite(colorize(state.reg[i].to_hex_string, diff.reg[i]));
+        if (i < 3) cwrite(" ");
     }
+    cwriteln("");
     
-    // Display long accumulators (AC0 and AC1)
+    // Index registers (IX0-IX3)  
+    cwrite("\tIX: ");
+    for (int i = 4; i < 8; i++) {
+        cwrite(colorize(state.reg[i].to_hex_string, diff.reg[i]));
+        if (i < 7) cwrite(" ");
+    }
+    cwriteln("");
+    
+    // Wrap registers (WR0-WR3)
+    cwrite("\tWR: ");
+    for (int i = 8; i < 12; i++) {
+        cwrite(colorize(state.reg[i].to_hex_string, diff.reg[i]));
+        if (i < 11) cwrite(" ");
+    }
+    cwriteln("");
+    
+    // Stack registers (ST0-ST3)
+    cwrite("\tST: ");
+    for (int i = 12; i < 16; i++) {
+        cwrite(colorize(state.reg[i].to_hex_string, diff.reg[i]));
+        if (i < 15) cwrite(" ");
+    }
+    cwriteln("");
+    
+    // Long accumulators (AC0 and AC1) - hi:md:lo format
     cwrite("\tAC0: ");
-    cwrite(colorize(state.reg[16].to_hex_string, diff.reg[16]));
+    cwrite(colorize(state.reg[16].to_hex_string, diff.reg[16])); // AC0.hi
     cwrite(":");
-    cwrite(colorize(state.reg[29].to_hex_string, diff.reg[29]));
+    cwrite(colorize(state.reg[29].to_hex_string, diff.reg[29])); // AC0.md
     cwrite(":");
-    cwrite(colorize(state.reg[27].to_hex_string, diff.reg[27]));
+    cwrite(colorize(state.reg[27].to_hex_string, diff.reg[27])); // AC0.lo
     cwrite("  AC1: ");
-    cwrite(colorize(state.reg[17].to_hex_string, diff.reg[17]));
+    cwrite(colorize(state.reg[17].to_hex_string, diff.reg[17])); // AC1.hi
     cwrite(":");
-    cwrite(colorize(state.reg[30].to_hex_string, diff.reg[30])); 
+    cwrite(colorize(state.reg[30].to_hex_string, diff.reg[30])); // AC1.md
     cwrite(":");
-    cwrite(colorize(state.reg[28].to_hex_string, diff.reg[28]));
+    cwrite(colorize(state.reg[28].to_hex_string, diff.reg[28])); // AC1.lo
     cwriteln("");
     
-    // Display short accumulators (AX0 and AX1)
+    // Short accumulators (AX0 and AX1) - hi:lo format
     cwrite("\tAX0: ");
-    cwrite(colorize(state.reg[25].to_hex_string, diff.reg[25])); // AX0 hi
+    cwrite(colorize(state.reg[25].to_hex_string, diff.reg[25])); // AX0.hi
     cwrite(":");
-    cwrite(colorize(state.reg[23].to_hex_string, diff.reg[23])); // AX0 lo
+    cwrite(colorize(state.reg[23].to_hex_string, diff.reg[23])); // AX0.lo
     cwrite("  AX1: ");
-    cwrite(colorize(state.reg[26].to_hex_string, diff.reg[26])); // AX1 hi
+    cwrite(colorize(state.reg[26].to_hex_string, diff.reg[26])); // AX1.hi
     cwrite(":");
-    cwrite(colorize(state.reg[24].to_hex_string, diff.reg[24])); // AX1 lo
+    cwrite(colorize(state.reg[24].to_hex_string, diff.reg[24])); // AX1.lo
     cwriteln("");
     
-    // Display PROD register (H:M2:M1:L)
+    // Product register (PROD) - hi:m2:m1:lo format
     cwrite("\tPROD: ");
-    cwrite(colorize(state.reg[21].to_hex_string, diff.reg[21])); // prod_hi (H)
+    cwrite(colorize(state.reg[21].to_hex_string, diff.reg[21])); // prod_hi
     cwrite(":");
-    cwrite(colorize(state.reg[22].to_hex_string, diff.reg[22])); // prod_m2 (M2)
+    cwrite(colorize(state.reg[22].to_hex_string, diff.reg[22])); // prod_m2
     cwrite(":");
-    cwrite(colorize(state.reg[20].to_hex_string, diff.reg[20])); // prod_m1 (M1)
+    cwrite(colorize(state.reg[20].to_hex_string, diff.reg[20])); // prod_m1
     cwrite(":");
-    cwrite(colorize(state.reg[19].to_hex_string, diff.reg[19])); // prod_lo (L)
+    cwrite(colorize(state.reg[19].to_hex_string, diff.reg[19])); // prod_lo
+    cwriteln("");
+    
+    // Status Register
+    cwrite("\tSR ");
+    
+    // DSP register 19 (status register) maps to test index 18
+    u16 sr_value = state.reg[18];
+    u8 sr_upper = cast(u8)((sr_value >> 8) & 0xff);
+    u8 flags = cast(u8)(sr_value & 0xff);
+    
+    cwrite(colorize("%04x".format(sr_value), diff.reg[18]));
+    cwrite(" [");
+    if (flags & 0x80) cwrite("OS"); else cwrite("--");
+    cwrite(" ");
+    if (flags & 0x40) cwrite("LZ"); else cwrite("--");
+    cwrite(" ");
+    if (flags & 0x20) cwrite("TB"); else cwrite("--");
+    cwrite(" ");
+    if (flags & 0x10) cwrite("S32"); else cwrite("---");
+    cwrite(" ");
+    if (flags & 0x08) cwrite("S"); else cwrite("-");
+    cwrite(" ");
+    if (flags & 0x04) cwrite("AZ"); else cwrite("--");
+    cwrite(" ");
+    if (flags & 0x02) cwrite("O"); else cwrite("-");
+    cwrite(" ");
+    if (flags & 0x01) cwrite("C"); else cwrite("-");
+    cwrite("]");
     cwriteln("");
 }
 
@@ -250,7 +294,8 @@ enum dsp_tests = [
     "andf",
     "andi",
     "andr",
-    "asl"
+    "asl",
+    "asr"
 ];
 
 static foreach (test; dsp_tests) {
