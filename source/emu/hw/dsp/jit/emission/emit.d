@@ -362,6 +362,25 @@ DspJitResult emit_asl(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
+DspJitResult emit_asr(DspCode code, DspInstruction instruction) {
+    R64 tmp = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp, code.ac_full_address(instruction.asr.r));
+    code.sal(tmp, 64 - 40);
+    code.mov(tmp2, tmp);
+
+    code.sar(tmp, cast(u8) ((-instruction.asr.s) & 0x3f));
+    code.mov(tmp2, ~((1UL << 24) - 1));
+    code.and(tmp, tmp2);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
+
+    code.sar(tmp, 64 - 40);
+    code.mov(code.ac_full_address(instruction.asr.r), tmp);
+
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
 }
