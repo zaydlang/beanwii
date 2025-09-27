@@ -18,14 +18,6 @@ class Table:
     
 instructions = parse_spec.get_instructions('tools/dsp_codegen/spec')
 
-asrn = next(i for i in instructions if i.opcode == 'ASRN')
-lsrn = next(i for i in instructions if i.opcode == 'LSRN')
-
-# remove asrn and lsrn, as they conflict with retcc. we will handle them manually in the decoder.
-instructions_full = instructions.copy()
-instructions.remove(asrn)
-instructions.remove(lsrn)
-
 def pext(value, mask):
     result = 0
 
@@ -133,9 +125,6 @@ def get_operand_decoding_string(operand, instruction_size):
             assert operand.low_index >= 16 and operand.high_index >= 16, f'Invalid operand indices: {operand.low_index}, {operand.high_index}'
             return f'instruction.bits({operand.low_index - 16}, {operand.high_index - 16})'
 
-def write_out_disassembly_for_instruction(instruction):
-    return f'''DspInstruction(DspOpcode.{instruction.opcode.upper()}, {instruction.size}, {instruction.opcode.lower()} : {instruction.opcode.upper()}({", ".join([get_operand_decoding_string(op, instruction.size) for op in reversed(instruction.operands)])}));'''
-
 def write_out_table(f, function_name, table):
     children = []
 
@@ -152,19 +141,7 @@ def write_out_table(f, function_name, table):
     for case_number in range(table.size):
         if isinstance(table[case_number], parse_spec.Instruction):
             instruction = table[case_number]
-            if instruction.opcode == "RET_cc":
-                f.write(\
-f'''\t\tcase {case_number}: 
-\t\t\tif (instruction.bits(0, 3) == 0b1011) {{
-\t\t\t\treturn {write_out_disassembly_for_instruction(asrn)}
-\t\t\t}} else if (instruction.bits(0, 3) == 0b1111) {{
-\t\t\t\treturn {write_out_disassembly_for_instruction(lsrn)}
-\t\t\t}} else {{
-\t\t\t\treturn {write_out_disassembly_for_instruction(instruction)}
-\t\t\t}}\n''')
-
-            else:
-                f.write(f'\t\tcase {case_number}: return {write_out_disassembly_for_instruction(instruction)}\n')
+            f.write(f'\t\tcase {case_number}: return DspInstruction(DspOpcode.{instruction.opcode.upper()}, {instruction.size}, {instruction.opcode.lower()} : {instruction.opcode.upper()}({", ".join([get_operand_decoding_string(op, instruction.size) for op in reversed(instruction.operands)])}));\n')
         elif table[case_number] is None:
             pass
         else:
@@ -188,5 +165,5 @@ with open(sys.argv[1], 'w+') as f:
 
     f.write('\n')
 
-    write_out_instruction_structs(f, instructions_full)
+    write_out_instruction_structs(f, instructions)
     write_out_table(f, 'decode_instruction', table)
