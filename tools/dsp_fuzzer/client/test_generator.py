@@ -66,6 +66,42 @@ def asl():
 def asr():
     assembler.asr(r(0, 1), i(0, 63))
 
+def asrn():
+    assembler.asrn()
+
+def asrnr():
+    assembler.asrnr(r(0, 1), 0)
+
+def asrnrx():
+    assembler.asrnrx(r(0, 1), r(0, 1), 0)
+
+def asr16():
+    assembler.asr16(r(0, 1), 0)
+
+def clr15():
+    assembler.clr15(0)
+
+def clr():
+    assembler.clr(r(0, 1), 0)
+
+def clrl():
+    assembler.clrl(r(0, 1), 0)
+
+def clrp():
+    assembler.clrp(0)
+
+def cmp():
+    assembler.cmp(0)
+
+def cmpaxh():
+    assembler.cmpaxh(r(0, 1), r(0, 1), 0)
+
+def cmpi():
+    assembler.cmpi(r(0, 1), i(0, 0xffff))
+
+def cmpis():
+    assembler.cmpis(r(0, 1), i(0, 0xff))
+
 test_cases = [
     sanity,
     abs,
@@ -84,6 +120,18 @@ test_cases = [
     andr,
     asl,
     asr,
+    asrn,
+    asrnr,
+    asrnrx,
+    asr16,
+    clr15,
+    clr,
+    clrl,
+    clrp,
+    cmp,
+    cmpaxh,
+    cmpi,
+    cmpis,
 ]
 
 test_cases = [tc for tc in test_cases if sys.argv[2] in tc.__name__ or len(sys.argv) == 2]

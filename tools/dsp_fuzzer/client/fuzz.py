@@ -9,6 +9,11 @@ import struct
 
 def generate_pseudo_values(count):
     values = []
+
+    if random.randint(0, 50) == 0:
+        random_number = random.randint(0, 0xffff)
+        return [random_number] * count
+    
     for i in range(count):
         match random.randint(0, 20):
             case 0:

@@ -138,6 +138,7 @@ void* httpd(void* arg) {
                             printf("Failed to receive remaining data: %d\n", bytes_received);
                             break;
                         }
+
                         total_received += bytes_received;
                     }
                     
@@ -198,8 +199,8 @@ void* httpd(void* arg) {
                         u16* result_data = malloc(31 * 2 * num_test_cases);
                         dsptask_t task;
 
+                        int kkk = 0;
                         for (int i = 0; i < num_test_cases; i++) {
-
                             DSP_Init();
                             AUDIO_Init(NULL);
                             AUDIO_StopDMA();
@@ -209,7 +210,7 @@ void* httpd(void* arg) {
                             memset(&task, 0, sizeof(dsptask_t));
                             memcpy(&iram_code[test_case_index], &test_cases_data[i * test_case_length], test_case_length);
                             
-                            // print the first few bytes iram code for debugging
+                            // printf the first few bytes iram code for debugging
                             // for (int j = 0; j < (iram_code_length < 16 ? iram_code_length : 16); j++) {
                                 // printf("%02X ", iram_code[j]);
                             // }

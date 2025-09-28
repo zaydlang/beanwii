@@ -295,7 +295,19 @@ enum dsp_tests = [
     "andi",
     "andr",
     "asl",
-    "asr"
+    "asr",
+    "asrn",
+    "asrnr",
+    "asrnrx",
+    "asr16",
+    "clr15",
+    "clr",
+    "clrl",
+    "clrp",
+    "cmp",
+    "cmpaxh",
+    "cmpi",
+    "cmpis"
 ];
 
 static foreach (test; dsp_tests) {

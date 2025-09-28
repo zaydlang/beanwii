@@ -112,6 +112,40 @@ def ret_cc(c):
 	instruction |= (c << 0)
 	instructions.append((instruction, 16))
     
+def asrn():
+	
+        
+	instruction = 0x2cb
+	
+	instructions.append((instruction, 16))
+    
+def lsrn():
+	
+        
+	instruction = 0x2ca
+	
+	instructions.append((instruction, 16))
+    
+def asrnr(d, x):
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3e80
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
+def asrnrx(s, d, x):
+	assert 0 <= s and s < 2
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3880
+	instruction |= (s << 9)
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
 def addi(d, i):
 	assert 0 <= d and d < 2
 	assert 0 <= i and i < 65536
@@ -378,7 +412,7 @@ def andr(s, r, x):
 def orr(s, r, x):
 	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
-	assert 0 <= x and x < 256
+	assert 0 <= x and x < 128
         
 	instruction = 0x3800
 	instruction |= (s << 9)
@@ -397,7 +431,7 @@ def andc(r, x):
     
 def orc(r, x):
 	assert 0 <= r and r < 2
-	assert 0 <= x and x < 256
+	assert 0 <= x and x < 128
         
 	instruction = 0x3e00
 	instruction |= (r << 8)
