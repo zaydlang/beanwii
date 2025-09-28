@@ -178,7 +178,15 @@ final class DspCode {
         return dwordPtr(rdi, cast(int) DspState.prod_m2.offsetof);
     }
 
+    Address!64 prod_full_address() {
+        return qwordPtr(rdi, cast(int) DspState.prod_lo.offsetof);
+    }
+
     Address!16 prod_m1_address() {
         return wordPtr(rdi, cast(int) DspState.prod_m1.offsetof);
+    }
+
+    Address!8 sr_upper_address() {
+        return bytePtr(rdi, cast(int) DspState.sr_upper.offsetof);
     }
 }

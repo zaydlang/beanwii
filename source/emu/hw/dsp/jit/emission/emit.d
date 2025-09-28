@@ -381,6 +381,239 @@ DspJitResult emit_asr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
+DspJitResult emit_asrn(DspCode code, DspInstruction instruction) {
+    code.reserve_register(rcx);
+
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+
+    code.mov(cx, code.ac_m_address(1));
+    code.mov(tmp2, code.ac_full_address(0));
+    code.sal(tmp2, 64 - 40);
+    code.sar(tmp2, 64 - 40);
+
+    code.and(ecx, 0x7f);
+    
+    code.mov(tmp1, rcx);
+    code.mov(tmp3, tmp2);
+    code.sar(tmp2);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.sal(tmp3);
+    code.test(tmp1, 0x40);
+    code.cmovne(tmp2, tmp3);
+
+    code.sal(tmp2, 64 - 40);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
+    
+    code.sar(tmp2, 64 - 40);
+    code.mov(code.ac_full_address(0), tmp2);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_asrnr(DspCode code, DspInstruction instruction) {
+    code.reserve_register(rcx);
+
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+
+    code.mov(cx, code.ac_m_address(1 - instruction.asrnr.d));
+    code.mov(tmp2, code.ac_full_address(instruction.asrnr.d));
+    code.sal(tmp2, 64 - 40);
+    code.sar(tmp2, 64 - 40);
+    
+    code.and(ecx, 0x7f);
+    
+    code.mov(tmp1, rcx);
+    code.mov(tmp3, tmp2);
+    code.sal(tmp2);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.sar(tmp3);
+    code.test(tmp1, 0x40);
+    code.cmovne(tmp2, tmp3);
+
+    code.sal(tmp2, 64 - 40);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
+    
+    code.sar(tmp2, 64 - 40);
+    code.mov(code.ac_full_address(instruction.asrnr.d), tmp2);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_asrnrx(DspCode code, DspInstruction instruction) {
+    code.reserve_register(rcx);
+
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+
+    code.mov(cx, code.ax_hi_address(instruction.asrnrx.s));
+    code.mov(tmp2, code.ac_full_address(instruction.asrnrx.d));
+    code.sal(tmp2, 64 - 40);
+    code.sar(tmp2, 64 - 40);
+    
+    code.and(ecx, 0x7f);
+    
+    code.mov(tmp1, rcx);
+    code.mov(tmp3, tmp2);
+    code.sal(tmp2);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.sar(tmp3);
+    code.test(tmp1, 0x40);
+    code.cmovne(tmp2, tmp3);
+
+    code.sal(tmp2, 64 - 40);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
+    
+    code.sar(tmp2, 64 - 40);
+    code.mov(code.ac_full_address(instruction.asrnrx.d), tmp2);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_asr16(DspCode code, DspInstruction instruction) {
+    R64 tmp = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp, code.ac_full_address(instruction.asr16.r));
+    code.sal(tmp, 64 - 40);
+    code.sar(tmp, 40);
+
+    code.sal(tmp, 64 - 40);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
+    code.sar(tmp, 64 - 40);
+
+    code.mov(code.ac_full_address(instruction.asr16.r), tmp);
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_clr15(DspCode code, DspInstruction instruction) {
+    code.and(code.sr_upper_address(), 0x7f);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_clr(DspCode code, DspInstruction instruction) {
+    code.mov(code.ac_full_address(instruction.clr.r), 0);
+    emit_reset_flags(code);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_clrl(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+
+    code.mov(tmp1, code.ac_full_address(instruction.clrl.r));
+    code.mov(tmp2, tmp1);
+    
+    code.sar(tmp2, 16);
+    code.and(tmp2, 1);
+
+    code.add(tmp1, 0x7fff);
+    code.add(tmp1, tmp2);
+    code.mov(tmp2, ~0xffffUL);
+    code.and(tmp1, tmp2);
+
+    code.sal(tmp1, 64 - 40);
+    emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp1, tmp2);
+    
+    code.sar(tmp1, 64 - 40);
+    code.mov(code.ac_full_address(instruction.clrl.r), tmp1);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_clrp(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+
+    code.mov(tmp1, 0x00ff0010fff00000);
+    code.mov(code.prod_full_address(), tmp1);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_cmp(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1, code.ac_full_address(0));
+    code.mov(tmp2, code.ac_full_address(1));
+    code.sal(tmp1, 64 - 40);
+    code.sal(tmp2, 64 - 40);
+    code.neg(tmp2);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_cmpaxh(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1, code.ac_full_address(instruction.cmpaxh.s));
+    code.mov(tmp2.cvt16(), code.ax_hi_address(instruction.cmpaxh.r));
+    code.movsx(tmp2, tmp2.cvt16());
+    code.sal(tmp1, 64 - 40);
+    code.sal(tmp2, 64 - 24);
+    code.neg(tmp2);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_cmpi(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1.cvt32(), code.ac_hm_address(instruction.cmpi.r));
+    code.mov(tmp2, sext_64(instruction.cmpi.i, 16) << 40);
+    code.sal(tmp1, 64 - 24);
+    code.neg(tmp2);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_cmpis(DspCode code, DspInstruction instruction) {
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    R64 tmp4 = code.allocate_register();
+    R64 tmp5 = code.allocate_register();
+
+    code.mov(tmp1.cvt32(), code.ac_hm_address(instruction.cmpis.d));
+    code.mov(tmp2, sext_64(instruction.cmpis.i, 8) << 40);
+    code.sal(tmp1, 64 - 24);
+    code.neg(tmp2);
+    code.add(tmp1, tmp2);
+
+    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+
+    return DspJitResult.Continue;
+}
+
 DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
     return DspJitResult.DspHalted;
 }

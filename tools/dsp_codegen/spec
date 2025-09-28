@@ -12,6 +12,10 @@ IF cc * 0000 0010 0111 cccc
 JMP cc * 0000 0010 1001 cccc aaaa aaaa aaaa aaaa
 CALL cc * 0000 0010 1011 cccc
 RET cc * 0000 0010 1101 cccc
+ASRN * 0000 0010 1100 1011
+LSRN * 0000 0010 1100 1010
+ASRNR * 0011 111d 1xxx xxxx
+ASRNRX * 0011 10sd 1xxx xxxx
 ADDI * 0000 001d 0000 0000 iiii iiii iiii iiii
 XORI * 0000 001r 0010 0000 iiii iiii iiii iiii
 ANDI * 0000 001r 0100 0000 iiii iiii iiii iiii
@@ -41,9 +45,9 @@ LRS * 0010 0rrr mmmm mmmm
 SRS * 0010 1rrr mmmm mmmm
 XORR * 0011 00sr xxxx xxxx
 ANDR * 0011 01sr xxxx xxxx
-ORR * 0011 10sr xxxx xxxx
+ORR * 0011 10sr 0xxx xxxx
 ANDC * 0011 110r xxxx xxxx
-ORC * 0011 111r xxxx xxxx
+ORC * 0011 111r 0xxx xxxx
 ADDR * 0100 0ssd xxxx xxxx
 ADDAX * 0100 10sd xxxx xxxx
 ADD * 0100 110d xxxx xxxx

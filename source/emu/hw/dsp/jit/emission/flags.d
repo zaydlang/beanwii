@@ -267,6 +267,47 @@ void emit_set_flags(int flags_to_set, int flags_to_reset, DspCode code, R64 resu
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp);
 }
 
+void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 src2, R64 tmp1, R64 tmp2, R64 tmp3) {
+    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
+
+    if (flags_to_reset & Flag.C) {
+        code.mov(FlagState.flag_c_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.O) {
+        code.mov(FlagState.flag_o_addr(code), 0);
+    }
+
+    if (flags_to_set & Flag.AZ) {
+        code.sete(tmp1.cvt8());
+        code.mov(FlagState.flag_az_addr(code), tmp1.cvt8());
+    }
+
+    assert_dsp(
+        (flags_to_set & (Flag.OS | Flag.C | Flag.O)) == (Flag.OS | Flag.C | Flag.O),
+        "OS, O, and C flags must be set"
+    );
+
+    code.setc(tmp1.cvt8());
+    code.seto(tmp2.cvt8());
+
+    code.mov(tmp3, 0x8000000000000000);
+    code.cmp(src2, tmp3);
+    code.sete(src2.cvt8());
+    code.xor(tmp2.cvt8(), src2.cvt8());
+
+    code.mov(FlagState.flag_o_addr(code), tmp2.cvt8());
+    code.or(FlagState.flag_os_addr(code), tmp2.cvt8());
+    
+    code.cmp(src2, 0);
+    code.sete(src2.cvt8());
+    code.or(tmp1.cvt8(), src2.cvt8());
+    code.mov(FlagState.flag_c_addr(code), tmp1.cvt8());
+
+
+    emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
+}
+
 private void emit_set_flags_without_host_state(int flags_to_set, DspCode code, R64 result, R64 tmp) {
     if (flags_to_set & Flag.S) {
         code.mov(tmp, result);
@@ -296,4 +337,13 @@ private void emit_set_flags_without_host_state(int flags_to_set, DspCode code, R
     if (flags_to_set & Flag.LZ) {
         // dunno yet lol
     }
+}
+
+void emit_reset_flags(DspCode code) {
+    code.mov(FlagState.flag_c_addr(code), 0);
+    code.mov(FlagState.flag_o_addr(code), 0);
+    code.mov(FlagState.flag_az_addr(code), 1);
+    code.mov(FlagState.flag_s_addr(code), 0);
+    code.mov(FlagState.flag_s32_addr(code), 0);
+    code.mov(FlagState.flag_tb_addr(code), 1);
 }

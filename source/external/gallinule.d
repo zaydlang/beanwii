@@ -661,7 +661,7 @@ public:
         size_t emit(ARGS...)(ARGS args)
         {
             import std.stdio;
-
+            //("studio");
             auto bytes = this.buffer.buffie();
             int length = bytes.length > 0x400000 ? 0 : cast(int) bytes.length;
 
@@ -1127,7 +1127,7 @@ public:
 
             if (!prefixed)
             {
-                    // // //("shittest\n");
+                    //("shittest\n");
                 static if (SELECTOR != M && SELECTOR != NP && SELECTOR != NP && SELECTOR != NRM)
                     generateOpSizeOverridePrefix(Reg!(typeof(args[0]).sizeof * 128)(0), Reg!(typeof(args[0]).sizeof * 128)(0));
 
