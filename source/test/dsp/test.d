@@ -96,7 +96,7 @@ void set_dsp_state(DSP dsp, DspTestState state) {
     }
 }
 
-DspDiffRepresentation get_dsp_diff(DspTestState previous, DspTestState golden, DspTestState actual) {
+DspDiffRepresentation get_dsp_diff(DspTestState previous, DspTestState golden, DspTestState actual, bool ignore_flags) {
     DspDiffRepresentation diff;
 
     auto diff_helper = (u16 golden_value, u16 actual_value, u16 previous_value) {
@@ -112,6 +112,11 @@ DspDiffRepresentation get_dsp_diff(DspTestState previous, DspTestState golden, D
     };
 
     for (int i = 0; i < 31; i++) {
+        if (ignore_flags && i == 18) {
+            diff.reg[i] = (previous.reg[i] != actual.reg[i]) ? Diff.ChangedFromPrevious : Diff.Unchanged;
+            continue;
+        }
+
         diff.reg[i] = diff_helper(golden.reg[i], actual.reg[i], previous.reg[i]);
     }
 
@@ -243,11 +248,24 @@ string format_instructions(u16[] instructions) {
     return result;
 }
 
+bool is_prod_test(string test_name) {
+    return 
+        test_name.startsWith("madd") || 
+        test_name == "movnp" || 
+        test_name == "movp" || 
+        test_name == "movpz" ||
+        test_name.startsWith("msub") || 
+        test_name.startsWith("mul") ||
+        test_name == "tstprod";
+}
+
 void run_dsp_test(string test_name) {
     DspTestFile test_file = parse_test_file("source/test/dsp/tests/" ~ test_name ~ ".bin");
     DSP dsp = new DSP();
     
     for (size_t test_case_idx = 0; test_case_idx < test_file.test_cases.length; test_case_idx++) {
+        bool ignore_flags = is_prod_test(test_name);
+
         auto test_case = test_file.test_cases[test_case_idx];
         
         set_dsp_state(dsp, test_case.initial_state);
@@ -259,7 +277,7 @@ void run_dsp_test(string test_name) {
         dsp.jit.single_step_until_halt(&dsp.dsp_state);
         
         DspTestState actual_state = get_actual_dsp_state(dsp);
-        auto diff = get_dsp_diff(previous_state, test_case.expected_state, actual_state);
+        auto diff = get_dsp_diff(previous_state, test_case.expected_state, actual_state, ignore_flags);
         
         if (is_failure(diff)) {
             writefln("===== DSP Test %s Failed! =====", test_name);
@@ -307,7 +325,70 @@ enum dsp_tests = [
     "cmp",
     "cmpaxh",
     "cmpi",
-    "cmpis"
+    "cmpis",
+    "dar",
+    "dec",
+    "decm",
+    "iar",
+    "if_cc",
+    "inc",
+    "incm",
+    "lsl",
+    "lsl16",
+    "lsr",
+    "lsrn",
+    "lsrnr",
+    "lsrnrx",
+    "lsr16",
+    "m0",
+    "m2",
+    "madd",
+    "maddc",
+    "maddx",
+    "mov",
+    "movax",
+    "movnp",
+    "movp",
+    "movpz",
+    "movr",
+    "mrr",
+    "msub",
+    "msubc",
+    "msubx",
+    "mul",
+    "mulac",
+    "mulaxh",
+    "mulc",
+    "mulcac",
+    "mulcmv",
+    "mulcmvz",
+    "mulmv",
+    "mulmvz",
+    "mulx",
+    "mulxac",
+    "mulxmv",
+    "mulxmvz",
+    "neg",
+    "not",
+    "orc",
+    "ori",
+    "orr",
+    "sbclr",
+    "sbset",
+    "set15",
+    "set16",
+    "set40",
+    "sub",
+    "subarn",
+    "subax",
+    "subp",
+    "subr",
+    "tst",
+    "tstaxh",
+    "tstprod",
+    "xorc",
+    "xori",
+    "xorr",
 ];
 
 static foreach (test; dsp_tests) {

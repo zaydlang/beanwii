@@ -100,7 +100,7 @@ def do_tests(instruction_generator, num_tests):
     assembler.reset()
     [instruction_generator() for _ in range(num_tests)]
     tests_bytes = assembler.assemble()[0]
-    test_size = assembler.get_num_bytes() // assembler.get_num_instructions()
+    test_size = assembler.get_num_bytes() // num_tests
 
     assembler.reset()
     # assembler.si(0xfd, 0x42)
@@ -109,6 +109,12 @@ def do_tests(instruction_generator, num_tests):
     accumulator_indices = load_accumulators()
     test_case_index = assembler.get_num_bytes()
     instruction_generator()
+
+
+    # assembler.instructions.append([
+    #     0x00, 0xf2, 0x00, 0x81, 0x00, 0x4e, 0x00, 0x84
+    # ])
+
     store_accumulators()
 
     label = assembler.get_label()
@@ -116,8 +122,53 @@ def do_tests(instruction_generator, num_tests):
     assembler.jmp_cc(0b1111, label)
 
     bytes_data, length = assembler.assemble()
+    # print(bytes_data)
+
+    # length = len(bytes_data)
+
+    # 	AR: d202 00ff 5007 74b5
+	# IX: 0000 7fff fe6e 08e4
+	# WR: fffe 0000 ffff 0000
+	# ST: 007f 0000 fd13 0001
+	# AC0: 0100:00ff:db36  AC1: 0000:007f:572e
+	# AX0: b675:7f97  AX1: 00ff:03f1
+	# PROD: 656a:1e45:9cda:7fff
+
+
 
     test_cases_accumulators = generate_pseudo_values(31 * num_tests)
+
+    # test_cases_accumulators = [
+    #     0xd202, 0x00ff, 0x5007, 0x74b5,
+    #     0x0000, 0x7fff, 0xfe6e, 0x08e4,
+    #     0xfffe, 0x0000, 0xffff, 0x0000,
+    #     0x007f, 0x0000, 0xfd13, 0x0001,
+    #     0x0100, 0x0000,
+
+    #     0x0080,
+    #     0x7fff, 0x9cda, 0x656a, 0x1e45,
+    #     0x7f97, 0x03f1,
+    #     0xb675, 0x00ff,
+    #     0xdb36, 0x572e,
+    #     0x00ff, 0x007f
+    # ]
+
+    # test_cases_accumulators = [
+    #     0x0000, 0x007f, 0x9d7b, 0x6e09,
+    #     0x00fe, 0x9f03, 0xffff, 0x0000,
+    #     0xbdfe, 0x0000, 0xa092, 0x0100,
+    #     0xfffe, 0x7ced, 0x32c7, 0x0001,
+    #     0x00fe, 0xe041,
+
+    #     0x9e36,
+    #     0x4615, 0x007f, 0x7f00, 0x0000,
+    #     0x0000, 0x3ae3,
+    #     0xd0ff, 0x0000,
+    #     0xfffe, 0x0001,
+    #     0xfffe, 0xffff
+
+    # ]
+
 
     return bytes_data, length, test_size, test_case_index, list(accumulator_indices), test_cases_accumulators, tests_bytes, num_tests
 
@@ -128,9 +179,10 @@ def send_to_wii(ip, filename, iram_code_bytes, iram_code_length, test_case_lengt
     header_size = 2 + 2 + 2 + 2 + 2  # magic + test_case_length + test_case_index + num_tests + iram_code_length
     fixed_size = header_size + iram_code_length + len(accumulator_indices) * 2
     test_data_per_test = 31 * 2 + test_case_length  # 31 accumulator values + test case data
+    print("Calculated packet size: calculation: ", fixed_size, "+", test_data_per_test, "*", num_tests, "=", fixed_size + test_data_per_test * num_tests)
     
     max_tests_per_packet = (MAX_PACKET_SIZE - fixed_size) // test_data_per_test
-    
+    print(max_tests_per_packet)
     if max_tests_per_packet <= 0:
         raise ValueError("Packet size too large even for a single test case")
     

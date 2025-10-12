@@ -18,6 +18,29 @@ class Table:
     
 instructions = parse_spec.get_instructions('tools/dsp_codegen/spec')
 
+def check_for_overlapping_encodings(instructions):
+    """Check if any two instructions have overlapping encodings and error out if found."""
+    for i, inst1 in enumerate(instructions):
+        for j, inst2 in enumerate(instructions[i+1:], i+1):
+            # Two instructions overlap if they have the same size and their fixed bits conflict
+            if inst1.size == inst2.size:
+                # Check if the fixed bits of both instructions can coexist
+                # They overlap if for any bit position, both have fixed values that differ
+                common_fixed_bits = inst1.fixed_mask & inst2.fixed_mask
+                if common_fixed_bits != 0:
+                    # Check if the fixed representations differ in the common fixed bit positions
+                    if (inst1.fixed_repr & common_fixed_bits) != (inst2.fixed_repr & common_fixed_bits):
+                        continue  # No overlap - they have different fixed values
+                    else:
+                        # They have the same fixed values in all common positions - this is an overlap!
+                        print(f"ERROR: Instructions '{inst1.opcode}' and '{inst2.opcode}' have overlapping encodings!")
+                        print(f"  {inst1.opcode}: fixed_mask=0x{inst1.fixed_mask:0{inst1.size//4}x}, fixed_repr=0x{inst1.fixed_repr:0{inst1.size//4}x}")
+                        print(f"  {inst2.opcode}: fixed_mask=0x{inst2.fixed_mask:0{inst2.size//4}x}, fixed_repr=0x{inst2.fixed_repr:0{inst2.size//4}x}")
+                        print(f"  Common fixed bits: 0x{common_fixed_bits:0{inst1.size//4}x}")
+                        sys.exit(1)
+
+check_for_overlapping_encodings(instructions)
+
 def pext(value, mask):
     result = 0
 
