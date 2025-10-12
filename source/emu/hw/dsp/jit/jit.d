@@ -6,13 +6,47 @@ import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.emit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
+import gallinule.x86;
 import util.bitop;
 import util.log;
 import util.number;
 
-enum DspJitResult : u32 {
+enum JitExitReason {
+    BlockEnd    = 0,
+    BranchTaken = 1,
+    DspHalted   = 2,
+}
+
+enum DspJitResultType {
     Continue  = 0,
     DspHalted = 1,
+    IfCc      = 2,
+}
+
+struct DspJitResult {
+    this(DspJitResultType type) {
+        this.type = type;
+    }
+
+    this(DspJitResultType type, R32 condition) {
+        this.type = type;
+        this.condition = condition;
+    }
+
+    DspJitResultType type;
+    R32 condition; // only valid if type == IfCc
+
+    static DspJitResult Continue() {
+        return DspJitResult(DspJitResultType.Continue);
+    }
+
+    static DspJitResult DspHalted() {
+        return DspJitResult(DspJitResultType.DspHalted);
+    }
+
+    static DspJitResult IfCc(R32 condition) {
+        return DspJitResult(DspJitResultType.IfCc, condition);
+    }
 }
 
 final class DspJit {
@@ -28,7 +62,7 @@ final class DspJit {
         dsp_memory = new DspMemory();
     }
 
-    DspJitResult run(DspState* state) {
+    JitExitReason run(DspState* state) {
         u32 config_bitfield = get_config_bitfield(state);
         if (page_table.has(state.pc, config_bitfield)) {
             DspJitEntry entry = page_table.get(state.pc, config_bitfield);
@@ -52,7 +86,7 @@ final class DspJit {
         page_table.invalidate_range(start, end);
     }
 
-    DspJitResult compile_and_execute(DspState* state, u16 pc) {
+    JitExitReason compile_and_execute(DspState* state, u16 pc) {
         code.init(state);
 
         DspEmissionResult emission_result = emit_dsp_block(code, dsp_memory, pc);
@@ -72,9 +106,9 @@ final class DspJit {
         return execute_compiled_block(func, state);
     }
 
-    DspJitResult execute_compiled_block(DspJitFunction func, DspState* state) {
+    JitExitReason execute_compiled_block(DspJitFunction func, DspState* state) {
         u32 result = func(cast(void*) state);
-        return cast(DspJitResult) result;
+        return cast(JitExitReason) result;
     }
 
     void upload_iram(u16[] iram) {
@@ -83,6 +117,6 @@ final class DspJit {
 
     // used for tests
     void single_step_until_halt(DspState* state) {
-        while (compile_and_execute(state, state.pc) != DspJitResult.DspHalted) {}
+        while (compile_and_execute(state, state.pc) != JitExitReason.DspHalted) {}
     }
 }

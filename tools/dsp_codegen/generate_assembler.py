@@ -21,8 +21,11 @@ instructions = []
         opcode = instruction.opcode
         operands = instruction.operands
 
+        name = opcode.lower()
+        if name == 'not':
+            name = '_not'
         f.write(f'''    
-def {opcode.lower()}({', '.join([f'{op.char.lower()}' for op in reversed(operands)])}):
+def {name}({', '.join([f'{op.char.lower()}' for op in reversed(operands)])}):
 \t{'\n\t'.join([generate_operand_assertion(op) for op in reversed(operands)])}
         
 \tinstruction = {hex(instruction.fixed_repr)}

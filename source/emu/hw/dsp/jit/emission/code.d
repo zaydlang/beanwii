@@ -130,6 +130,11 @@ final class DspCode {
         return dwordPtr(rdi, cast(int) offset);
     }
 
+    Address!32 ac_ml_address(int index) {
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.lo.offsetof;
+        return dwordPtr(rdi, cast(int) offset);
+    }
+
     Address!16 ac_m_address(int index) {
         auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.md.offsetof;
         return wordPtr(rdi, cast(int) offset);
@@ -153,6 +158,16 @@ final class DspCode {
     Address!16 ax_lo_address(int index) {
         auto offset = DspState.ax.offsetof + index * DspState.ShortAccumulator.sizeof + DspState.ShortAccumulator.lo.offsetof;
         return wordPtr(rdi, cast(int) offset);
+    }
+
+    Address!16 ac_hi_address(int index) {
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.hi.offsetof;
+        return wordPtr(rdi, cast(int) offset);
+    }
+
+    Address!8 ac_hi_address_u8(int index) {
+        auto offset = DspState.ac.offsetof + index * DspState.LongAcumulator.sizeof + DspState.LongAcumulator.hi.offsetof;
+        return bytePtr(rdi, cast(int) offset);
     }
 
     Address!16 ar_address(int index) {
@@ -184,6 +199,22 @@ final class DspCode {
 
     Address!16 prod_m1_address() {
         return wordPtr(rdi, cast(int) DspState.prod_m1.offsetof);
+    }
+    
+    Address!16 prod_lo_address() {
+        return wordPtr(rdi, cast(int) DspState.prod_lo.offsetof);
+    }
+
+    Address!16 prod_hi_address() {
+        return wordPtr(rdi, cast(int) DspState.prod_hi.offsetof);
+    }
+
+    Address!8 prod_hi_address_u8() {
+        return bytePtr(rdi, cast(int) DspState.prod_hi.offsetof);
+    }
+
+    Address!16 prod_m2_address() {
+        return wordPtr(rdi, cast(int) DspState.prod_m2.offsetof);
     }
 
     Address!8 sr_upper_address() {

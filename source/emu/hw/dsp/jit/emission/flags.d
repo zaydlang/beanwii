@@ -9,6 +9,24 @@ import gallinule.x86;
 import util.number;
 import util.log;
 
+enum Condition {
+    GE  = 0,
+    L   = 1,
+    G   = 2,
+    LE  = 3,
+    NZ  = 4,
+    Z   = 5,
+    NC  = 6,
+    C   = 7,
+    x8  = 8,
+    x9  = 9,
+    xA  = 10,
+    xB  = 11,
+    LNZ = 12,
+    LZ  = 13,
+    O   = 14,
+    AL  = 15
+}
 struct FlagState {
     u8 flag_c;
     u8 flag_o;
@@ -239,6 +257,10 @@ void emit_set_flags(int flags_to_set, int flags_to_reset, DspCode code, R64 resu
         code.mov(FlagState.flag_o_addr(code), 0);
     }
 
+    // if (flags_to_reset & Flag.S) {
+        // code.mov(FlagState.flag_s_addr(code), 1);
+    // }
+
     // TODO: this is technically worng when we add flag analyssi
     if (flags_to_reset & Flag.S32) {
         code.mov(FlagState.flag_s32_addr(code), 1);
@@ -308,6 +330,155 @@ void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
+void emit_set_flags_subp(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 src2, R64 auxiliary_carry, R64 auxiliary_overflow, R64 tmp1, R64 tmp2, R64 tmp3) {
+    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
+
+    if (flags_to_reset & Flag.C) {
+        code.mov(FlagState.flag_c_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.O) {
+        code.mov(FlagState.flag_o_addr(code), 0);
+    }
+
+    if (flags_to_set & Flag.AZ) {
+        code.sete(tmp1.cvt8());
+        code.mov(FlagState.flag_az_addr(code), tmp1.cvt8());
+    }
+
+    assert_dsp(
+        (flags_to_set & (Flag.OS | Flag.C | Flag.O)) == (Flag.OS | Flag.C | Flag.O),
+        "OS, O, and C flags must be set"
+    );
+
+    code.setc(tmp1.cvt8());
+    code.seto(tmp2.cvt8());
+
+    code.mov(tmp3, 0x8000000000000000);
+    code.cmp(src2, tmp3);
+    code.sete(src2.cvt8());
+    code.xor(tmp2.cvt8(), src2.cvt8());
+
+    code.xor(tmp2.cvt8(), auxiliary_overflow.cvt8());
+    code.mov(FlagState.flag_o_addr(code), tmp2.cvt8());
+    code.or(FlagState.flag_os_addr(code), tmp2.cvt8());
+    
+    code.cmp(src2, 0);
+    code.sete(src2.cvt8());
+    code.or(tmp1.cvt8(), src2.cvt8());
+    code.xor(tmp1.cvt8(), auxiliary_carry.cvt8());
+    code.not(tmp1.cvt8());
+    code.and(tmp1, 1);
+    code.mov(FlagState.flag_c_addr(code), tmp1.cvt8());
+
+    emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
+}
+
+void emit_set_flags_not(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 full_result, R64 tmp) {
+    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
+
+    if (flags_to_reset & Flag.C) {
+        code.mov(FlagState.flag_c_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.O) {
+        code.mov(FlagState.flag_o_addr(code), 0);
+    }
+
+    // TODO: this is technically worng when we add flag analyssi
+    if (flags_to_reset & Flag.S32) {
+        code.mov(FlagState.flag_s32_addr(code), 1);
+    }
+
+    if (flags_to_set & Flag.C) {
+        code.setc(tmp.cvt8());
+        code.mov(FlagState.flag_c_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.O) {
+        code.seto(tmp.cvt8());
+        code.mov(FlagState.flag_o_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.AZ) {
+        code.sete(tmp.cvt8());
+        code.mov(FlagState.flag_az_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.OS) {
+        code.seto(tmp.cvt8());
+        code.or(FlagState.flag_os_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.S) {
+        code.mov(tmp, result);
+        code.sar(tmp, 63);
+        code.mov(FlagState.flag_s_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.S32) {
+        code.mov(tmp, 1L << 55);
+        code.add(tmp, full_result);
+        code.sar(tmp, 56);
+        code.setne(tmp.cvt8());
+        code.mov(FlagState.flag_s32_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.TB) {
+        // top two bits equal
+        code.mov(tmp, full_result); 
+        code.shl(tmp, 1);
+        code.xor(tmp, full_result);
+        code.not(tmp);
+        code.sal(tmp, 8);
+        code.shr(tmp, 64 - 1);
+        code.mov(FlagState.flag_tb_addr(code), tmp.cvt8());
+    }
+}
+
+void emit_set_flags_neg(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 tmp, R64 tmp2) {
+    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
+
+    if (flags_to_reset & Flag.C) {
+        code.mov(FlagState.flag_c_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.O) {
+        code.mov(FlagState.flag_o_addr(code), 0);
+    }
+
+    // TODO: this is technically worng when we add flag analyssi
+    if (flags_to_reset & Flag.S32) {
+        code.mov(FlagState.flag_s32_addr(code), 1);
+    }
+
+    if (flags_to_set & Flag.C) {
+        code.setc(tmp2.cvt8());
+    }
+
+    if (flags_to_set & Flag.O) {
+        code.seto(tmp.cvt8());
+        code.mov(FlagState.flag_o_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.AZ) {
+        code.sete(tmp.cvt8());
+        code.mov(FlagState.flag_az_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.OS) {
+        code.seto(tmp.cvt8());
+        code.or(FlagState.flag_os_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.C) {
+        code.xor(tmp2, 1);
+        code.mov(FlagState.flag_c_addr(code), tmp2.cvt8());
+    }
+
+    emit_set_flags_without_host_state(flags_to_set, code, result, tmp);
+}
+
 private void emit_set_flags_without_host_state(int flags_to_set, DspCode code, R64 result, R64 tmp) {
     if (flags_to_set & Flag.S) {
         code.mov(tmp, result);
@@ -346,4 +517,95 @@ void emit_reset_flags(DspCode code) {
     code.mov(FlagState.flag_s_addr(code), 0);
     code.mov(FlagState.flag_s32_addr(code), 0);
     code.mov(FlagState.flag_tb_addr(code), 1);
+}
+
+void emit_get_condition(DspCode code, R32 result, R32 tmp, Condition condition) {
+    final switch (condition) {
+    case Condition.GE:
+        code.mov(result.cvt8(), FlagState.flag_o_addr(code));
+        code.xor(result.cvt8(), FlagState.flag_s_addr(code));
+        code.xor(result, 1);
+        break;
+    
+    case Condition.L:
+        code.mov(result.cvt8(), FlagState.flag_o_addr(code));
+        code.xor(result.cvt8(), FlagState.flag_s_addr(code));
+        break;
+    
+    case Condition.G:
+        code.mov(result.cvt8(), FlagState.flag_o_addr(code));
+        code.xor(result.cvt8(), FlagState.flag_s_addr(code));
+        code.xor(result, 1);
+        code.mov(tmp.cvt8(), FlagState.flag_az_addr(code));
+        code.not(tmp.cvt8());
+        code.and(result, tmp.cvt32());
+        break;
+
+    case Condition.LE:
+        code.mov(result.cvt8(), FlagState.flag_o_addr(code));
+        code.xor(result.cvt8(), FlagState.flag_s_addr(code));
+        code.mov(tmp.cvt8(), FlagState.flag_az_addr(code));
+        code.or(result, tmp.cvt32());
+        break;
+    
+    case Condition.NZ:
+        code.movzx(result, FlagState.flag_az_addr(code));
+        code.xor(result, 1);
+        break;
+    
+    case Condition.Z:
+        code.movzx(result, FlagState.flag_az_addr(code));
+        break;
+
+    case Condition.NC:
+        code.movzx(result, FlagState.flag_c_addr(code));
+        code.xor(result, 1);
+        break;
+
+    case Condition.C:
+        code.movzx(result, FlagState.flag_c_addr(code));
+        break;
+    
+    case Condition.x8:
+        code.movzx(result, FlagState.flag_s32_addr(code));
+        code.xor(result, 1);
+        break;
+
+    case Condition.x9:
+        code.movzx(result, FlagState.flag_s32_addr(code));
+        break;
+    
+    case Condition.xA:
+        code.movzx(result, FlagState.flag_s32_addr(code));
+        code.or(result.cvt8(), FlagState.flag_tb_addr(code));
+        code.movzx(tmp, FlagState.flag_az_addr(code));
+        code.not(tmp);
+        code.and(result, tmp.cvt32());
+        break;
+    
+    case Condition.xB:
+        code.movzx(result, FlagState.flag_s32_addr(code));
+        code.or(result.cvt8(), FlagState.flag_tb_addr(code));
+        code.not(result);
+        code.movzx(tmp, FlagState.flag_az_addr(code));
+        code.or(result, tmp.cvt32());
+        break;
+    
+    case Condition.LNZ:
+        code.movzx(result, FlagState.flag_lz_addr(code));
+        code.xor(result, 1);
+        break;
+    
+    case Condition.LZ:
+        code.movzx(result, FlagState.flag_lz_addr(code));
+        break;
+    
+    case Condition.O:
+        code.movzx(result, FlagState.flag_o_addr(code));
+        break;
+    
+    case Condition.AL:
+        code.mov(result, 1);
+        break;
+    }
 }

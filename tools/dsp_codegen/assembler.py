@@ -146,6 +146,26 @@ def asrnrx(s, d, x):
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
     
+def lsrnr(d, x):
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3c80
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
+def lsrnrx(s, d, x):
+	assert 0 <= s and s < 2
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3480
+	instruction |= (s << 9)
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
 def addi(d, i):
 	assert 0 <= d and d < 2
 	assert 0 <= i and i < 65536
@@ -265,14 +285,14 @@ def bloopi(i, a):
 	instruction |= (a << 0)
 	instructions.append((instruction, 32))
     
-def sbset_bit_set(i):
+def sbclr(i):
 	assert 0 <= i and i < 8
         
 	instruction = 0x1200
 	instruction |= (i << 0)
 	instructions.append((instruction, 16))
     
-def sbclr_bit_clear(i):
+def sbset(i):
 	assert 0 <= i and i < 8
         
 	instruction = 0x1300
@@ -387,10 +407,19 @@ def srs(r, m):
 	instruction |= (m << 0)
 	instructions.append((instruction, 16))
     
+def xorc(d, x):
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3080
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
 def xorr(s, r, x):
 	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
-	assert 0 <= x and x < 256
+	assert 0 <= x and x < 128
         
 	instruction = 0x3000
 	instruction |= (s << 9)
@@ -401,7 +430,7 @@ def xorr(s, r, x):
 def andr(s, r, x):
 	assert 0 <= s and s < 2
 	assert 0 <= r and r < 2
-	assert 0 <= x and x < 256
+	assert 0 <= x and x < 128
         
 	instruction = 0x3400
 	instruction |= (s << 9)
@@ -422,7 +451,7 @@ def orr(s, r, x):
     
 def andc(r, x):
 	assert 0 <= r and r < 2
-	assert 0 <= x and x < 256
+	assert 0 <= x and x < 128
         
 	instruction = 0x3c00
 	instruction |= (r << 8)
@@ -498,6 +527,13 @@ def subax(s, d, x):
 	instruction |= (s << 9)
 	instruction |= (d << 8)
 	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
+def subarn(d):
+	assert 0 <= d and d < 4
+        
+	instruction = 0xc
+	instruction |= (d << 0)
 	instructions.append((instruction, 16))
     
 def sub(d, x):
@@ -610,6 +646,15 @@ def neg(d, x):
 	assert 0 <= x and x < 256
         
 	instruction = 0x7c00
+	instruction |= (d << 8)
+	instruction |= (x << 0)
+	instructions.append((instruction, 16))
+    
+def _not(d, x):
+	assert 0 <= d and d < 2
+	assert 0 <= x and x < 128
+        
+	instruction = 0x3280
 	instruction |= (d << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))

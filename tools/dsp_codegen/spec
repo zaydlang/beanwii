@@ -16,6 +16,8 @@ ASRN * 0000 0010 1100 1011
 LSRN * 0000 0010 1100 1010
 ASRNR * 0011 111d 1xxx xxxx
 ASRNRX * 0011 10sd 1xxx xxxx
+LSRNR * 0011 110d 1xxx xxxx
+LSRNRX * 0011 01sd 1xxx xxxx
 ADDI * 0000 001d 0000 0000 iiii iiii iiii iiii
 XORI * 0000 001r 0010 0000 iiii iiii iiii iiii
 ANDI * 0000 001r 0100 0000 iiii iiii iiii iiii
@@ -29,8 +31,8 @@ CMPIS * 0000 011d iiii iiii
 LRIS * 0000 1rrr iiii iiii
 LOOPI * 0001 0000 iiii iiii aaaa aaaa aaaa aaaa
 BLOOPI * 0001 0001 iiii iiii aaaa aaaa aaaa aaaa
-SBSET bit set * 0001 0010 0000 0iii
-SBCLR bit clear * 0001 0011 0000 0iii
+SBCLR * 0001 0010 0000 0iii
+SBSET * 0001 0011 0000 0iii
 LSL * 0001 010r 00ss ssss
 LSR * 0001 010r 01ss ssss
 ASL * 0001 010r 10ss ssss
@@ -43,10 +45,11 @@ SRR * 0001 101x xaar rrrr
 MRR * 0001 11dd ddds ssss
 LRS * 0010 0rrr mmmm mmmm
 SRS * 0010 1rrr mmmm mmmm
-XORR * 0011 00sr xxxx xxxx
-ANDR * 0011 01sr xxxx xxxx
+XORC * 0011 000d 1xxx xxxx
+XORR * 0011 00sr 0xxx xxxx
+ANDR * 0011 01sr 0xxx xxxx
 ORR * 0011 10sr 0xxx xxxx
-ANDC * 0011 110r xxxx xxxx
+ANDC * 0011 110r 0xxx xxxx
 ORC * 0011 111r 0xxx xxxx
 ADDR * 0100 0ssd xxxx xxxx
 ADDAX * 0100 10sd xxxx xxxx
@@ -54,6 +57,7 @@ ADD * 0100 110d xxxx xxxx
 ADDP * 0100 111d xxxx xxxx
 SUBR * 0101 0ssd xxxx xxxx
 SUBAX * 0101 10sd xxxx xxxx
+SUBARN * 0000 0000 0000 11dd
 SUB * 0101 110d xxxx xxxx
 SUBP * 0101 111d xxxx xxxx
 MOVR * 0110 0ssd xxxx xxxx
@@ -66,6 +70,7 @@ INC * 0111 011d xxxx xxxx
 DECM * 0111 100d xxxx xxxx
 DEC * 0111 101d xxxx xxxx
 NEG * 0111 110d xxxx xxxx
+NOT * 0011 001d 1xxx xxxx
 MOVNP * 0111 111d xxxx xxxx
 NX * 1000 y000 xxxx xxxx
 CLR * 1000 r001 xxxx xxxx
