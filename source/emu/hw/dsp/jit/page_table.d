@@ -3,7 +3,7 @@ module emu.hw.dsp.jit.page_table;
 import core.stdc.stdlib;
 import util.number;
 
-alias DspJitFunction = u32 function(void* dsp_state);
+alias DspJitFunction = u32 function(void* dsp_state, void* dsp_memory);
 
 struct DspJitEntry {
     DspJitFunction func;
@@ -14,8 +14,8 @@ struct DspJitEntry {
 final class DspPageTable {
     DspJitEntry*[256] level1;
 
-    private u32 make_key(u16 pc, u32 config_bitfield) {
-        return (cast(u32) pc) | (config_bitfield << 16);
+    private u32 make_key(u16 pc, u32 jit_compilation_flags) {
+        return (cast(u32) pc) | (jit_compilation_flags << 16);
     }
 
     void reset() {
@@ -24,8 +24,8 @@ final class DspPageTable {
         }
     }
 
-    bool has(u16 pc, u32 config_bitfield) {
-        u32 key = make_key(pc, config_bitfield);
+    bool has(u16 pc, u32 jit_compilation_flags) {
+        u32 key = make_key(pc, jit_compilation_flags);
         u8 high = (key >> 8) & 0xFF;
         u8 low = key & 0xFF;
         
@@ -37,8 +37,8 @@ final class DspPageTable {
         return has(pc, 0);
     }
 
-    DspJitEntry get(u16 pc, u32 config_bitfield) {
-        u32 key = make_key(pc, config_bitfield);
+    DspJitEntry get(u16 pc, u32 jit_compilation_flags) {
+        u32 key = make_key(pc, jit_compilation_flags);
         u8 high = (key >> 8) & 0xFF;
         u8 low = key & 0xFF;
         
@@ -50,8 +50,8 @@ final class DspPageTable {
         return get(pc, 0);
     }
 
-    void put(u16 pc, u32 config_bitfield, DspJitEntry entry) {
-        u32 key = make_key(pc, config_bitfield);
+    void put(u16 pc, u32 jit_compilation_flags, DspJitEntry entry) {
+        u32 key = make_key(pc, jit_compilation_flags);
         u8 high = (key >> 8) & 0xFF;
         u8 low = key & 0xFF;
         
@@ -66,8 +66,8 @@ final class DspPageTable {
         put(pc, 0, entry);
     }
 
-    void invalidate(u16 pc, u32 config_bitfield) {
-        u32 key = make_key(pc, config_bitfield);
+    void invalidate(u16 pc, u32 jit_compilation_flags) {
+        u32 key = make_key(pc, jit_compilation_flags);
         u8 high = (key >> 8) & 0xFF;
         u8 low = key & 0xFF;
         

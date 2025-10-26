@@ -261,9 +261,10 @@ bool is_prod_test(string test_name) {
 
 void run_dsp_test(string test_name) {
     DspTestFile test_file = parse_test_file("source/test/dsp/tests/" ~ test_name ~ ".bin");
-    DSP dsp = new DSP();
     
     for (size_t test_case_idx = 0; test_case_idx < test_file.test_cases.length; test_case_idx++) {
+        DSP dsp = new DSP();
+        
         bool ignore_flags = is_prod_test(test_name);
 
         auto test_case = test_file.test_cases[test_case_idx];
@@ -271,9 +272,13 @@ void run_dsp_test(string test_name) {
         set_dsp_state(dsp, test_case.initial_state);
         DspTestState previous_state = test_case.initial_state;
 
-        // upload instructions + halt 
+        for (int i = 0; i < 62; i++) {
+            test_case.instructions = [cast(ushort) 0x0000] ~ test_case.instructions;
+        }
+
+        // upload instructions + halt
         dsp.jit.upload_iram(test_case.instructions ~ [cast(ushort) 0x0021]);
-        dsp.dsp_state.pc = 0;
+        dsp.dsp_state.pc = 62;
         dsp.jit.single_step_until_halt(&dsp.dsp_state);
         
         DspTestState actual_state = get_actual_dsp_state(dsp);
@@ -282,7 +287,7 @@ void run_dsp_test(string test_name) {
         if (is_failure(diff)) {
             writefln("===== DSP Test %s Failed! =====", test_name);
             writefln("Test case: %d", test_case_idx);
-            writefln("Instructions: %s", format_instructions(test_case.instructions));
+            writefln("Instructions: %s", format_instructions(test_case.instructions[62 .. $]));
 
             writefln("Initial state:");
             pretty_print_dsp_state(test_case.initial_state, diff);
@@ -340,6 +345,20 @@ enum dsp_tests = [
     "lsrnr",
     "lsrnrx",
     "lsr16",
+    "lri",
+    "lris",
+    "lr_sr",
+    "lrr_sr",
+    "lrrd_sr",
+    "lrri_sr",
+    "lrrn_sr",
+    "lrs_sr",
+    "srr_lr",
+    "srrd_lr",
+    "srri_lr",
+    "srrn_lr",
+    "srs_lr",
+    "srsh_lr",
     "m0",
     "m2",
     "madd",
@@ -389,6 +408,15 @@ enum dsp_tests = [
     "xorc",
     "xori",
     "xorr",
+
+    "bloop",
+    "bloopi",
+
+    "call_cc",
+    // "callr_cc",
+    "jmp_cc",
+    // "jmpr_cc",
+    "ret_cc"
 ];
 
 static foreach (test; dsp_tests) {

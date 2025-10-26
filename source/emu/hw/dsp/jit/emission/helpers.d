@@ -2,14 +2,20 @@ module emu.hw.dsp.jit.emission.helpers;
 
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.flags;
+import emu.hw.dsp.state;
 import gallinule.x86;
 import util.log;
+import util.number;
+import util.x86;
 
-void emit_wrapping_register_add(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
-    R16 n    = code.allocate_register().cvt16();
-    R16 mask = code.allocate_register().cvt16();
-    R16 tmp  = code.allocate_register().cvt16();
+enum StackType {
+    CALL,
+    DATA, 
+    LOOP_ADDRESS,
+    LOOP_COUNTER
+}
 
+void emit_wrapping_register_add(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum, R16 tmp1, R16 tmp2) {
     code.movzx(ix.cvt32(), ix);
     code.movzx(wr.cvt32(), wr);
     code.movzx(ar.cvt32(), ar);
@@ -19,16 +25,16 @@ void emit_wrapping_register_add(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
     //    https://github.com/calc84maniac for refining it to this form
 
     // let N be the number of significant bits in WR, with a minimum of 1
-    code.mov(n, wr);
-    code.or(n, 1);
-    code.bsr(n, n);
-    code.add(n, 1);
+    code.mov(tmp1, wr);
+    code.or(tmp1, 1);
+    code.bsr(tmp1, tmp1);
+    code.add(tmp1, 1);
 
     // create a mask out of N
-    code.mov(mask, 1);
-    code.mov(cl, n.cvt8());
-    code.shl(mask.cvt32());
-    code.sub(mask.cvt32(), 1);
+    code.mov(tmp2, 1);
+    code.mov(cl, tmp1.cvt8());
+    code.shl(tmp2.cvt32());
+    code.sub(tmp2.cvt32(), 1);
 
     // let SUM be REG + IX...
     code.mov(sum.cvt32(), ar.cvt32());
@@ -36,10 +42,10 @@ void emit_wrapping_register_add(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
 
     // and let CARRY be the carry out of the low N bits of that addition
     R16 carry = ar;
-    code.and(ar, mask);
-    code.movzx(tmp.cvt32(), ix);
-    code.and(tmp, mask);
-    code.add(carry.cvt32(), tmp.cvt32());
+    code.and(ar, tmp2);
+    code.movzx(tmp1.cvt32(), ix);
+    code.and(tmp1, tmp2);
+    code.add(carry.cvt32(), tmp1.cvt32());
     code.shr(carry.cvt32());
     code.and(carry, 1);
 
@@ -64,14 +70,14 @@ code.label(ix_negative);
     auto underflow = code.fresh_label();
     code.cmp(carry, 0);
     code.je(underflow);
-    code.mov(tmp, wr);
-    code.not(tmp);
+    code.mov(tmp1, wr);
+    code.not(tmp1);
 
     // reuse ix since it's no longer needed
     code.mov(ix, sum);
-    code.and(ix, mask);
-    code.and(tmp, mask);
-    code.cmp(ix, tmp);
+    code.and(ix, tmp2);
+    code.and(tmp1, tmp2);
+    code.cmp(ix, tmp1);
     code.jb(underflow);
     code.jmp(done);
 
@@ -84,10 +90,7 @@ code.label(done);
 
 }
 
-void emit_wrapping_register_sub(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
-    R16 n    = code.allocate_register().cvt16();
-    R16 mask = code.allocate_register().cvt16();
-    R16 tmp  = code.allocate_register().cvt16();
+void emit_wrapping_register_sub(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum, R16 tmp1, R16 tmp2, R16 tmp3) {
 
     code.sub(ix.cvt32(), 1);
 
@@ -100,16 +103,16 @@ void emit_wrapping_register_sub(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
     //    https://github.com/calc84maniac for refining it to this form
 
     // let N be the number of significant bits in WR, with a minimum of 1
-    code.mov(n, wr);
-    code.or(n, 1);
-    code.bsr(n, n);
-    code.add(n, 1);
+    code.mov(tmp1, wr);
+    code.or(tmp1, 1);
+    code.bsr(tmp1, tmp1);
+    code.add(tmp1, 1);
 
     // create a mask out of N
-    code.mov(mask, 1);
-    code.mov(cl, n.cvt8());
-    code.shl(mask.cvt32());
-    code.sub(mask.cvt32(), 1);
+    code.mov(tmp2, 1);
+    code.mov(cl, tmp1.cvt8());
+    code.shl(tmp2.cvt32());
+    code.sub(tmp2.cvt32(), 1);
 
     // let SUM be REG + IX...
     code.mov(sum.cvt32(), ar.cvt32());
@@ -118,11 +121,11 @@ void emit_wrapping_register_sub(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum) {
 
     // and let CARRY be the carry out of the low N bits of that addition
     R16 carry = ar;
-    code.and(ar, mask);
-    code.movzx(tmp.cvt32(), ix);
-    code.and(tmp.cvt32(), mask.cvt32());
-    code.add(tmp.cvt32(), 1);
-    code.add(carry.cvt32(), tmp.cvt32());
+    code.and(ar, tmp2);
+    code.movzx(tmp3.cvt32(), ix);
+    code.and(tmp3.cvt32(), tmp2.cvt32());
+    code.add(tmp3.cvt32(), 1);
+    code.add(carry.cvt32(), tmp3.cvt32());
     code.shr(carry.cvt32());
     code.and(carry, 1);
 
@@ -148,14 +151,14 @@ code.label(ix_negative);
     auto underflow = code.fresh_label();
     code.cmp(carry, 0);
     code.je(underflow);
-    code.mov(tmp, wr);
-    code.not(tmp);
+    code.mov(tmp3, wr);
+    code.not(tmp3);
 
     // reuse ix since it's no longer needed
     code.mov(ix, sum);
-    code.and(ix, mask);
-    code.and(tmp, mask);
-    code.cmp(ix, tmp);
+    code.and(ix, tmp2);
+    code.and(tmp3, tmp2);
+    code.cmp(ix, tmp3);
     code.jb(underflow);
     code.jmp(done);
 
@@ -167,55 +170,49 @@ code.label(underflow);
 code.label(done);
 }
 
-void emit_wrapping_register_sub_one(DspCode code, R16 ar, R16 wr, R16 sum) {
-    R32 nar = code.allocate_register().cvt32();
-    R32 tmp1 = code.allocate_register().cvt32();
-    R32 tmp2 = code.allocate_register().cvt32();
+void emit_wrapping_register_sub_one(DspCode code, R16 ar, R16 wr, R16 sum, R32 tmp1, R32 tmp2, R32 tmp3) {
 
-    code.movzx(nar, ar);
-    code.add(nar, wr.cvt32());
-    code.mov(tmp2, nar);
+    code.movzx(tmp1, ar);
+    code.add(tmp1, wr.cvt32());
+    code.mov(tmp3, tmp1);
 
-    code.xor(tmp2, ar.cvt32());
-    code.movzx(tmp1, wr);
-    code.or(tmp1, 1);
-    code.shl(tmp1, 1);
-    code.and(tmp2, tmp1);
-    code.cmp(tmp2, wr.cvt32());
+    code.xor(tmp3, ar.cvt32());
+    code.movzx(tmp2, wr);
+    code.or(tmp2, 1);
+    code.shl(tmp2, 1);
+    code.and(tmp3, tmp2);
+    code.cmp(tmp3, wr.cvt32());
 
     auto no_wrap = code.fresh_label();
     code.jle(no_wrap);
 
     code.add(wr, 1);
-    code.sub(nar, wr.cvt32());
+    code.sub(tmp1, wr.cvt32());
 
 code.label(no_wrap);
-    code.mov(sum, nar.cvt16());
+    code.mov(sum, tmp1.cvt16());
 }
 
-void emit_wrapping_register_add_one(DspCode code, R16 ar, R16 wr, R16 sum) {
-    R32 nar = code.allocate_register().cvt32();
-    R32 tmp1 = code.allocate_register().cvt32();
-    R32 tmp2 = code.allocate_register().cvt32();
+void emit_wrapping_register_add_one(DspCode code, R16 ar, R16 wr, R16 sum, R32 tmp1, R32 tmp2, R32 tmp3) {
 
-    code.movzx(nar, ar);
-    code.add(nar, 1);
-    code.mov(tmp2, nar);
+    code.movzx(tmp1, ar);
+    code.add(tmp1, 1);
+    code.mov(tmp3, tmp1);
 
-    code.xor(tmp2, ar.cvt32());
-    code.movzx(tmp1, wr);
-    code.or(tmp1, 1);
-    code.shl(tmp1, 1);
-    code.cmp(tmp2, tmp1);
+    code.xor(tmp3, ar.cvt32());
+    code.movzx(tmp2, wr);
+    code.or(tmp2, 1);
+    code.shl(tmp2, 1);
+    code.cmp(tmp3, tmp2);
 
     auto no_wrap = code.fresh_label();
     code.jle(no_wrap);
 
     code.add(wr, 1);
-    code.sub(nar, wr.cvt32());
+    code.sub(tmp1, wr.cvt32());
 
 code.label(no_wrap);
-    code.mov(sum, nar.cvt16());
+    code.mov(sum, tmp1.cvt16());
 }
 
 void read_arbitrary_reg(DspCode code, R64 result, int reg) {
@@ -243,7 +240,7 @@ void read_arbitrary_reg(DspCode code, R64 result, int reg) {
         case 16: code.movsx(result.cvt32(), code.ac_hi_address_u8(0)); break;
         case 17: code.movsx(result.cvt32(), code.ac_hi_address_u8(1)); break;
 
-        case 18: error_dsp("TODO: implement config read"); break;
+        case 18: code.movzx(result.cvt32(), code.config_address()); break;
 
         case 19:
             // lol
@@ -289,6 +286,8 @@ void read_arbitrary_reg(DspCode code, R64 result, int reg) {
             code.and(tmp1, 1);
             code.shl(tmp1, 7);
             code.or(result.cvt32(), tmp1.cvt32());
+            
+            code.deallocate_register(tmp1);
             break;
         
         case 20: code.movzx(result.cvt32(), code.prod_lo_address()); break;
@@ -336,7 +335,10 @@ void read_arbitrary_reg(DspCode code, R64 result, int reg) {
             code.add(result, 0x7fff);
 
         code.label(is_sign_extended);
+            code.deallocate_register(ml_extended);
+            code.deallocate_register(hml_extended);
         code.label(no_sxm);
+            code.deallocate_register(sxm);
             break;
         }
     }
@@ -364,10 +366,12 @@ void write_arbitrary_reg(DspCode code, R64 value, int reg) {
         case 14: error_dsp("TODO: implement ST2 write"); break;
         case 15: error_dsp("TODO: implement ST3 write"); break;
 
-        case 16: code.mov(code.ac_hi_address(0), value.cvt16()); break;
-        case 17: code.mov(code.ac_hi_address(1), value.cvt16()); break;
+        case 16:
+        case 17: 
+            code.movsx(value.cvt16(), value.cvt8());
+            code.mov(code.ac_hi_address(reg - 16), value.cvt16()); break;
 
-        case 18: error_dsp("TODO: implement config write"); break;
+        case 18: code.mov(code.config_address(), value.cvt16()); break;
 
         case 19:
             // lol
@@ -455,4 +459,166 @@ void write_arbitrary_reg(DspCode code, R64 value, int reg) {
             break;
         }
     }
+}
+
+void push_stack(DspCode code, StackType type, R64 value, R64 tmp1, R64 tmp2, R64 tmp3) {
+    final switch (type) {
+        case StackType.CALL:
+            code.movzx(tmp1.cvt32(), code.call_stack_sp_address());
+            code.lea(tmp2, code.call_stack_address());
+            break;
+        case StackType.DATA:
+            code.movzx(tmp1.cvt32(), code.data_stack_sp_address());
+            code.lea(tmp2, code.data_stack_address());
+            break;
+        case StackType.LOOP_ADDRESS:
+            code.movzx(tmp1.cvt32(), code.loop_address_stack_sp_address());
+            code.lea(tmp2, code.loop_address_stack_address());
+            break;
+        case StackType.LOOP_COUNTER:
+            code.movzx(tmp1.cvt32(), code.loop_counter_stack_sp_address());
+            code.lea(tmp2, code.loop_counter_stack_address());
+            break;
+    }
+    
+    code.cmp(tmp1.cvt32(), 4);
+    auto no_overflow = code.fresh_label();
+    code.jl(no_overflow);
+    
+    code.mov(rax, 0);
+    code.mov(rax, code.qwordPtr(rax));
+    
+    code.label(no_overflow);
+    code.mov(tmp3, tmp1.cvt64());
+    code.shl(tmp3.cvt32(), 1); // multiply by 2 (shift left by 1)
+    code.add(tmp3, tmp2);
+    code.mov(code.wordPtr(tmp3), value.cvt16());
+    code.add(tmp1.cvt32(), 1);
+    
+    final switch (type) {
+        case StackType.CALL:
+            code.mov(code.call_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.DATA:
+            code.mov(code.data_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.LOOP_ADDRESS:
+            code.mov(code.loop_address_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.LOOP_COUNTER:
+            code.mov(code.loop_counter_stack_sp_address(), tmp1.cvt8());
+            break;
+    }
+}
+
+void pop_stack(DspCode code, StackType type, R64 result, R64 tmp1, R64 tmp2, R64 tmp3) {
+    final switch (type) {
+        case StackType.CALL:
+            code.movzx(tmp1.cvt32(), code.call_stack_sp_address());
+            code.lea(tmp2, code.call_stack_address());
+            break;
+        case StackType.DATA:
+            code.movzx(tmp1.cvt32(), code.data_stack_sp_address());
+            code.lea(tmp2, code.data_stack_address());
+            break;
+        case StackType.LOOP_ADDRESS:
+            code.movzx(tmp1.cvt32(), code.loop_address_stack_sp_address());
+            code.lea(tmp2, code.loop_address_stack_address());
+            break;
+        case StackType.LOOP_COUNTER:
+            code.movzx(tmp1.cvt32(), code.loop_counter_stack_sp_address());
+            code.lea(tmp2, code.loop_counter_stack_address());
+            break;
+    }
+    
+    code.cmp(tmp1.cvt32(), 0);
+    auto no_underflow = code.fresh_label();
+    code.jg(no_underflow);
+    
+    code.mov(rax, 0);
+    code.mov(rax, code.qwordPtr(rax));
+    
+    code.label(no_underflow);
+    code.sub(tmp1.cvt32(), 1);
+    code.mov(tmp3, tmp1.cvt64());
+    code.shl(tmp3.cvt32(), 1); // multiply by 2 (shift left by 1)
+    code.add(tmp3, tmp2);
+    code.movzx(result.cvt32(), code.wordPtr(tmp3));
+    
+    final switch (type) {
+        case StackType.CALL:
+            code.mov(code.call_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.DATA:
+            code.mov(code.data_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.LOOP_ADDRESS:
+            code.mov(code.loop_address_stack_sp_address(), tmp1.cvt8());
+            break;
+        case StackType.LOOP_COUNTER:
+            code.mov(code.loop_counter_stack_sp_address(), tmp1.cvt8());
+            break;
+    }
+}
+
+u16 dsp_io_read_stub(u16 address) {
+    return 0;
+}
+
+void dsp_io_write_stub(u16 address, u16 value) {
+    
+}
+
+void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 tmp2) {
+    
+    code.cmp(address.cvt32(), 0x1800);
+    auto io_memory = code.fresh_label();
+    auto done = code.fresh_label();
+    
+    code.jge(io_memory);
+    
+    code.lea(tmp2, code.data_memory_address());
+    code.mov(tmp1, address);
+    code.shl(tmp1.cvt32(), 1);
+    code.add(tmp1, tmp2);
+    code.movzx(result.cvt32(), code.wordPtr(tmp1));
+    code.jmp(done);
+    
+    code.label(io_memory);
+    code.mov(rdi, address);
+    code.mov(rax, cast(ulong) &dsp_io_read_stub);
+    code.call(rax);
+    code.mov(result.cvt32(), rax.cvt32());
+    
+    code.label(done);
+}
+
+void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 tmp2) {
+    code.cmp(address.cvt32(), 0x1000);
+    auto coef_or_io = code.fresh_label();
+    auto done = code.fresh_label();
+    
+    code.jge(coef_or_io);
+    
+    code.lea(tmp2, code.data_memory_address());
+    code.mov(tmp1, address);
+    code.shl(tmp1.cvt32(), 1);
+    code.add(tmp1, tmp2);
+    code.mov(code.wordPtr(tmp1), value.cvt16());
+    code.jmp(done);
+    
+    code.label(coef_or_io);
+    code.cmp(address.cvt32(), 0x1800);
+    auto io_memory = code.fresh_label();
+    code.jge(io_memory);
+    
+    code.jmp(done);
+    
+    code.label(io_memory);
+    code.mov(rdi, address);
+    code.mov(rsi, value);
+    code.mov(rax, cast(ulong) &dsp_io_write_stub);
+    code.call(rax);
+    
+    code.label(done);
 }

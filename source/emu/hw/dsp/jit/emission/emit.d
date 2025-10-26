@@ -20,15 +20,32 @@ struct DspEmissionResult {
     u32 instruction_count;
 }
 
-DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
-    u16 current_instruction = dsp_mem.read(pc);
-    u16 next_instruction    = dsp_mem.read(cast(u16) (pc + 1));
-    DspInstruction dsp_instruction = decode_instruction(current_instruction, next_instruction);
+void handle_extension_opcode(DspCode code, DecodedInstruction decoded_instruction) {
+    if (decoded_instruction.has_extension) {
+        // TODO: Implement individual extension opcodes
+        // For now, just mark as handled
+        code.extension_handled = true;
+    }
+}
 
-    DspJitResult result = emit_instruction(code, dsp_instruction);
+DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
+    u16 current_instruction = dsp_mem.read_instruction(pc);
+    u16 next_instruction    = dsp_mem.read_instruction(cast(u16) (pc + 1));
+    DecodedInstruction decoded = decode_instruction_with_extension(current_instruction, next_instruction);
+    DspInstruction dsp_instruction = decoded.main;
+    
+    // Reset extension handling flag at start of instruction translation
+    code.extension_handled = false;
+
+    DspJitResult result = emit_instruction(code, decoded);
+    
+    // Assert that extension was properly handled if the instruction could have one
+    if (decoded.has_extension) {
+        assert_dsp(code.extension_handled, "Extension instruction was not handled!");
+    }
     
     if (result.type == DspJitResultType.IfCc) {
-        u16 next_next_instruction = dsp_mem.read(cast(u16) (pc + 2));
+        u16 next_next_instruction = dsp_mem.read_instruction(cast(u16) (pc + 2));
         DspInstruction next_dsp_instruction = decode_instruction(next_instruction, next_next_instruction);
         ulong size_of_next_instruction = next_dsp_instruction.size / 16;
 
@@ -42,6 +59,112 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
             // code.or(result.condition, 1);
             // code.add(code.get_pc_addr(), result.condition.cvt16());
         // }
+    } else if (result.type == DspJitResultType.CallCc) {
+        R64 value = code.allocate_register();
+        R64 tmp1 = code.allocate_register();
+        R64 tmp2 = code.allocate_register();
+        R64 tmp3 = code.allocate_register();
+        
+        auto skip_call = code.fresh_label();
+        code.and(result.condition, 1);
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+        code.test(result.condition, result.condition);
+        code.jz(skip_call);
+
+        code.mov(tmp1, result.target_address);
+        code.movzx(value.cvt32(), code.get_pc_addr());
+        code.mov(code.get_pc_addr(), tmp1.cvt16());
+        push_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        
+        code.label(skip_call);
+    } else if (result.type == DspJitResultType.CallR) {
+        // R64 value = code.allocate_register();
+        // R64 tmp1 = code.allocate_register();
+        // R64 tmp2 = code.allocate_register();
+        // R64 tmp3 = code.allocate_register();
+        
+        // code.movzx(value.cvt32(), code.get_pc_addr());
+        // code.add(value.cvt32(), cast(u8) (dsp_instruction.size / 16));
+        // push_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        
+        // code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+    } else if (result.type == DspJitResultType.CallRcc) {
+        R64 value = code.allocate_register();
+        R64 tmp1 = code.allocate_register();
+        R64 tmp2 = code.allocate_register();
+        R64 tmp3 = code.allocate_register();
+        
+        auto skip_call = code.fresh_label();
+        code.test(result.condition, result.condition);
+        code.jz(skip_call);
+        
+        code.movzx(value.cvt32(), code.get_pc_addr());
+        code.add(value.cvt32(), cast(u8) (dsp_instruction.size / 16));
+        push_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        
+        code.label(skip_call);
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+    } else if (result.type == DspJitResultType.Jmp) {
+        // todo optimization
+    } else if (result.type == DspJitResultType.JmpCc) {
+        R64 value = code.allocate_register();
+        R64 tmp1 = code.allocate_register();
+        
+        auto skip_call = code.fresh_label();
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+        code.and(result.condition, 1);
+        code.test(result.condition, result.condition);
+        code.jz(skip_call);
+        
+        code.mov(tmp1, result.target_address);
+        code.mov(code.get_pc_addr(), tmp1.cvt16());
+        
+        code.label(skip_call);
+    } else if (result.type == DspJitResultType.JmpRcc) {
+        auto skip_call = code.fresh_label();
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+        code.and(result.condition, 1);
+        code.test(result.condition, result.condition);
+        code.jz(skip_call);
+        
+        code.mov(code.get_pc_addr(), result.target_register.cvt16());
+        
+        code.label(skip_call);
+    } else if (result.type == DspJitResultType.RetCc) {
+        R64 value = code.allocate_register();
+        R64 tmp1 = code.allocate_register();
+        R64 tmp2 = code.allocate_register();
+        R64 tmp3 = code.allocate_register();
+        
+        auto skip_ret = code.fresh_label();
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+        code.and(result.condition, 1);
+        code.test(result.condition, result.condition);
+        code.jz(skip_ret);
+        
+        pop_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        code.mov(code.get_pc_addr(), value.cvt16());
+        
+        code.label(skip_ret);
+    } else if (result.type == DspJitResultType.RtiCc) {
+        R64 value = code.allocate_register();
+        R64 tmp1 = code.allocate_register();
+        R64 tmp2 = code.allocate_register();
+        R64 tmp3 = code.allocate_register();
+        
+        auto skip_rti = code.fresh_label();
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+        code.and(result.condition, 1);
+        code.test(result.condition, result.condition);
+        code.jz(skip_rti);
+        
+        pop_stack(code, StackType.DATA, value, tmp1, tmp2, tmp3);
+        write_arbitrary_reg(code, value, 19);
+        
+        pop_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        code.mov(code.get_pc_addr(), value.cvt16());
+        
+        code.label(skip_rti);
     } else {
         code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
     }
@@ -50,6 +173,16 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, u16 pc) {
     case DspJitResultType.DspHalted: code.mov(rax, JitExitReason.DspHalted); break;
     case DspJitResultType.Continue:  code.mov(rax, JitExitReason.BlockEnd); break;
     case DspJitResultType.IfCc:      code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.Call:      code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.CallCc:    code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.CallR:     code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.CallRcc:   code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.Jmp:       code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.JmpCc:     code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.JmpR:      code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.JmpRcc:    code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.RetCc:     code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.RtiCc:     code.mov(rax, JitExitReason.BranchTaken); break;
     }
 
     return DspEmissionResult(1); // 1 instruction emitted
@@ -61,11 +194,13 @@ void maybe_handle_sr_sxm(DspCode code, int ac_index) {
     }
 }
 
-DspJitResult emit_abs(DspCode code, DspInstruction instruction) {
+DspJitResult emit_abs(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.abs.d));
+    handle_extension_opcode(code, decoded_instruction);
     code.sal(tmp, 64 - 40);
     code.mov(tmp2, tmp);
     code.neg(tmp);
@@ -79,12 +214,16 @@ DspJitResult emit_abs(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_add(DspCode code, DspInstruction instruction) {
+DspJitResult emit_add(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp1, code.ac_full_address(1 - instruction.add.d));
     code.mov(tmp2, code.ac_full_address(instruction.add.d));
+    
+    handle_extension_opcode(code, decoded_instruction);
+    
     code.sal(tmp1, 64 - 40);
     code.sal(tmp2, 64 - 40);
     code.add(tmp1, tmp2);
@@ -97,7 +236,8 @@ DspJitResult emit_add(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addarn(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addarn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R16 ar = code.allocate_register().cvt16();
@@ -109,19 +249,24 @@ DspJitResult emit_addarn(DspCode code, DspInstruction instruction) {
     code.mov(ar, code.ar_address(instruction.addarn.d));
 
     R16 sum = code.allocate_register().cvt16();
-    emit_wrapping_register_add(code, ar, wr, ix, sum);
+    R16 tmp1 = code.allocate_register().cvt16();
+    R16 tmp2 = code.allocate_register().cvt16();
+    emit_wrapping_register_add(code, ar, wr, ix, sum, tmp1, tmp2);
     code.mov(code.ar_address(instruction.addarn.d), sum);
     
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addax(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addax(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp1, code.ac_full_address(instruction.addax.d));
     code.mov(tmp2.cvt32(), code.ax_full_address(instruction.addax.s));
     code.movsxd(tmp2, tmp2.cvt32());
+
+    handle_extension_opcode(code, decoded_instruction);
 
     code.sal(tmp1, 64 - 40);
     code.sal(tmp2, 64 - 40);
@@ -135,13 +280,16 @@ DspJitResult emit_addax(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addaxl(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addaxl(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp1, code.ac_full_address(instruction.addaxl.d));
     code.mov(tmp2.cvt16(), code.ax_lo_address(instruction.addaxl.s));
     code.movzx(tmp2, tmp2.cvt16());
+
+    handle_extension_opcode(code, decoded_instruction);
 
     code.sal(tmp1, 64 - 40);
     code.sal(tmp2, 64 - 40);
@@ -155,7 +303,8 @@ DspJitResult emit_addaxl(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addi(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addi(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -173,7 +322,8 @@ DspJitResult emit_addi(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addis(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addis(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -191,7 +341,8 @@ DspJitResult emit_addis(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -219,7 +370,8 @@ DspJitResult emit_addp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addpaxz(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addpaxz(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -257,7 +409,8 @@ DspJitResult emit_addpaxz(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_addr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_addr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -284,7 +437,8 @@ DspJitResult emit_addr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_andc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_andc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -303,7 +457,8 @@ DspJitResult emit_andc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_andcf(DspCode code, DspInstruction instruction) {
+DspJitResult emit_andcf(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     
     code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andcf.r));
@@ -316,7 +471,8 @@ DspJitResult emit_andcf(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_andf(DspCode code, DspInstruction instruction) {
+DspJitResult emit_andf(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     
     code.mov(tmp1.cvt16(), code.ac_m_address(instruction.andf.r));
@@ -328,7 +484,8 @@ DspJitResult emit_andf(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_andi(DspCode code, DspInstruction instruction) {
+DspJitResult emit_andi(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -346,7 +503,8 @@ DspJitResult emit_andi(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_andr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_andr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -364,7 +522,8 @@ DspJitResult emit_andr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asl(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asl(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -381,7 +540,8 @@ DspJitResult emit_asl(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -400,7 +560,8 @@ DspJitResult emit_asr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asrn(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asrn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -432,7 +593,8 @@ DspJitResult emit_asrn(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asrnr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asrnr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -464,7 +626,8 @@ DspJitResult emit_asrnr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asrnrx(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asrnrx(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -496,7 +659,8 @@ DspJitResult emit_asrnrx(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_asr16(DspCode code, DspInstruction instruction) {
+DspJitResult emit_asr16(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -512,20 +676,69 @@ DspJitResult emit_asr16(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_clr15(DspCode code, DspInstruction instruction) {
+DspJitResult emit_bloop(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 next_pc = code.allocate_register();
+    R64 value_a = code.allocate_register();
+    R64 value_i = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    
+    code.movzx(next_pc.cvt32(), code.get_pc_addr());
+    code.add(next_pc.cvt32(), cast(u8) (instruction.size / 16));
+    
+    push_stack(code, StackType.CALL, next_pc, tmp1, tmp2, tmp3);
+    
+    code.mov(value_a.cvt32(), instruction.bloop.a);
+    push_stack(code, StackType.LOOP_ADDRESS, value_a, tmp1, tmp2, tmp3);
+
+    read_arbitrary_reg(code, value_i, instruction.bloop.r);
+    push_stack(code, StackType.LOOP_COUNTER, value_i, tmp1, tmp2, tmp3);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_bloopi(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 next_pc = code.allocate_register();
+    R64 value_a = code.allocate_register();
+    R64 value_i = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    R64 tmp3 = code.allocate_register();
+    
+    code.movzx(next_pc.cvt32(), code.get_pc_addr());
+    code.add(next_pc.cvt32(), cast(u8) (instruction.size / 16));
+    
+    push_stack(code, StackType.CALL, next_pc, tmp1, tmp2, tmp3);
+    
+    code.mov(value_a.cvt32(), instruction.bloopi.a);
+    push_stack(code, StackType.LOOP_ADDRESS, value_a, tmp1, tmp2, tmp3);
+    
+    code.mov(value_i.cvt32(), instruction.bloopi.i);
+    push_stack(code, StackType.LOOP_COUNTER, value_i, tmp1, tmp2, tmp3);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_clr15(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.and(code.sr_upper_address(), 0x7f);
 
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_clr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_clr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.mov(code.ac_full_address(instruction.clr.r), 0);
     emit_reset_flags(code);
 
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_clrl(DspCode code, DspInstruction instruction) {
+DspJitResult emit_clrl(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -549,7 +762,8 @@ DspJitResult emit_clrl(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_clrp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_clrp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
 
     code.mov(tmp1, 0x00ff0010fff00000);
@@ -558,7 +772,8 @@ DspJitResult emit_clrp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_cmp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_cmp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -577,7 +792,8 @@ DspJitResult emit_cmp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_cmpaxh(DspCode code, DspInstruction instruction) {
+DspJitResult emit_cmpaxh(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -597,7 +813,8 @@ DspJitResult emit_cmpaxh(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_cmpi(DspCode code, DspInstruction instruction) {
+DspJitResult emit_cmpi(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -615,7 +832,8 @@ DspJitResult emit_cmpi(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_cmpis(DspCode code, DspInstruction instruction) {
+DspJitResult emit_cmpis(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -633,7 +851,8 @@ DspJitResult emit_cmpis(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_dar(DspCode code, DspInstruction instruction) {
+DspJitResult emit_dar(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R16 dar = code.allocate_register().cvt16();
     R16 wr = code.allocate_register().cvt16();
     R16 sum = code.allocate_register().cvt16();
@@ -641,13 +860,17 @@ DspJitResult emit_dar(DspCode code, DspInstruction instruction) {
     code.movzx(dar.cvt32(), code.ar_address(instruction.dar.a));
     code.movzx(wr.cvt32(),  code.wr_address(instruction.dar.a));
 
-    emit_wrapping_register_sub_one(code, dar, wr, sum);
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_sub_one(code, dar, wr, sum, tmp1, tmp2, tmp3);
     code.mov(code.ar_address(instruction.dar.a), sum);
 
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_dec(DspCode code, DspInstruction instruction) {
+DspJitResult emit_dec(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -665,7 +888,8 @@ DspJitResult emit_dec(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_decm(DspCode code, DspInstruction instruction) {
+DspJitResult emit_decm(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -682,12 +906,14 @@ DspJitResult emit_decm(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_halt(DspCode code, DspInstruction instruction) {
+DspJitResult emit_halt(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     // need to set HALT bit in DREG_CR
     return DspJitResult.DspHalted;
 }
 
-DspJitResult emit_iar(DspCode code, DspInstruction instruction) {
+DspJitResult emit_iar(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R16 ar = code.allocate_register().cvt16();
     R16 wr = code.allocate_register().cvt16();
     R16 sum = code.allocate_register().cvt16();
@@ -695,13 +921,17 @@ DspJitResult emit_iar(DspCode code, DspInstruction instruction) {
     code.movzx(wr.cvt32(), code.wr_address(instruction.iar.a));
     code.movzx(ar.cvt32(), code.ar_address(instruction.iar.a));
 
-    emit_wrapping_register_add_one(code, ar, wr, sum);
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_add_one(code, ar, wr, sum, tmp1, tmp2, tmp3);
     code.mov(code.ar_address(instruction.iar.a), sum);
 
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_if_cc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_if_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R32 tmp = code.allocate_register().cvt32();
     R32 result = code.allocate_register().cvt32();
     
@@ -710,7 +940,94 @@ DspJitResult emit_if_cc(DspCode code, DspInstruction instruction) {
     return DspJitResult.IfCc(result);
 }
 
-DspJitResult emit_inc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_ilrr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, address, instruction.ilrr.a);
+    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    write_arbitrary_reg(code, value, instruction.ilrr.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_ilrrd(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, address.cvt64(), instruction.ilrrd.s);
+    R64 mem_tmp1 = code.allocate_register();
+    R64 mem_tmp2 = code.allocate_register();
+    emit_read_data_memory(code, value, address.cvt64(), mem_tmp1, mem_tmp2);
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.ilrrd.s));
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_sub_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.ilrrd.s);
+    write_arbitrary_reg(code, value, instruction.ilrrd.d);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_ilrri(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, address.cvt64(), instruction.ilrri.s);
+    R64 mem_tmp1 = code.allocate_register();
+    R64 mem_tmp2 = code.allocate_register();
+    emit_read_data_memory(code, value, address.cvt64(), mem_tmp1, mem_tmp2);
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.ilrri.s));
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_add_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.ilrri.s);
+    write_arbitrary_reg(code, value, instruction.ilrri.d);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_ilrrn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    code.reserve_register(rcx);
+    
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 ix = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    R16 tmp1 = code.allocate_register().cvt16();
+    R16 tmp2 = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, address.cvt64(), instruction.ilrrn.s);
+    emit_read_data_memory(code, value, address.cvt64(), tmp1.cvt64(), tmp2.cvt64());
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.ilrrn.s));
+    code.movzx(ix.cvt32(), code.ix_address(instruction.ilrrn.s));
+
+    emit_wrapping_register_add(code, address, wr, ix, new_address, tmp1, tmp2);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.ilrrn.s);
+    
+    write_arbitrary_reg(code, value, instruction.ilrrn.d);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_inc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -728,7 +1045,8 @@ DspJitResult emit_inc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_incm(DspCode code, DspInstruction instruction) {
+DspJitResult emit_incm(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -745,7 +1063,8 @@ DspJitResult emit_incm(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsl(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsl(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -762,7 +1081,8 @@ DspJitResult emit_lsl(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsl16(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsl16(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -778,7 +1098,8 @@ DspJitResult emit_lsl16(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -796,7 +1117,8 @@ DspJitResult emit_lsr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsrn(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsrn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -828,7 +1150,8 @@ DspJitResult emit_lsrn(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsrnr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsrnr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -860,7 +1183,8 @@ DspJitResult emit_lsrnr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsrnrx(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsrnrx(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R64 tmp1 = code.allocate_register();
@@ -892,7 +1216,8 @@ DspJitResult emit_lsrnrx(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_lsr16(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lsr16(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -910,17 +1235,305 @@ DspJitResult emit_lsr16(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_m0(DspCode code, DspInstruction instruction) {
+DspJitResult emit_lri(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 tmp = code.allocate_register();
+    
+    code.mov(tmp, instruction.lri.i);
+    write_arbitrary_reg(code, tmp, instruction.lri.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lris(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 tmp = code.allocate_register();
+    
+    code.mov(tmp, sext_32(instruction.lri.i, 8));
+    write_arbitrary_reg(code, tmp, 24 + instruction.lri.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    code.mov(address, instruction.lr.m);
+    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    write_arbitrary_reg(code, value, instruction.lr.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_sr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, value, instruction.sr.r);
+    code.mov(address, instruction.sr.m);
+    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_si(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    code.mov(value, instruction.si.i);
+    code.mov(address, 0xFF00 | instruction.si.m);
+    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, value, instruction.srr.r);
+    read_arbitrary_reg(code, address, instruction.srr.a);
+    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srrd(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, value, instruction.srrd.r);
+    read_arbitrary_reg(code, address.cvt64(), instruction.srrd.a);
+    emit_write_data_memory(code, value, address.cvt64(), wr.cvt64(), new_address.cvt64());
+    
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    code.movzx(wr.cvt32(), code.wr_address(instruction.srrd.a));
+    emit_wrapping_register_sub_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.srrd.a);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srri(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, value, instruction.srri.r);
+    read_arbitrary_reg(code, address.cvt64(), instruction.srri.a);
+    emit_write_data_memory(code, value, address.cvt64(), wr.cvt64(), new_address.cvt64());
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.srri.a));
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_add_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.srri.a);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srrn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    code.reserve_register(rcx);
+    
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 ix = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    R16 tmp1 = code.allocate_register().cvt16();
+    R16 tmp2 = code.allocate_register().cvt16();
+    
+    read_arbitrary_reg(code, value, instruction.srrn.r);
+    read_arbitrary_reg(code, address.cvt64(), instruction.srrn.a);
+    emit_write_data_memory(code, value, address.cvt64(), tmp1.cvt64(), tmp2.cvt64());
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.srrn.a));
+    code.movzx(ix.cvt32(), code.ix_address(instruction.srrn.a));
+
+    emit_wrapping_register_add(code, address, wr, ix, new_address, tmp1, tmp2);
+    write_arbitrary_reg(code, new_address.cvt64(), instruction.srrn.a);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srs(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, value, 0x1C + instruction.srs.r);
+    read_arbitrary_reg(code, tmp1, 18);
+    code.shl(tmp1, 8);
+    code.or(tmp1.cvt32(), instruction.srs.m);
+    code.mov(address, tmp1);
+    
+    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_srsh(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 cr_reg = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    code.mov(value.cvt16(), code.ac_hi_address(instruction.srsh.s));
+    read_arbitrary_reg(code, cr_reg, 18);
+    code.shl(cr_reg, 8);
+    code.or(cr_reg.cvt32(), instruction.srsh.m);
+    code.mov(address, cr_reg);
+    
+    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lrr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, address, instruction.lrr.a);
+    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    write_arbitrary_reg(code, value, instruction.lrr.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lrrd(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    code.movzx(address.cvt32(), code.ar_address(instruction.lrrd.a));
+    R64 mem_tmp1 = code.allocate_register();
+    R64 mem_tmp2 = code.allocate_register();
+    emit_read_data_memory(code, value, address.cvt64(), mem_tmp1, mem_tmp2);
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.lrrd.a));
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_sub_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    code.mov(code.ar_address(instruction.lrrd.a), new_address);
+    write_arbitrary_reg(code, value, instruction.lrrd.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lrri(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    
+    code.movzx(address.cvt32(), code.ar_address(instruction.lrri.a));
+    R64 mem_tmp1 = code.allocate_register();
+    R64 mem_tmp2 = code.allocate_register();
+    emit_read_data_memory(code, value, address.cvt64(), mem_tmp1, mem_tmp2);
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.lrri.a));
+    R32 tmp1 = code.allocate_register().cvt32();
+    R32 tmp2 = code.allocate_register().cvt32();
+    R32 tmp3 = code.allocate_register().cvt32();
+    emit_wrapping_register_add_one(code, address, wr, new_address, tmp1, tmp2, tmp3);
+    code.mov(code.ar_address(instruction.lrri.a), new_address);
+    write_arbitrary_reg(code, value, instruction.lrri.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lrrn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    code.reserve_register(rcx);
+
+    R64 value = code.allocate_register();
+    R16 address = code.allocate_register().cvt16();
+    R16 wr = code.allocate_register().cvt16();
+    R16 ix = code.allocate_register().cvt16();
+    R16 new_address = code.allocate_register().cvt16();
+    R16 tmp1 = code.allocate_register().cvt16();
+    R16 tmp2 = code.allocate_register().cvt16();
+    
+    code.movzx(address.cvt32(), code.ar_address(instruction.lrrn.a));
+    emit_read_data_memory(code, value, address.cvt64(), tmp1.cvt64(), tmp2.cvt64());
+    
+    code.movzx(wr.cvt32(), code.wr_address(instruction.lrrn.a));
+    code.movzx(ix.cvt32(), code.ix_address(instruction.lrrn.a));
+
+    emit_wrapping_register_add(code, address, wr, ix, new_address, tmp1, tmp2);
+    code.mov(code.ar_address(instruction.lrrn.a), new_address);
+    
+    write_arbitrary_reg(code, value, instruction.lrrn.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_lrs(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    R64 address = code.allocate_register();
+    R64 cr_reg = code.allocate_register();
+    R64 tmp1 = code.allocate_register();
+    R64 tmp2 = code.allocate_register();
+    
+    read_arbitrary_reg(code, cr_reg, 18);
+    code.shl(cr_reg, 8);
+    code.or(cr_reg.cvt32(), instruction.lrs.m);
+    code.mov(address, cr_reg);
+    
+    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    write_arbitrary_reg(code, value, 0x18 + instruction.lrs.r);
+    
+    return DspJitResult.Continue;
+}
+
+DspJitResult emit_m0(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.or(code.sr_upper_address(), 0x20);
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_m2(DspCode code, DspInstruction instruction) {
+DspJitResult emit_m2(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.and(code.sr_upper_address(), 0xdf);
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_madd(DspCode code, DspInstruction instruction) {
+DspJitResult emit_madd(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -957,7 +1570,8 @@ DspJitResult emit_madd(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_maddc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_maddc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -994,7 +1608,8 @@ DspJitResult emit_maddc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_maddx(DspCode code, DspInstruction instruction) {
+DspJitResult emit_maddx(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1031,7 +1646,8 @@ DspJitResult emit_maddx(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mov(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mov(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -1044,7 +1660,8 @@ DspJitResult emit_mov(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_movax(DspCode code, DspInstruction instruction) {
+DspJitResult emit_movax(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -1059,7 +1676,8 @@ DspJitResult emit_movax(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_movnp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_movnp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -1078,7 +1696,8 @@ DspJitResult emit_movnp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_movp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_movp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -1095,7 +1714,8 @@ DspJitResult emit_movp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_movpz(DspCode code, DspInstruction instruction) {
+DspJitResult emit_movpz(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1126,7 +1746,8 @@ DspJitResult emit_movpz(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_movr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_movr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -1147,7 +1768,8 @@ DspJitResult emit_movr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mrr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mrr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
 
     read_arbitrary_reg(code, tmp1, instruction.mrr.s);
@@ -1156,7 +1778,8 @@ DspJitResult emit_mrr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_msub(DspCode code, DspInstruction instruction) {
+DspJitResult emit_msub(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1194,7 +1817,8 @@ DspJitResult emit_msub(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_msubc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_msubc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1232,7 +1856,8 @@ DspJitResult emit_msubc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_msubx(DspCode code, DspInstruction instruction) {
+DspJitResult emit_msubx(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1270,7 +1895,8 @@ DspJitResult emit_msubx(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mul(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mul(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1295,7 +1921,8 @@ DspJitResult emit_mul(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulac(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulac(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1335,7 +1962,8 @@ DspJitResult emit_mulac(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulaxh(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulaxh(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1359,7 +1987,8 @@ DspJitResult emit_mulaxh(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1384,7 +2013,8 @@ DspJitResult emit_mulc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulcac(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulcac(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1424,7 +2054,8 @@ DspJitResult emit_mulcac(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulcmv(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulcmv(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1459,7 +2090,8 @@ DspJitResult emit_mulcmv(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulcmvz(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulcmvz(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1506,7 +2138,8 @@ DspJitResult emit_mulcmvz(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulmv(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulmv(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1541,7 +2174,8 @@ DspJitResult emit_mulmv(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulmvz(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulmvz(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1588,7 +2222,8 @@ DspJitResult emit_mulmvz(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulx(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulx(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1649,7 +2284,8 @@ DspJitResult emit_mulx(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulxac(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulxac(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     // same as mulx, but adds prod to acr first
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
@@ -1724,7 +2360,8 @@ DspJitResult emit_mulxac(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulxmv(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulxmv(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1793,7 +2430,8 @@ DspJitResult emit_mulxmv(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_mulxmvz(DspCode code, DspInstruction instruction) {
+DspJitResult emit_mulxmvz(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1877,7 +2515,8 @@ DspJitResult emit_mulxmvz(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_neg(DspCode code, DspInstruction instruction) {
+DspJitResult emit_neg(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1894,11 +2533,13 @@ DspJitResult emit_neg(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_nop(DspCode code, DspInstruction instruction) {
+DspJitResult emit_nop(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_not(DspCode code, DspInstruction instruction) {
+DspJitResult emit_not(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1915,7 +2556,8 @@ DspJitResult emit_not(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_orc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_orc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1934,7 +2576,8 @@ DspJitResult emit_orc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_ori(DspCode code, DspInstruction instruction) {
+DspJitResult emit_ori(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1951,7 +2594,8 @@ DspJitResult emit_ori(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_orr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_orr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -1969,7 +2613,8 @@ DspJitResult emit_orr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_sbclr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_sbclr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
 
     int bit = 6 + instruction.sbclr.i;
@@ -1988,7 +2633,8 @@ DspJitResult emit_sbclr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_sbset(DspCode code, DspInstruction instruction) {
+DspJitResult emit_sbset(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
 
     int bit = 6 + instruction.sbclr.i;
@@ -2007,7 +2653,8 @@ DspJitResult emit_sbset(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_set15(DspCode code, DspInstruction instruction) {
+DspJitResult emit_set15(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     code.mov(tmp.cvt8(), code.sr_upper_address());
     code.or(tmp.cvt8(), 0x80);
@@ -2016,7 +2663,8 @@ DspJitResult emit_set15(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_set16(DspCode code, DspInstruction instruction) {
+DspJitResult emit_set16(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     code.mov(tmp.cvt8(), code.sr_upper_address());
     code.and(tmp.cvt8(), cast(u8) ~0x40);
@@ -2025,7 +2673,8 @@ DspJitResult emit_set16(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_set40(DspCode code, DspInstruction instruction) {
+DspJitResult emit_set40(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     code.mov(tmp.cvt8(), code.sr_upper_address());
     code.or(tmp.cvt8(), 0x40);
@@ -2034,7 +2683,8 @@ DspJitResult emit_set40(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_sub(DspCode code, DspInstruction instruction) {
+DspJitResult emit_sub(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2058,7 +2708,8 @@ DspJitResult emit_sub(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_subarn(DspCode code, DspInstruction instruction) {
+DspJitResult emit_subarn(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     code.reserve_register(rcx);
 
     R16 ar = code.allocate_register().cvt16();
@@ -2071,13 +2722,17 @@ DspJitResult emit_subarn(DspCode code, DspInstruction instruction) {
     code.neg(ix.cvt32());
 
     R16 sum = code.allocate_register().cvt16();
-    emit_wrapping_register_sub(code, ar, wr, ix, sum);
+    R16 tmp1 = code.allocate_register().cvt16();
+    R16 tmp2 = code.allocate_register().cvt16();
+    R16 tmp3 = code.allocate_register().cvt16();
+    emit_wrapping_register_sub(code, ar, wr, ix, sum, tmp1, tmp2, tmp3);
     code.mov(code.ar_address(instruction.subarn.d), sum);
     
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_subax(DspCode code, DspInstruction instruction) {
+DspJitResult emit_subax(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2102,7 +2757,8 @@ DspJitResult emit_subax(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_subp(DspCode code, DspInstruction instruction) {
+DspJitResult emit_subp(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2134,7 +2790,8 @@ DspJitResult emit_subp(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_subr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_subr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2165,7 +2822,8 @@ DspJitResult emit_subr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_tst(DspCode code, DspInstruction instruction) {
+DspJitResult emit_tst(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -2177,7 +2835,8 @@ DspJitResult emit_tst(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_tstaxh(DspCode code, DspInstruction instruction) {
+DspJitResult emit_tstaxh(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -2190,7 +2849,8 @@ DspJitResult emit_tstaxh(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_tstprod(DspCode code, DspInstruction instruction) {
+DspJitResult emit_tstprod(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
@@ -2205,7 +2865,8 @@ DspJitResult emit_tstprod(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_xorc(DspCode code, DspInstruction instruction) {
+DspJitResult emit_xorc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2224,7 +2885,8 @@ DspJitResult emit_xorc(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_xori(DspCode code, DspInstruction instruction) {
+DspJitResult emit_xori(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2241,7 +2903,8 @@ DspJitResult emit_xori(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_xorr(DspCode code, DspInstruction instruction) {
+DspJitResult emit_xorr(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
     R64 tmp = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
@@ -2259,19 +2922,77 @@ DspJitResult emit_xorr(DspCode code, DspInstruction instruction) {
     return DspJitResult.Continue;
 }
 
-DspJitResult emit_instruction(DspCode code, DspInstruction dsp_instruction) {
-    switch (dsp_instruction.opcode) {
+DspJitResult emit_call_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R32 tmp = code.allocate_register().cvt32();
+    R32 condition = code.allocate_register().cvt32();
+    
+    emit_get_condition(code, condition, tmp, cast(Condition) instruction.call_cc.c);
+    
+    return DspJitResult.CallCc(condition, instruction.call_cc.a);
+}
+
+DspJitResult emit_callrcc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R32 tmp = code.allocate_register().cvt32();
+    R32 condition = code.allocate_register().cvt32();
+    
+    emit_get_condition(code, condition, tmp, cast(Condition) instruction.callrcc.c);
+    
+    return DspJitResult.CallRcc(condition, instruction.callrcc.r);
+}
+
+DspJitResult emit_ret_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R32 tmp = code.allocate_register().cvt32();
+    R32 condition = code.allocate_register().cvt32();
+    
+    emit_get_condition(code, condition, tmp, cast(Condition) instruction.ret_cc.c);
+    
+    return DspJitResult.RetCc(condition);
+}
+
+DspJitResult emit_rti_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R32 tmp = code.allocate_register().cvt32();
+    R32 condition = code.allocate_register().cvt32();
+    
+    emit_get_condition(code, condition, tmp, cast(Condition) instruction.rti_cc.c);
+    
+    return DspJitResult.RtiCc(condition);
+}
+
+DspJitResult emit_jmp_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    R32 tmp = code.allocate_register().cvt32();
+    R32 condition = code.allocate_register().cvt32();
+    
+    emit_get_condition(code, condition, tmp, cast(Condition) instruction.jmp_cc.c);
+    
+    return DspJitResult.JmpCc(condition, instruction.jmp_cc.a);
+}
+
+DspJitResult emit_jmpr_cc(DspCode code, DecodedInstruction decoded_instruction) {
+    DspInstruction instruction = decoded_instruction.main;
+    // this instruction doesn't appear to exist
+    error_dsp("Unimplemented DSP instruction: %s", instruction);
+
+    return DspJitResult.DspHalted;
+}
+
+DspJitResult emit_instruction(DspCode code, DecodedInstruction decoded_instruction) {
+    switch (decoded_instruction.main.opcode) {
         static foreach (opcode; EnumMembers!DspOpcode) {{
             enum bool is_target(alias T) = T == "emit_" ~ opcode.stringof.toLower;
             
             static if (Filter!(is_target, __traits(allMembers, emu.hw.dsp.jit.emission.emit)).length > 0) {
                 case opcode:
-                    mixin("return emit_" ~ opcode.stringof.toLower ~ "(code, dsp_instruction);");
+                    mixin("return emit_" ~ opcode.stringof.toLower ~ "(code, decoded_instruction);");
             }
         }}
 
         default: 
-            error_dsp("Unimplemented DSP instruction: %s", dsp_instruction);
+            error_dsp("Unimplemented DSP instruction: %s", decoded_instruction.main);
             return DspJitResult.DspHalted;
     }
 }
