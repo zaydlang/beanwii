@@ -2,6 +2,7 @@ module emu.hw.dsp.jit.emission.code;
 
 import core.bitop;
 import emu.hw.dsp.jit.emission.config;
+import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import gallinule.x86;
 import std.conv;
@@ -13,7 +14,6 @@ import util.x86;
 // Import x86 registers
 public import gallinule.x86 : rax, rbx, rcx, rdx, rsi, rdi, rbp, rsp, r8, r9, r10, r11, r12, r13, r14, r15;
 
-
 final class DspCode {
     Block!true block;
     DspCodeConfig config;
@@ -21,6 +21,8 @@ final class DspCode {
 
     enum MAX_INSTRUCTIONS_PER_BLOCK = 10;
     private int current_max_instructions_per_block = MAX_INSTRUCTIONS_PER_BLOCK;
+    
+    bool extension_handled = false;
 
     this() {
         block = Block!true();
@@ -114,9 +116,14 @@ final class DspCode {
         allocated_regs &= ~(1 << reg64_to_u16(reg));
     }
 
+    void deallocate_register(R64 reg) {
+        free_register(reg);
+    }
+
     void free_all_registers() {
         allocated_regs = 0;
         this.reserve_register(rdi);
+        this.reserve_register(rsi);
     }
 
     Address!64 ac_full_address(int index) {
@@ -219,5 +226,45 @@ final class DspCode {
 
     Address!8 sr_upper_address() {
         return bytePtr(rdi, cast(int) DspState.sr_upper.offsetof);
+    }
+
+    Address!64 call_stack_address() {
+        return qwordPtr(rdi, cast(int) DspState.call_stack.offsetof);
+    }
+
+    Address!64 data_stack_address() {
+        return qwordPtr(rdi, cast(int) DspState.data_stack.offsetof);
+    }
+
+    Address!64 loop_address_stack_address() {
+        return qwordPtr(rdi, cast(int) DspState.loop_address_stack.offsetof);
+    }
+
+    Address!64 loop_counter_stack_address() {
+        return qwordPtr(rdi, cast(int) DspState.loop_counter_stack.offsetof);
+    }
+
+    Address!8 call_stack_sp_address() {
+        return bytePtr(rdi, cast(int) (DspState.call_stack.offsetof + DspState.Stack.sp.offsetof));
+    }
+
+    Address!8 data_stack_sp_address() {
+        return bytePtr(rdi, cast(int) (DspState.data_stack.offsetof + DspState.Stack.sp.offsetof));
+    }
+
+    Address!8 loop_address_stack_sp_address() {
+        return bytePtr(rdi, cast(int) (DspState.loop_address_stack.offsetof + DspState.Stack.sp.offsetof));
+    }
+
+    Address!8 loop_counter_stack_sp_address() {
+        return bytePtr(rdi, cast(int) (DspState.loop_counter_stack.offsetof + DspState.Stack.sp.offsetof));
+    }
+
+    Address!64 data_memory_address() {
+        return qwordPtr(rsi, cast(int) DspMemory.data_memory.offsetof);
+    }
+
+    Address!16 config_address() {
+        return wordPtr(rdi, cast(int) DspState.config.offsetof);
     }
 }

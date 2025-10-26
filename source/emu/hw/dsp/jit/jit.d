@@ -21,6 +21,16 @@ enum DspJitResultType {
     Continue  = 0,
     DspHalted = 1,
     IfCc      = 2,
+    Call      = 3,
+    CallCc    = 4,
+    CallR     = 5,
+    CallRcc   = 6,
+    Jmp       = 7,
+    JmpCc     = 8,
+    JmpR      = 9,
+    JmpRcc    = 10,
+    RetCc     = 11,
+    RtiCc     = 12,
 }
 
 struct DspJitResult {
@@ -33,8 +43,28 @@ struct DspJitResult {
         this.condition = condition;
     }
 
+    this(DspJitResultType type, u16 target_address) {
+        this.type = type;
+        this.target_address = target_address;
+    }
+
+    this(DspJitResultType type, R32 condition, u16 target_address) {
+        this.type = type;
+        this.condition = condition;
+        this.target_address = target_address;
+    }
+
+    this(DspJitResultType type, R32 condition, R32 target_register) {
+        this.type = type;
+        this.condition = condition;
+        this.target_register = target_register;
+    }
+
+
     DspJitResultType type;
-    R32 condition; // only valid if type == IfCc
+    R32 condition; // only valid if type == IfCc, CallCc, CallRcc, RetCc, or RtiCc
+    u16 target_address; // only valid if type == Call or CallCc
+    R32 target_register; // only valid if type == CallR or CallRcc
 
     static DspJitResult Continue() {
         return DspJitResult(DspJitResultType.Continue);
@@ -46,6 +76,49 @@ struct DspJitResult {
 
     static DspJitResult IfCc(R32 condition) {
         return DspJitResult(DspJitResultType.IfCc, condition);
+    }
+
+    static DspJitResult Call(u16 target_address) {
+        return DspJitResult(DspJitResultType.Call, target_address);
+    }
+
+    static DspJitResult CallCc(R32 condition, u16 target_address) {
+        return DspJitResult(DspJitResultType.CallCc, condition, target_address);
+    }
+
+    static DspJitResult CallR(u16 target_register) {
+        return DspJitResult(DspJitResultType.CallR, target_register);
+    }
+
+    static DspJitResult CallRcc(R32 condition, u16 target_register) {
+        return DspJitResult(DspJitResultType.CallRcc, condition, target_register);
+    }
+
+    static DspJitResult Jmp(u16 target_address) {
+        return DspJitResult(DspJitResultType.Jmp, target_address);
+    }
+
+    static DspJitResult JmpCc(R32 condition, u16 target_address) {
+        return DspJitResult(DspJitResultType.JmpCc, condition, target_address);
+    }
+
+    // static DspJitResult JmpR(u16 target_register) {
+        // DspJitResult result = DspJitResult(DspJitResultType.JmpR);
+        // result.target_register = target_register;
+        // return result;
+    // }
+
+    static DspJitResult JmpRcc(R32 condition, R32 target_register) {
+        DspJitResult result = DspJitResult(DspJitResultType.JmpRcc, condition, target_register);
+        return result;
+    }
+
+    static DspJitResult RetCc(R32 condition) {
+        return DspJitResult(DspJitResultType.RetCc, condition);
+    }
+
+    static DspJitResult RtiCc(R32 condition) {
+        return DspJitResult(DspJitResultType.RtiCc, condition);
     }
 }
 
@@ -63,18 +136,17 @@ final class DspJit {
     }
 
     JitExitReason run(DspState* state) {
-        u32 config_bitfield = get_config_bitfield(state);
-        if (page_table.has(state.pc, config_bitfield)) {
-            DspJitEntry entry = page_table.get(state.pc, config_bitfield);
+        u32 jit_compilation_flags = get_jit_compilation_flags(state);
+        if (page_table.has(state.pc, jit_compilation_flags)) {
+            DspJitEntry entry = page_table.get(state.pc, jit_compilation_flags);
             return execute_compiled_block(entry.func, state);
         } else {
             return compile_and_execute(state, state.pc);
         }
     }
 
-    private u32 get_config_bitfield(DspState* state) {
+    private u32 get_jit_compilation_flags(DspState* state) {
         u32 bitfield = 0;
-        if (state.sr_upper.bit(14 - 8)) bitfield |= 1; // sr_SXM
         return bitfield;
     }
 
@@ -100,14 +172,18 @@ final class DspJit {
             cast(u16) emission_result.instruction_count,
             true
         );
-        u32 config_bitfield = get_config_bitfield(state);
-        page_table.put(pc, config_bitfield, entry);
+        u32 jit_compilation_flags = get_jit_compilation_flags(state);
+        page_table.put(pc, jit_compilation_flags, entry);
         
         return execute_compiled_block(func, state);
     }
 
     JitExitReason execute_compiled_block(DspJitFunction func, DspState* state) {
-        u32 result = func(cast(void*) state);
+        log_dsp("JIT executed block at PC=%x", state.pc);
+        
+        u32 result = func(cast(void*) state, cast(void*) dsp_memory);
+        check_loop_address(state);
+
         return cast(JitExitReason) result;
     }
 
@@ -118,5 +194,24 @@ final class DspJit {
     // used for tests
     void single_step_until_halt(DspState* state) {
         while (compile_and_execute(state, state.pc) != JitExitReason.DspHalted) {}
+    }
+
+    void check_loop_address(DspState* state) {
+        log_dsp("all stacks peeks: call=%x, loop_addr=%x, loop_count=%d", state.call_stack.peek(), state.loop_address_stack.peek(), state.loop_counter_stack.peek());
+        if (!state.loop_address_stack.is_empty()) {
+            u16 loop_address = state.loop_address_stack.peek();
+            log_dsp("Checking loop address at PC=%x (loop start=%x)", state.pc, loop_address - 1);
+            if (state.pc - 1 == loop_address) {
+                state.loop_counter_stack.data[state.loop_counter_stack.sp - 1]--;
+                if (state.loop_counter_stack.peek() == 0) {
+                    state.call_stack.pop();
+                    state.loop_address_stack.pop();
+                    state.loop_counter_stack.pop();
+                } else {
+                    log_dsp("Looping back to address %x, %d iterations remaining", state.call_stack.peek(), state.loop_counter_stack.peek());
+                    state.pc = state.call_stack.peek();
+                }
+            }
+        }
     }
 }
