@@ -562,11 +562,12 @@ void pop_stack(DspCode code, StackType type, R64 result, R64 tmp1, R64 tmp2, R64
 }
 
 u16 dsp_io_read_stub(u16 address) {
+    error_dsp("DSP IO read from address 0x%04X not implemented", address);
     return 0;
 }
 
 void dsp_io_write_stub(u16 address, u16 value) {
-    
+    error_dsp("DSP IO write to address 0x%04X not implemented (value 0x%04X)", address, value);
 }
 
 void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 tmp2) {
