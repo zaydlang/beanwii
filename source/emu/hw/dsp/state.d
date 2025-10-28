@@ -5,6 +5,13 @@ import util.bitop;
 import util.log;
 import util.number;
 
+enum DspPhase {
+    Halted,
+    Bootstrap,
+    AcceptingMicrocode,
+    Running
+}
+
 struct DspState {
     u16[4] ar;
     u16[4] ix;
@@ -77,6 +84,15 @@ struct DspState {
     Stack loop_counter_stack;
     
     u16 pc;
+    
+    DspPhase phase = DspPhase.Halted;
+    u16 csr = 0;
+    u16 bootstrap_mailbox = 0;
+    
+    u32 mailbox_to_high = 0;
+    u32 mailbox_to_low = 0;
+    u32[10] microcode_words;
+    int microcode_count = 0;
     
     bool interrupt_pending;
 

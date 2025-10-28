@@ -2,49 +2,32 @@ module emu.hw.dsp.dsp;
 
 import emu.hw.broadway.interrupt;
 import emu.hw.dsp.jit.jit;
+import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import util.bitop;
 import util.number;
 import util.log;
-
-// these two enums are mostly guesses from libogc source code so don't
-// assume they are correct
-
-enum CommandFromCpu {
-    TaskIncoming     = 0xcdd1_0001,
-    NoTasksLeft      = 0xcdd1_0002,
-    NoTasksToYieldTo = 0xcdd1_0003,
-}
-
-enum CommandToCpu {
-    TaskInitialized      = 0xdcd1_0000,
-    TaskResuming         = 0xdcd1_0001,
-    MaybeYieldToNewTask  = 0xdcd1_0002,
-    TaskComplete         = 0xdcd1_0003,
-    RequestInfo          = 0xdcd1_0004,
-}
+import core.thread;
+import core.sync.mutex;
 
 final class DSP {
-    enum State {
-        Init,
-        Ready
-    }
-
-    State state;
     Scheduler scheduler;
     InterruptController interrupt_controller;
     Mem mem;
 
     DspJit jit;
     DspState dsp_state;
+    Thread dsp_thread;
+    Mutex dsp_mutex;
+    bool dsp_should_stop;
 
     this() {
-        state = State.Init;
-        this.commands_left_to_process_at_init = 10;
-
-        this.jit = new DspJit();
+        jit = new DspJit();
+        dsp_state = DspState();
+        dsp_mutex = new Mutex();
+        dsp_should_stop = false;
     }
 
     void connect_scheduler(Scheduler scheduler) {
@@ -59,378 +42,225 @@ final class DSP {
         this.mem = mem;
     }
 
-    void send_command_to_cpu(u32 command) {
-        log_dsp("Sending command to CPU: %08x", command);
-
-        mailbox_from_hi = cast(u16) (command >> 16);
-        mailbox_from_lo = cast(u16) (command >> 0);
-
-        if (csr.bit(8)) {
-            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
-            csr |= 1 << 7;
-        } else {
-            error_dsp("DSP IRQ not enabled????");
-        }
-    }
-
-    int test = 0;
-    int commands_left_to_process_at_init;
-    u32 dsp_microcode_address;
-    u32 dsp_microcode_size;
-
-    // void finish_task() {}
-
-    enum TASK_QUANTUM = 100_000;
-    void resume_task() {
-        log_dsp("Resuming task");
-        if (state == State.Ready) {
-            scheduler.add_event_relative_to_clock(&this.yield_task, TASK_QUANTUM);
-            send_command_to_cpu(CommandToCpu.TaskResuming);
-        } else {
-            error_dsp("DSP not ready to resume task");
-        }
-    }
-
-    void yield_task() {
-        log_dsp("Yielding task");
-        if (state == State.Ready) {
-            send_command_to_cpu(CommandToCpu.MaybeYieldToNewTask);
-        } else {
-            error_dsp("DSP not ready to yield task");
-        }
-    }
-
-    void process_mailbox_command() {
-        log_dsp("Mailbox command: %04x %04x %08x %08x", mailbox_to_lo, mailbox_to_hi,0,0);
-        final switch (state) {
-            case State.Init:
-                commands_left_to_process_at_init--;
-                if (commands_left_to_process_at_init == 0) {
-                    state = State.Ready;
-                    scheduler.add_event_relative_to_clock(() => dipshit, 100_000);
-                    scheduler.add_event_relative_to_clock(() => send_command_to_cpu(0xdcd1_0000), 10_000);
-                    scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
-                    log_dsp("DSP init complete: %08x %08x", dsp_microcode_address, dsp_microcode_size);
-                    // dump_dsp_microcode("dsp.bin");
-                    // u32 dsp_microcode_hash = get_dsp_microcode_hash();
-                    // log_dsp("DSP microcode hash: %08x", dsp_microcode_hash);
-
-                } else if (commands_left_to_process_at_init == 8) {
-                    dsp_microcode_address = mailbox_to_hi << 16 | mailbox_to_lo;
-                } else if (commands_left_to_process_at_init == 4) {
-                    dsp_microcode_size = mailbox_to_hi << 16 | mailbox_to_lo;
-                }
-
-                break;
-
-            case State.Ready:
-                u32 mailbox_command = mailbox_to_hi << 16 | mailbox_to_lo;
-                switch (mailbox_command) {
-                    case CommandFromCpu.TaskIncoming:
-                        // error_dsp("Task incoming");
-                        break;
-                    case CommandFromCpu.NoTasksLeft:
-                        error_dsp("No tasks left");
-                        break;
-                    case CommandFromCpu.NoTasksToYieldTo:
-                        log_dsp("No tasks to yield to");
-                        scheduler.add_event_relative_to_clock(&this.resume_task, 2_00_000);
-                        break;
-                    
-                    default: 
-                        log_dsp("Unknown mailbox command: %08x", mailbox_command);
-                        break;  
-                }
-            test++;
-                log_dsp("DSP mailbox command in ready state: %04x %04x", mailbox_to_lo, mailbox_to_hi);
-                break;
-        }
-    }
-
-    u32 get_dsp_microcode_hash() {
-        u32 hash = 0;
-
-        for (int i = 0; i < dsp_microcode_size; i += 4) {
-            hash += mem.paddr_read_u32(dsp_microcode_address + i);
-        }
-
-        return hash;
-    }
-
-    void dump_dsp_microcode(string filename) {
-        import std.stdio;
-
-        auto file = File(filename, "wb");
-        log_dsp("Dumping DSP microcode to %s", filename);
-        for (int i = 0; i < dsp_microcode_size; i += 4) {
-            u32 value = mem.paddr_read_u8(dsp_microcode_address + i);
-            file.write(value);
-        }
-        file.close();
-    }
-
-    void dipshit() {
-        if (csr.bit(4)) {
-            log_dsp("Dipshit");
-            csr |= 1 << 3;
-            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
-        }
-
-        scheduler.add_event_relative_to_clock(() => dipshit, 100_000);
-    }
-
-    u16 mailbox_from_lo;
-
     u8 read_DSP_MAILBOX_FROM_LOW(int target_byte) {
-        return mailbox_from_lo.get_byte(target_byte);
+        log_dsp("Read DSP_MAILBOX_FROM_LOW[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
-
-    u16 mailbox_from_hi;
 
     u8 read_DSP_MAILBOX_FROM_HIGH(int target_byte) {
-        if (target_byte == 1 && state == State.Init)
-            mailbox_from_hi ^= 0x8000;
-
-        return mailbox_from_hi.get_byte(target_byte);
+        if (dsp_state.phase == DspPhase.Bootstrap || dsp_state.phase == DspPhase.AcceptingMicrocode) {
+            u8 result = cast(u8) ((dsp_state.bootstrap_mailbox >> (target_byte * 8)) & 0xFF);
+            if (target_byte == 1) {
+                dsp_state.bootstrap_mailbox ^= 0x8000;
+            }
+            log_dsp("Read DSP_MAILBOX_FROM_HIGH[%d] -> 0x%02x (%s) (PC=0x%08x LR=0x%08x)", target_byte, result, 
+                   dsp_state.phase == DspPhase.Bootstrap ? "Bootstrap" : "AcceptingMicrocode",
+                   interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+            return result;
+        }
+        log_dsp("Read DSP_MAILBOX_FROM_HIGH[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
-    u16 mailbox_to_lo;
-
     u8 read_DSP_MAILBOX_TO_LOW(int target_byte) {
-        return mailbox_to_lo.get_byte(target_byte);
+        log_dsp("Read DSP_MAILBOX_TO_LOW[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
-        mailbox_to_lo = cast(u16) mailbox_to_lo.set_byte(target_byte, value);
-        log_dsp("DSP MAILBOX TO LOW: %04x %04x", mailbox_to_lo, mailbox_to_hi);
-
-        if (target_byte == 1) {
-            process_mailbox_command();
+        log_dsp("Write DSP_MAILBOX_TO_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        
+        u32 mask = 0xFF << (target_byte * 8);
+        dsp_state.mailbox_to_low = (dsp_state.mailbox_to_low & ~mask) | ((cast(u32) value) << (target_byte * 8));
+        
+        if (target_byte == 1 && dsp_state.phase == DspPhase.AcceptingMicrocode && dsp_state.microcode_count < 10) {
+            u32 microcode_config = (dsp_state.mailbox_to_high << 16) | (dsp_state.mailbox_to_low & 0xFFFF);
+            dsp_state.microcode_words[dsp_state.microcode_count] = microcode_config;
+            dsp_state.microcode_count++;
+            log_dsp("DSP captured microcode config %d: 0x%08x", dsp_state.microcode_count, microcode_config);
+            
+            if (dsp_state.microcode_count == 10) {
+                log_dsp("DSP task parameters:");
+                log_dsp("  iram_maddr: 0x%08x", dsp_state.microcode_words[1]);
+                log_dsp("  iram_addr: 0x%08x", dsp_state.microcode_words[3]);
+                log_dsp("  iram_len: 0x%08x", dsp_state.microcode_words[5]);
+                log_dsp("  dram_len: 0x%08x", dsp_state.microcode_words[7]);
+                log_dsp("  init_vec: 0x%08x", dsp_state.microcode_words[9]);
+                
+                // Upload IRAM code from main memory
+                u32 iram_maddr = dsp_state.microcode_words[1];
+                u32 iram_len = dsp_state.microcode_words[5];
+                u16 init_vec = cast(u16) dsp_state.microcode_words[9];
+                
+                if (iram_len > 0) {
+                    u32 iram_words = iram_len / 2;
+                    u16[] iram_data = new u16[iram_words];
+                    for (u32 i = 0; i < iram_words; i++) {
+                        iram_data[i] = mem.read_be_u16(iram_maddr + i * 2);
+                    }
+                    jit.dsp_memory.upload_iram(iram_data);
+                }
+                
+                dsp_state.pc = init_vec;
+                dsp_state.phase = DspPhase.Running;
+                log_dsp("DSP started: PC=0x%04x, state=Running", init_vec);
+                
+                start_dsp_thread();
+            }
         }
     }
 
-    u16 mailbox_to_hi;
-
     u8 read_DSP_MAILBOX_TO_HIGH(int target_byte) {
-        // keep toggling the mailbox value
-        if (target_byte == 1)
-            mailbox_to_hi ^= 0x8000;
-
-        return mailbox_to_hi.get_byte(target_byte);
+        log_dsp("Read DSP_MAILBOX_TO_HIGH[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_DSP_MAILBOX_TO_HIGH(int target_byte, u8 value) {
-        mailbox_to_hi = cast(u16) mailbox_to_hi.set_byte(target_byte, value);
-        log_dsp("DSP MAILBOX TO HI: %04x %04x", mailbox_to_lo, mailbox_to_hi);
+        log_dsp("Write DSP_MAILBOX_TO_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        
+        u32 mask = 0xFF << (target_byte * 8);
+        dsp_state.mailbox_to_high = (dsp_state.mailbox_to_high & ~mask) | ((cast(u32) value) << (target_byte * 8));
     }
-
-    u32 csr;
 
     T read_DSP_CSR(T)(int offset) {
-        if (offset == 1 || !is(T == u16)) {
-            error_dsp("Reading from DSP CSR offset 1 is not supported");
-        }
-
-        return cast(T) csr;
-    }
-
-    void reset_dsp() {
-        // kachow!
-        // scheduler.remove_event(complete_internal_aram_dma_event);
-    }
-
-    bool aram_dma_in_progress = false;
-    ulong complete_internal_aram_dma_event;
-    void trigger_internal_aram_dma() {
-        log_dsp("Triggering internal ARAM DMA");
-        if (aram_dma_in_progress) {
-            error_dsp("ARAM DMA already in progress");
-        }
-
-        aram_dma_in_progress = true;
-
-        csr |= 1 << 9;
-
-        complete_internal_aram_dma_event = scheduler.add_event_relative_to_clock(&this.complete_internal_aram_dma, 1000);
-    }
-
-    void complete_internal_aram_dma() {
-        aram_dma_in_progress = false;
-        csr &= ~(1 << 9);
-
-        log_dsp("Internal ARAM DMA complete");
-
-        csr |= 1 << 5;
-        if (csr.bit(6)) {
-            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
-        }
+        log_dsp("Read DSP_CSR<%s>[%d] -> 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, dsp_state.csr, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) dsp_state.csr;
     }
 
     void write_DSP_CSR(T)(T value, int offset) {
-        if (offset == 1 || !is(T == u16)) {
-            error_dsp("Writing to DSP CSR offset 1 is not supported");
+        log_dsp("Write DSP_CSR<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        
+        if (cast(u16) value & 0x20) {
+            dsp_state.csr &= ~0x20;
+            log_dsp("DSP CSR: Clearing bit 5 due to write");
         }
-
-        csr = cast(u16) value;
-        csr &= ~(1 << 0); // RESET
-        csr &= ~(1 << 1); // DSP IRQ
-
-        if (value.bit(2)) {
-            // scheduler.remove_event(complete_internal_aram_dma_event);
-        }
-
-        log_dsp("DSP CSR: %04x", csr);
-        if (value.bit(0)) {
-            reset_dsp();
-        }
-
-        if (value.bit(3)) {
-            csr &= ~(1 << 3);
-        }
-
-        if (value.bit(5)) {
-            csr &= ~(1 << 5);
-        }
-
-        if (value.bit(7)) {
-            log_dsp("DSP IRQ CLEAR: %04x", csr);
-            csr &= ~(1 << 7);
-        }
-
-        if (!csr.bit(3) && !csr.bit(5) && !csr.bit(7)) {
-            interrupt_controller.acknowledge_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
+        
+        if (cast(u16) value & 1) {
+            if (dsp_state.phase == DspPhase.Halted) {
+                dsp_state.phase = DspPhase.Bootstrap;
+                log_dsp("DSP transitioning from Halted to Bootstrap phase");
+            } else if (dsp_state.phase == DspPhase.Bootstrap) {
+                dsp_state.phase = DspPhase.AcceptingMicrocode;
+                log_dsp("DSP transitioning from Bootstrap to AcceptingMicrocode phase");
+            }
         }
     }
 
-    u32 aram_mmaddr;
-
     u8 read_AR_ARAM_MMADDR(int target_byte) {
-        return aram_mmaddr.get_byte(target_byte);
+        log_dsp("Read AR_ARAM_MMADDR[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_AR_ARAM_MMADDR(int target_byte, u8 value) {
-        aram_mmaddr = aram_mmaddr.set_byte(target_byte, value);
+        log_dsp("Write AR_ARAM_MMADDR[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
-    u32 aram_araddr;
-
     u8 read_AR_ARAM_ARADDR(int target_byte) {
-        return aram_araddr.get_byte(target_byte);
+        log_dsp("Read AR_ARAM_ARADDR[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_AR_ARAM_ARADDR(int target_byte, u8 value) {
-        aram_araddr = aram_araddr.set_byte(target_byte, value);
+        log_dsp("Write AR_ARAM_ARADDR[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
-    u32 aram_size;
     u8 read_ARAM_SIZE(int target_byte) {
-        return aram_size.get_byte(target_byte);
+        log_dsp("Read ARAM_SIZE[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_ARAM_SIZE(int target_byte, u8 value) {
-        aram_size = aram_size.set_byte(target_byte, value);
+        log_dsp("Write ARAM_SIZE[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
     T read_ARAM_SIZE(T)(int offset) {
-        if (offset == 1 || !is(T == u16)) {
-            error_dsp("Reading from ARAM SIZE offset 1 is not supported");
-        }
-
-        return cast(T) aram_size;
+        log_dsp("Read ARAM_SIZE<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) 0;
     }
 
-    u32 ar_dma_size;
-
     T read_AR_DMA_SIZE(T)(int offset) {
-        if (offset != 0 || !is(T == u32)) {
-            error_dsp("Reading from AR DMA SIZE offset 1 is not supported");
-        }
-
-        return cast(T) ar_dma_size;
+        log_dsp("Read AR_DMA_SIZE<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) 0;
     }
 
     void write_AR_DMA_SIZE(T)(T value, int offset) {
-        if (offset != 0 || !is(T == u32)) {
-            error_dsp("Writing to AR DMA SIZE offset 1 is not supported %x %x", offset, T.sizeof);
+        log_dsp("Write AR_DMA_SIZE<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        
+        if (dsp_state.phase == DspPhase.Bootstrap && value != 0) {
+            dsp_state.csr |= (1 << 5);
+            log_dsp("DSP Bootstrap: Setting CSR bit 5 due to nonzero AR_DMA_SIZE write");
         }
-
-        aram_size = cast(u32) value;
-
-        log_dsp("DMA from ARAM: %08x -> %08x, size %08x", aram_mmaddr, aram_araddr, aram_size);
-        this.trigger_internal_aram_dma();
     }
 
-    u16 ar_dma_start_hi;
-    u16 ar_dma_start_lo;
-
-    bool dsp_dma_in_progress = false;
-
     u8 read_AR_DMA_START_HIGH(int target_byte) {
-        return ar_dma_start_hi.get_byte(target_byte);
+        log_dsp("Read AR_DMA_START_HIGH[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_AR_DMA_START_HIGH(int target_byte, u8 value) {
-        ar_dma_start_hi = cast(u16) ar_dma_start_hi.set_byte(target_byte, value);
+        log_dsp("Write AR_DMA_START_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
     u8 read_AR_DMA_START_LOW(int target_byte) {
-        return ar_dma_start_lo.get_byte(target_byte);
+        log_dsp("Read AR_DMA_START_LOW[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
     void write_AR_DMA_START_LOW(int target_byte, u8 value) {
-        ar_dma_start_lo = cast(u16) ar_dma_start_lo.set_byte(target_byte, value);
+        log_dsp("Write AR_DMA_START_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
-    u16 ar_dma_cnt;
-
     T read_AR_DMA_CNT(T)(int offset) {
-        if (offset != 0 || !is(T == u16)) {
-            error_dsp("Reading from AR DMA SIZE offset 1 is not supported");
-        }
-
-        return cast(T) ar_dma_cnt;
+        log_dsp("Read AR_DMA_CNT<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) 0;
     }
 
     void write_AR_DMA_CNT(T)(T value, int offset) {
-        if (offset != 0 || !is(T == u16)) {
-            error_dsp("Writing to AR DMA SIZE offset 1 is not supported");
-        }
-
-        ar_dma_cnt = cast(u16) value;
-
-        log_dsp("DMA from ARAM: %08x -> %08x, size %08x", aram_mmaddr, aram_araddr, aram_size);
-        if (ar_dma_cnt.bit(15)) this.trigger_dsp_dma();
+        log_dsp("Write AR_DMA_CNT<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
     }
 
     u8 read_DSP_DMA_BYTES_LEFT(int target_byte) {
-        auto cycles_left = scheduler.get_current_time_relative_to_cpu() - dma_start_time;
-        auto bytes_left = (32 * (ar_dma_cnt & 0x7fff)) - (cycles_left / CYCLES_PER_BYTE);
-        if (bytes_left < 0) bytes_left = 0;
-
-        return bytes_left.get_byte(target_byte);
+        log_dsp("Read DSP_DMA_BYTES_LEFT[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return 0;
     }
 
-    ulong dma_start_time;
-    enum CYCLES_PER_BYTE = 3;
-    void trigger_dsp_dma() {
-        log_dsp("Triggering DSP DMA");
-        if (dsp_dma_in_progress) {
-            error_dsp("DSP DMA already in progress");
+    private void start_dsp_thread() {
+        if (dsp_thread !is null && dsp_thread.isRunning()) {
+            return;
         }
-
-        dsp_dma_in_progress = true;
-        int length = 32 * (ar_dma_cnt & 0x7fff);
-        dma_start_time = scheduler.get_current_time_relative_to_cpu();
-        scheduler.add_event_relative_to_clock(&this.complete_dsp_dma, length * CYCLES_PER_BYTE);
+        
+        dsp_should_stop = false;
+        dsp_thread = new Thread(&dsp_execution_thread);
+        dsp_thread.start();
+        log_dsp("DSP execution thread started");
     }
 
-    void complete_dsp_dma() {
-        dsp_dma_in_progress = false;
+    private void stop_dsp_thread() {
+        if (dsp_thread is null || !dsp_thread.isRunning()) {
+            return;
+        }
+        
+        dsp_should_stop = true;
+        dsp_thread.join();
+        log_dsp("DSP execution thread stopped");
+    }
 
-        if (csr.bit(4)) {
-            csr |= 1 << 3;
-            log_dsp("DSP DMA complete");
-            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
+    private void dsp_execution_thread() {
+        while (!dsp_should_stop) {
+            dsp_mutex.lock();
+            scope(exit) dsp_mutex.unlock();
+            
+            if (dsp_state.phase != DspPhase.Running) {
+                break;
+            }
+            
+            JitExitReason reason = jit.run_cycles(&dsp_state, 1000);
+            
+            if (reason == JitExitReason.DspHalted) {
+                dsp_state.phase = DspPhase.Halted;
+                log_dsp("DSP halted");
+                break;
+            }
         }
     }
 }

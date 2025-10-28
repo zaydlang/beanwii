@@ -29,6 +29,7 @@ final class DspCode {
     }
 
     void init(DspState* state) {
+        stack_alignment = 0;
         block.reset();
         this.emit_prologue();
         free_all_registers();
@@ -78,6 +79,35 @@ final class DspCode {
     void pop(R64 reg) {
         block.pop(reg);
         stack_alignment -= 8;
+    }
+
+    bool in_stack_alignment_context;
+    bool did_align_stack;
+
+    void enter_stack_alignment_context() {
+        assert(!in_stack_alignment_context);
+
+        stack_alignment += 8;
+
+        in_stack_alignment_context = true;
+        if (stack_alignment % 16 != 0) {
+            sub(rsp, 8);
+            did_align_stack = true;
+        } else {
+            did_align_stack = false;
+        }
+    }
+
+    void exit_stack_alignment_context() {
+        assert(in_stack_alignment_context);
+
+        if (did_align_stack) {
+            add(rsp, 8);
+        }
+
+        stack_alignment -= 8;
+
+        in_stack_alignment_context = false;
     }
 
     void enter_single_step_mode() {

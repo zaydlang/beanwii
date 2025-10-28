@@ -15,7 +15,7 @@ import util.log;
 
 
 // TODO: i really hate this construct. how to make this cleaner?
-Wii wii;
+__gshared Wii wii;
 void logger_on_error_callback(){
 	wii.on_error();
 }
