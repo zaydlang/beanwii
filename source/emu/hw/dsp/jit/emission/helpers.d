@@ -588,7 +588,9 @@ void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 
     code.label(io_memory);
     code.mov(rdi, address);
     code.mov(rax, cast(ulong) &dsp_io_read_stub);
+    code.enter_stack_alignment_context();
     code.call(rax);
+    code.exit_stack_alignment_context();
     code.mov(result.cvt32(), rax.cvt32());
     
     code.label(done);
@@ -619,7 +621,9 @@ void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 
     code.mov(rdi, address);
     code.mov(rsi, value);
     code.mov(rax, cast(ulong) &dsp_io_write_stub);
+    code.enter_stack_alignment_context();
     code.call(rax);
+    code.exit_stack_alignment_context();
     
     code.label(done);
 }

@@ -149,6 +149,45 @@ final class DspJit {
         }
     }
 
+    JitExitReason run_cycles(DspState* state, u32 max_cycles) {
+        u32 cycles_executed = 0;
+        
+        while (cycles_executed < max_cycles) {
+            if (state.interrupt_pending) {
+                state.handle_interrupt();
+                cycles_executed++; // Interrupt handling takes 1 cycle
+                continue;
+            }
+            
+            u32 jit_compilation_flags = get_jit_compilation_flags(state);
+            DspJitEntry entry;
+            
+            if (page_table.has(state.pc, jit_compilation_flags)) {
+                entry = page_table.get(state.pc, jit_compilation_flags);
+            } else {
+                JitExitReason result = compile_and_execute(state, state.pc);
+                if (result != JitExitReason.BlockEnd) {
+                    return result;
+                }
+                continue;
+            }
+            
+            // Check if we have enough cycles left for this block
+            if (cycles_executed + entry.instruction_count > max_cycles) {
+                break; // Not enough cycles remaining
+            }
+            
+            JitExitReason result = execute_compiled_block(entry.func, state);
+            cycles_executed += entry.instruction_count;
+            
+            if (result != JitExitReason.BlockEnd) {
+                return result;
+            }
+        }
+        
+        return JitExitReason.BlockEnd;
+    }
+
     private u32 get_jit_compilation_flags(DspState* state) {
         u32 bitfield = 0;
         return bitfield;

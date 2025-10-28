@@ -24,7 +24,7 @@ enum Whitelist = [
     // LogSource.BLUETOOTH,
     // LogSource.BROADWAY,
     // LogSource.DISK,
-    // LogSource.DSP,
+    LogSource.DSP,
     // LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
