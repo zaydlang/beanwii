@@ -416,7 +416,33 @@ enum dsp_tests = [
     // "callr_cc",
     "jmp_cc",
     // "jmpr_cc",
-    "ret_cc"
+    "ret_cc",
+    
+    "ext_nop",
+    "ext_dr",
+    "ext_ir",
+    "ext_nr",
+    "ext_mv",
+    "ext_s",
+    "ext_sn",
+    "ext_l",
+    "ext_ln",
+    "ext_ls",
+    "ext_sl",
+    "ext_lsn",
+    "ext_sln",
+    "ext_lsm",
+    "ext_slm",
+    "ext_lsnm",
+    "ext_slnm",
+    "ext_ld",
+    "ext_ldax",
+    "ext_ldn",
+    "ext_ldaxn",
+    "ext_ldm",
+    "ext_ldaxm",
+    "ext_ldnm",
+    "ext_ldaxnm"
 ];
 
 static foreach (test; dsp_tests) {

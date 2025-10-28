@@ -136,6 +136,10 @@ final class DspJit {
     }
 
     JitExitReason run(DspState* state) {
+        if (state.interrupt_pending) {
+            state.handle_interrupt();
+        }
+        
         u32 jit_compilation_flags = get_jit_compilation_flags(state);
         if (page_table.has(state.pc, jit_compilation_flags)) {
             DspJitEntry entry = page_table.get(state.pc, jit_compilation_flags);

@@ -77,6 +77,19 @@ struct DspState {
     Stack loop_counter_stack;
     
     u16 pc;
+    
+    bool interrupt_pending;
+
+    void trigger_interrupt() {
+        interrupt_pending = true;
+    }
+
+    void handle_interrupt() {
+        data_stack.push(peek_reg(19));
+        call_stack.push(pc);
+        pc = 0xE;
+        interrupt_pending = false;
+    }
 
     void set_reg(int index, u16 value) {
         final switch (index) {
