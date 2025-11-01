@@ -5,6 +5,8 @@ import emu.hw.dsp.jit.emission.config;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import gallinule.x86;
+import std.algorithm;
+import std.array;
 import std.conv;
 import util.bitop;
 import util.log;
@@ -124,6 +126,10 @@ final class DspCode {
 
     Address!16 get_pc_addr() {
         return wordPtr(rdi, cast(int) DspState.pc.offsetof);
+    }
+
+    Address!16 loop_counter_address() {
+        return wordPtr(rdi, cast(int) DspState.loop_counter.offsetof);
     }
 
     // bitfield
@@ -293,8 +299,52 @@ final class DspCode {
     Address!64 data_memory_address() {
         return qwordPtr(rsi, cast(int) DspMemory.data_memory.offsetof);
     }
+    
+    Address!64 instruction_memory_address() {
+        return qwordPtr(rsi, cast(int) DspMemory.instruction_memory.offsetof);
+    }
 
     Address!16 config_address() {
         return wordPtr(rdi, cast(int) DspState.config.offsetof);
+    }
+
+    R64[] get_allocated_volatile_registers() {
+        R64[] volatile_regs;
+        R64[8] volatile_reg_list = [rax, rdx, rsi, rdi, r8, r9, r10, r11];
+        
+        foreach (reg; volatile_reg_list) {
+            u16 reg_index = reg64_to_u16(reg);
+            if (allocated_regs & (1 << reg_index)) {
+                volatile_regs ~= reg;
+            }
+        }
+        return volatile_regs;
+    }
+
+    R64[] push_volatile_registers() {
+        auto volatile_regs = get_allocated_volatile_registers();
+    
+        foreach (reg; volatile_regs) {
+            push(reg);
+        }
+    
+        return volatile_regs;
+    }
+
+    R64[] push_volatile_registers(R64 except) {
+        auto volatile_regs = get_allocated_volatile_registers();
+        volatile_regs = volatile_regs.filter!(reg => reg != except).array();
+        
+        foreach (reg; volatile_regs) {
+            push(reg);
+        }
+        
+        return volatile_regs;
+    }
+
+    void pop_volatile_registers(R64[] volatile_regs) {
+        foreach_reverse (reg; volatile_regs) {
+            pop(reg);
+        }
     }
 }

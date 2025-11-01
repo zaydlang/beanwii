@@ -303,6 +303,7 @@ final class Wii {
     public void on_error() {
         hollywood.on_error();
         broadway.on_error();
+        dsp.dump_dsp_registers();
         create_bean_dump();
     }
 

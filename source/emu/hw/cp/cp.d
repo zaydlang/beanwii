@@ -46,6 +46,7 @@ final class CommandProcessor {
 
     void write_CP_CONTROL(int target_byte, u8 value) {
         if (target_byte == 0) {
+            log_cp("fifos_linked set to %s", value.bit(4) ? "true" : "false");
             fifos_linked = value.bit(4);
         }
     }

@@ -160,7 +160,6 @@ final class SlowMem : MemStrategy {
         if (address == 0x806577e0) {
             log_disk("dumbass %x %x", cpu.state.pc, cpu.state.lr);
         }
-
         final switch (region) {
             case MemoryRegion.MEM1:
                 result = this.mem1.read_be!(T)(memory_access.offset);
@@ -201,6 +200,12 @@ final class SlowMem : MemStrategy {
         if (cpu.state.pc == 0x802956f8) {
             log_ipc("Read from ipc mailbox: %x %x", result, address);
         }
+        if (address == 0x80521e70 + 0x20) {
+            log_cp("IMPORTANT read to 0x%08x = 0x%08x(pc: %x, lr: %x)", address, result, cpu.state.pc, cpu.state.lr);
+        }
+        if (address == 0x80521be4) {
+            log_cp("IMPORTANT read to 0x%08x = 0x%08x(pc: %x, lr: %x)", address, result, cpu.state.pc, cpu.state.lr);
+        }
         return result;
     }
 
@@ -218,6 +223,13 @@ final class SlowMem : MemStrategy {
             auto memory_access = get_memory_access_from_paddr(address);
         }
 
+        if (address == 0x80521e70 + 0x20) {
+            log_cp("IMPORTANT Write to 0x%08x = 0x%08x(pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
+        }
+
+        if (address == 0x80521be4 || address == 0x00521be4 || address == 0x80521be6) {
+            log_cp("IMPORTANT Write to 0x%08x = 0x%08x(pc: %x, lr: %x) %d", address, value, cpu.state.pc, cpu.state.lr, T.sizeof);
+        }
         if (address == 0x8076ae40 + 0x168) {
             log_wii("IMPORTANT Write to 0x%08x = 0x%08x", address, value);
         }

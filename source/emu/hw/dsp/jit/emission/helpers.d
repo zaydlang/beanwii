@@ -1,5 +1,6 @@
 module emu.hw.dsp.jit.emission.helpers;
 
+import emu.hw.dsp.dsp;
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.flags;
 import emu.hw.dsp.state;
@@ -232,10 +233,18 @@ void read_arbitrary_reg(DspCode code, R64 result, int reg) {
         case 10: code.movzx(result.cvt32(), code.wr_address(2)); break;
         case 11: code.movzx(result.cvt32(), code.wr_address(3)); break;
     
-        case 12: error_dsp("TODO: implement ST0 read"); break;
-        case 13: error_dsp("TODO: implement ST1 read"); break;
-        case 14: error_dsp("TODO: implement ST2 read"); break;
-        case 15: error_dsp("TODO: implement ST3 read"); break;
+        case 12:
+        case 13:
+        case 14:
+        case 15:
+            R64 tmp1 = code.allocate_register();
+            R64 tmp2 = code.allocate_register();
+            R64 tmp3 = code.allocate_register();
+            pop_stack(code, cast(StackType)(reg - 12), result, tmp1, tmp2, tmp3);
+            code.deallocate_register(tmp1);
+            code.deallocate_register(tmp2);
+            code.deallocate_register(tmp3);
+            break;
 
         case 16: code.movsx(result.cvt32(), code.ac_hi_address_u8(0)); break;
         case 17: code.movsx(result.cvt32(), code.ac_hi_address_u8(1)); break;
@@ -561,17 +570,35 @@ void pop_stack(DspCode code, StackType type, R64 result, R64 tmp1, R64 tmp2, R64
     }
 }
 
-u16 dsp_io_read_stub(u16 address) {
-    error_dsp("DSP IO read from address 0x%04X not implemented", address);
-    return 0;
-}
-
-void dsp_io_write_stub(u16 address, u16 value) {
-    error_dsp("DSP IO write to address 0x%04X not implemented (value 0x%04X)", address, value);
-}
-
-void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 tmp2) {
+void emit_read_instruction_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 tmp2, DSP dsp_instance) {
+    code.cmp(address.cvt32(), 0x1000);
+    auto check_irom = code.fresh_label();
+    auto invalid_access = code.fresh_label();
+    auto done = code.fresh_label();
     
+    code.jl(check_irom);
+    
+    code.cmp(address.cvt32(), 0x8000);
+    code.jl(invalid_access);
+    code.cmp(address.cvt32(), 0x9000);
+    code.jge(invalid_access);
+    
+    code.label(check_irom);
+    code.lea(tmp2, code.instruction_memory_address());
+    code.mov(tmp1, address);
+    code.shl(tmp1.cvt32(), 1);
+    code.add(tmp1, tmp2);
+    code.movzx(result.cvt32(), code.wordPtr(tmp1));
+    code.jmp(done);
+    
+    code.label(invalid_access);
+    code.mov(rax, 0);
+    code.mov(rax, code.qwordPtr(rax));
+    
+    code.label(done);
+}
+
+void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 tmp2, DSP dsp_instance) {
     code.cmp(address.cvt32(), 0x1800);
     auto io_memory = code.fresh_label();
     auto done = code.fresh_label();
@@ -586,17 +613,20 @@ void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 
     code.jmp(done);
     
     code.label(io_memory);
-    code.mov(rdi, address);
-    code.mov(rax, cast(ulong) &dsp_io_read_stub);
+    auto saved_regs = code.push_volatile_registers(result);
+    code.mov(rdi, cast(ulong) cast(void*) dsp_instance);
+    code.mov(rsi, address);
+    code.mov(rax, cast(ulong) &DSP.dsp_io_read);
     code.enter_stack_alignment_context();
     code.call(rax);
     code.exit_stack_alignment_context();
     code.mov(result.cvt32(), rax.cvt32());
+    code.pop_volatile_registers(saved_regs);
     
     code.label(done);
 }
 
-void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 tmp2) {
+void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 tmp2, DSP dsp_instance) {
     code.cmp(address.cvt32(), 0x1000);
     auto coef_or_io = code.fresh_label();
     auto done = code.fresh_label();
@@ -618,12 +648,15 @@ void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 
     code.jmp(done);
     
     code.label(io_memory);
-    code.mov(rdi, address);
-    code.mov(rsi, value);
-    code.mov(rax, cast(ulong) &dsp_io_write_stub);
+    auto saved_regs = code.push_volatile_registers();
+    code.mov(rdi, cast(ulong) cast(void*) dsp_instance);
+    code.mov(rsi, address);
+    code.mov(rdx, value);
+    code.mov(rax, cast(ulong) &DSP.dsp_io_write);
     code.enter_stack_alignment_context();
     code.call(rax);
     code.exit_stack_alignment_context();
+    code.pop_volatile_registers(saved_regs);
     
     code.label(done);
 }
