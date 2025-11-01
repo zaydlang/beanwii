@@ -1,17 +1,19 @@
 module emu.hw.dsp.jit.emission.extended;
 
+import emu.hw.dsp.dsp;
 import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.decoder;
 import emu.hw.dsp.jit.emission.helpers;
 import gallinule.x86;
-import util.x86;
+import util.log;
 import util.number;
+import util.x86;
 
-void emit_ext_nop(DspCode code, EXT_NOP ext) {
+void emit_ext_nop(DspCode code, EXT_NOP ext, DSP dsp_instance) {
 
 }
 
-void emit_ext_dr(DspCode code, EXT_DR ext) {
+void emit_ext_dr(DspCode code, EXT_DR ext, DSP dsp_instance) {
     R16 ar = code.allocate_register().cvt16();
     R16 wr = code.allocate_register().cvt16();
     R16 sum = code.allocate_register().cvt16();
@@ -33,7 +35,7 @@ void emit_ext_dr(DspCode code, EXT_DR ext) {
     code.deallocate_register(tmp3.cvt64());
 }
 
-void emit_ext_ir(DspCode code, EXT_IR ext) {
+void emit_ext_ir(DspCode code, EXT_IR ext, DSP dsp_instance) {
     R16 ar = code.allocate_register().cvt16();
     R16 wr = code.allocate_register().cvt16();
     R16 sum = code.allocate_register().cvt16();
@@ -55,7 +57,7 @@ void emit_ext_ir(DspCode code, EXT_IR ext) {
     code.deallocate_register(tmp3.cvt64());
 }
 
-void emit_ext_nr(DspCode code, EXT_NR ext) {
+void emit_ext_nr(DspCode code, EXT_NR ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R16 ar = code.allocate_register().cvt16();
@@ -80,7 +82,7 @@ void emit_ext_nr(DspCode code, EXT_NR ext) {
     code.deallocate_register(tmp2.cvt64());
 }
 
-void emit_ext_mv(DspCode code, EXT_MV ext) {
+void emit_ext_mv(DspCode code, EXT_MV ext, DSP dsp_instance) {
     R64 value = code.allocate_register();
     
     read_arbitrary_reg(code, value, 0x1c + ext.s);
@@ -89,7 +91,7 @@ void emit_ext_mv(DspCode code, EXT_MV ext) {
     code.deallocate_register(value);
 }
 
-void emit_ext_s(DspCode code, EXT_S ext) {
+void emit_ext_s(DspCode code, EXT_S ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -99,7 +101,7 @@ void emit_ext_s(DspCode code, EXT_S ext) {
     
     read_arbitrary_reg(code, value, 0x1c + ext.s);
     read_arbitrary_reg(code, address, ext.d);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar = tmp1.cvt16();
     R16 wr = tmp2.cvt16();
@@ -122,7 +124,7 @@ void emit_ext_s(DspCode code, EXT_S ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_sn(DspCode code, EXT_SN ext) {
+void emit_ext_sn(DspCode code, EXT_SN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -132,7 +134,7 @@ void emit_ext_sn(DspCode code, EXT_SN ext) {
     
     read_arbitrary_reg(code, value, 0x1c + ext.s);
     read_arbitrary_reg(code, address, ext.d);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar = tmp1.cvt16();
     R16 wr = tmp2.cvt16();
@@ -156,7 +158,7 @@ void emit_ext_sn(DspCode code, EXT_SN ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void emit_ext_l(DspCode code, EXT_L ext) {
+void emit_ext_l(DspCode code, EXT_L ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 address = code.allocate_register();
@@ -165,7 +167,7 @@ void emit_ext_l(DspCode code, EXT_L ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, ext.s);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar = tmp1.cvt16();
@@ -189,7 +191,7 @@ void emit_ext_l(DspCode code, EXT_L ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ln(DspCode code, EXT_LN ext) {
+void emit_ext_ln(DspCode code, EXT_LN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 address = code.allocate_register();
@@ -198,7 +200,7 @@ void emit_ext_ln(DspCode code, EXT_LN ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, ext.s);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar = tmp1.cvt16();
@@ -223,14 +225,14 @@ void emit_ext_ln(DspCode code, EXT_LN ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void emit_ext_ls(DspCode code, EXT_LS ext) {
+void emit_ext_ls(DspCode code, EXT_LS ext, DSP dsp_instance) {
     R64 value = code.allocate_register();
     R64 address = code.allocate_register();
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 0);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar = address.cvt16();
@@ -248,7 +250,7 @@ void emit_ext_ls(DspCode code, EXT_LS ext) {
     
     read_arbitrary_reg(code, address, 3);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     code.movzx(ar.cvt32(), code.ar_address(3));
     code.movzx(wr.cvt32(), code.wr_address(3));
@@ -264,7 +266,7 @@ void emit_ext_ls(DspCode code, EXT_LS ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_sl(DspCode code, EXT_SL ext) {
+void emit_ext_sl(DspCode code, EXT_SL ext, DSP dsp_instance) {
     R64 address0 = code.allocate_register();
     R64 address3 = code.allocate_register();
     R64 value = code.allocate_register();
@@ -273,10 +275,10 @@ void emit_ext_sl(DspCode code, EXT_SL ext) {
     
     read_arbitrary_reg(code, address0, 0);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address0, tmp1, tmp2);
+    emit_write_data_memory(code, value, address0, tmp1, tmp2, dsp_instance);
     
     read_arbitrary_reg(code, address3, 3);
-    emit_read_data_memory(code, value, address3, tmp1, tmp2);
+    emit_read_data_memory(code, value, address3, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar0 = address0.cvt16();
@@ -310,7 +312,7 @@ void emit_ext_sl(DspCode code, EXT_SL ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_lsn(DspCode code, EXT_LSN ext) {
+void emit_ext_lsn(DspCode code, EXT_LSN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R64 value = code.allocate_register();
@@ -319,7 +321,7 @@ void emit_ext_lsn(DspCode code, EXT_LSN ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 0);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar0 = address.cvt16();
@@ -338,7 +340,7 @@ void emit_ext_lsn(DspCode code, EXT_LSN ext) {
     
     read_arbitrary_reg(code, address, 3);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar3 = address.cvt16();
     R16 wr3 = tmp1.cvt16();
@@ -360,7 +362,7 @@ void emit_ext_lsn(DspCode code, EXT_LSN ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_sln(DspCode code, EXT_SLN ext) {
+void emit_ext_sln(DspCode code, EXT_SLN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R64 value = code.allocate_register();
@@ -369,12 +371,12 @@ void emit_ext_sln(DspCode code, EXT_SLN ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 3);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     read_arbitrary_reg(code, address, 0);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar0 = address.cvt16();
     R16 wr0 = tmp1.cvt16();
@@ -410,7 +412,7 @@ void emit_ext_sln(DspCode code, EXT_SLN ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_lsm(DspCode code, EXT_LSM ext) {
+void emit_ext_lsm(DspCode code, EXT_LSM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R64 value = code.allocate_register();
@@ -419,7 +421,7 @@ void emit_ext_lsm(DspCode code, EXT_LSM ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 0);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar0 = address.cvt16();
@@ -437,7 +439,7 @@ void emit_ext_lsm(DspCode code, EXT_LSM ext) {
     
     read_arbitrary_reg(code, address, 3);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar3 = address.cvt16();
     R16 wr3 = tmp1.cvt16();
@@ -460,7 +462,7 @@ void emit_ext_lsm(DspCode code, EXT_LSM ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_slm(DspCode code, EXT_SLM ext) {
+void emit_ext_slm(DspCode code, EXT_SLM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R64 value = code.allocate_register();
@@ -470,7 +472,7 @@ void emit_ext_slm(DspCode code, EXT_SLM ext) {
     
     read_arbitrary_reg(code, address, 0);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar0 = address.cvt16();
     R16 wr0 = tmp1.cvt16();
@@ -486,7 +488,7 @@ void emit_ext_slm(DspCode code, EXT_SLM ext) {
     code.mov(code.ar_address(0), sum0);
     
     read_arbitrary_reg(code, address, 3);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar3 = address.cvt16();
@@ -509,7 +511,7 @@ void emit_ext_slm(DspCode code, EXT_SLM ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_lsnm(DspCode code, EXT_LSNM ext) {
+void emit_ext_lsnm(DspCode code, EXT_LSNM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
 
     R64 value = code.allocate_register();
@@ -518,7 +520,7 @@ void emit_ext_lsnm(DspCode code, EXT_LSNM ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 0);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     R16 ar0 = address.cvt16();
@@ -537,7 +539,7 @@ void emit_ext_lsnm(DspCode code, EXT_LSNM ext) {
     
     read_arbitrary_reg(code, address, 3);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar3 = address.cvt16();
     R16 wr3 = tmp1.cvt16();
@@ -559,7 +561,7 @@ void emit_ext_lsnm(DspCode code, EXT_LSNM ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void emit_ext_slnm(DspCode code, EXT_SLNM ext) {
+void emit_ext_slnm(DspCode code, EXT_SLNM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -568,12 +570,12 @@ void emit_ext_slnm(DspCode code, EXT_SLNM ext) {
     R64 tmp2 = code.allocate_register();
     
     read_arbitrary_reg(code, address, 3);
-    emit_read_data_memory(code, value, address, tmp1, tmp2);
+    emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d);
     
     read_arbitrary_reg(code, address, 0);
     read_arbitrary_reg(code, value, 0x1e + ext.s);
-    emit_write_data_memory(code, value, address, tmp1, tmp2);
+    emit_write_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     
     R16 ar0 = address.cvt16();
     R16 wr0 = tmp1.cvt16();
@@ -609,7 +611,7 @@ void emit_ext_slnm(DspCode code, EXT_SLNM ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void emit_ext_ld(DspCode code, EXT_LD ext) {
+void emit_ext_ld(DspCode code, EXT_LD ext, DSP dsp_instance) {
     R64 value = code.allocate_register();
     R64 address1 = code.allocate_register();
     R64 address2 = code.allocate_register();
@@ -619,7 +621,7 @@ void emit_ext_ld(DspCode code, EXT_LD ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d * 2);
     
     R16 page1 = address1.cvt16();
@@ -632,7 +634,7 @@ void emit_ext_ld(DspCode code, EXT_LD ext) {
     code.cmp(page1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     
     code.label(same_page_label);
     
@@ -670,7 +672,7 @@ void emit_ext_ld(DspCode code, EXT_LD ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldax(DspCode code, EXT_LDAX ext) {
+void emit_ext_ldax(DspCode code, EXT_LDAX ext, DSP dsp_instance) {
     R64 value = code.allocate_register();
     R64 address1 = code.allocate_register();
     R64 address2 = code.allocate_register();
@@ -680,7 +682,7 @@ void emit_ext_ldax(DspCode code, EXT_LDAX ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x1a + ext.r);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -694,7 +696,7 @@ void emit_ext_ldax(DspCode code, EXT_LDAX ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -734,7 +736,7 @@ void emit_ext_ldax(DspCode code, EXT_LDAX ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldn(DspCode code, EXT_LDN ext) {
+void emit_ext_ldn(DspCode code, EXT_LDN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -746,7 +748,7 @@ void emit_ext_ldn(DspCode code, EXT_LDN ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d * 2);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -760,7 +762,7 @@ void emit_ext_ldn(DspCode code, EXT_LDN ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -803,7 +805,7 @@ void emit_ext_ldn(DspCode code, EXT_LDN ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldaxn(DspCode code, EXT_LDAXN ext) {
+void emit_ext_ldaxn(DspCode code, EXT_LDAXN ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -815,7 +817,7 @@ void emit_ext_ldaxn(DspCode code, EXT_LDAXN ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x1a + ext.r);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -829,7 +831,7 @@ void emit_ext_ldaxn(DspCode code, EXT_LDAXN ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -872,7 +874,7 @@ void emit_ext_ldaxn(DspCode code, EXT_LDAXN ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldm(DspCode code, EXT_LDM ext) {
+void emit_ext_ldm(DspCode code, EXT_LDM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -884,7 +886,7 @@ void emit_ext_ldm(DspCode code, EXT_LDM ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d * 2);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -898,7 +900,7 @@ void emit_ext_ldm(DspCode code, EXT_LDM ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -940,7 +942,7 @@ void emit_ext_ldm(DspCode code, EXT_LDM ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldaxm(DspCode code, EXT_LDAXM ext) {
+void emit_ext_ldaxm(DspCode code, EXT_LDAXM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -952,7 +954,7 @@ void emit_ext_ldaxm(DspCode code, EXT_LDAXM ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x1a + ext.r);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -966,7 +968,7 @@ void emit_ext_ldaxm(DspCode code, EXT_LDAXM ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -1008,7 +1010,7 @@ void emit_ext_ldaxm(DspCode code, EXT_LDAXM ext) {
     code.deallocate_register(tmp5.cvt64());
 }
 
-void emit_ext_ldnm(DspCode code, EXT_LDNM ext) {
+void emit_ext_ldnm(DspCode code, EXT_LDNM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -1020,7 +1022,7 @@ void emit_ext_ldnm(DspCode code, EXT_LDNM ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x18 + ext.d * 2);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -1034,7 +1036,7 @@ void emit_ext_ldnm(DspCode code, EXT_LDNM ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -1077,7 +1079,7 @@ void emit_ext_ldnm(DspCode code, EXT_LDNM ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void emit_ext_ldaxnm(DspCode code, EXT_LDAXNM ext) {
+void emit_ext_ldaxnm(DspCode code, EXT_LDAXNM ext, DSP dsp_instance) {
     code.reserve_register(rcx);
     
     R64 value = code.allocate_register();
@@ -1089,7 +1091,7 @@ void emit_ext_ldaxnm(DspCode code, EXT_LDAXNM ext) {
     read_arbitrary_reg(code, address1, ext.s);
     read_arbitrary_reg(code, address2, 3);
     
-    emit_read_data_memory(code, value, address1, tmp1, tmp2);
+    emit_read_data_memory(code, value, address1, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, 0x1a + ext.r);
     
     code.mov(tmp1.cvt32(), address1.cvt32());
@@ -1103,7 +1105,7 @@ void emit_ext_ldaxnm(DspCode code, EXT_LDAXNM ext) {
     code.cmp(tmp1.cvt32(), tmp2.cvt32());
     code.je(same_page_label);
     
-    emit_read_data_memory(code, value, address2, tmp1, tmp2);
+    emit_read_data_memory(code, value, address2, tmp1, tmp2, dsp_instance);
     code.jmp(different_page_label);
     
     code.label(same_page_label);
@@ -1146,7 +1148,7 @@ void emit_ext_ldaxnm(DspCode code, EXT_LDAXNM ext) {
     code.deallocate_register(tmp4.cvt64());
 }
 
-void handle_extension_instruction(DspCode code, DecodedInstruction decoded) {
+void handle_extension_instruction(DspCode code, DecodedInstruction decoded, DSP dsp_instance) {
     u16 saved_allocated_regs = code.allocated_regs;
     u16 rdi_mask = cast(u16) (1 << reg64_to_u16(rdi));
     u16 rsi_mask = cast(u16) (1 << reg64_to_u16(rsi));
@@ -1162,31 +1164,31 @@ void handle_extension_instruction(DspCode code, DecodedInstruction decoded) {
     code.allocated_regs = rdi_mask | rsi_mask;
     
     final switch (decoded.extension.opcode) {
-        case ExtensionOpcode.EXT_NOP: emit_ext_nop(code, decoded.extension.nop); break;
-        case ExtensionOpcode.EXT_DR: emit_ext_dr(code, decoded.extension.dr); break;
-        case ExtensionOpcode.EXT_IR: emit_ext_ir(code, decoded.extension.ir); break;
-        case ExtensionOpcode.EXT_NR: emit_ext_nr(code, decoded.extension.nr); break;
-        case ExtensionOpcode.EXT_MV: emit_ext_mv(code, decoded.extension.mv); break;
-        case ExtensionOpcode.EXT_S: emit_ext_s(code, decoded.extension.s); break;
-        case ExtensionOpcode.EXT_SN: emit_ext_sn(code, decoded.extension.sn); break;
-        case ExtensionOpcode.EXT_L: emit_ext_l(code, decoded.extension.l); break;
-        case ExtensionOpcode.EXT_LN: emit_ext_ln(code, decoded.extension.ln); break;
-        case ExtensionOpcode.EXT_LS: emit_ext_ls(code, decoded.extension.ls); break;
-        case ExtensionOpcode.EXT_SL: emit_ext_sl(code, decoded.extension.sl); break;
-        case ExtensionOpcode.EXT_LSN: emit_ext_lsn(code, decoded.extension.lsn); break;
-        case ExtensionOpcode.EXT_SLN: emit_ext_sln(code, decoded.extension.sln); break;
-        case ExtensionOpcode.EXT_LSM: emit_ext_lsm(code, decoded.extension.lsm); break;
-        case ExtensionOpcode.EXT_SLM: emit_ext_slm(code, decoded.extension.slm); break;
-        case ExtensionOpcode.EXT_LSNM: emit_ext_lsnm(code, decoded.extension.lsnm); break;
-        case ExtensionOpcode.EXT_SLNM: emit_ext_slnm(code, decoded.extension.slnm); break;
-        case ExtensionOpcode.EXT_LD: emit_ext_ld(code, decoded.extension.ld); break;
-        case ExtensionOpcode.EXT_LDAX: emit_ext_ldax(code, decoded.extension.ldax); break;
-        case ExtensionOpcode.EXT_LDN: emit_ext_ldn(code, decoded.extension.ldn); break;
-        case ExtensionOpcode.EXT_LDAXN: emit_ext_ldaxn(code, decoded.extension.ldaxn); break;
-        case ExtensionOpcode.EXT_LDM: emit_ext_ldm(code, decoded.extension.ldm); break;
-        case ExtensionOpcode.EXT_LDAXM: emit_ext_ldaxm(code, decoded.extension.ldaxm); break;
-        case ExtensionOpcode.EXT_LDNM: emit_ext_ldnm(code, decoded.extension.ldnm); break;
-        case ExtensionOpcode.EXT_LDAXNM: emit_ext_ldaxnm(code, decoded.extension.ldaxnm); break;
+        case ExtensionOpcode.EXT_NOP: emit_ext_nop(code, decoded.extension.nop, dsp_instance); break;
+        case ExtensionOpcode.EXT_DR: emit_ext_dr(code, decoded.extension.dr, dsp_instance); break;
+        case ExtensionOpcode.EXT_IR: emit_ext_ir(code, decoded.extension.ir, dsp_instance); break;
+        case ExtensionOpcode.EXT_NR: emit_ext_nr(code, decoded.extension.nr, dsp_instance); break;
+        case ExtensionOpcode.EXT_MV: emit_ext_mv(code, decoded.extension.mv, dsp_instance); break;
+        case ExtensionOpcode.EXT_S: emit_ext_s(code, decoded.extension.s, dsp_instance); break;
+        case ExtensionOpcode.EXT_SN: emit_ext_sn(code, decoded.extension.sn, dsp_instance); break;
+        case ExtensionOpcode.EXT_L: emit_ext_l(code, decoded.extension.l, dsp_instance); break;
+        case ExtensionOpcode.EXT_LN: emit_ext_ln(code, decoded.extension.ln, dsp_instance); break;
+        case ExtensionOpcode.EXT_LS: emit_ext_ls(code, decoded.extension.ls, dsp_instance); break;
+        case ExtensionOpcode.EXT_SL: emit_ext_sl(code, decoded.extension.sl, dsp_instance); break;
+        case ExtensionOpcode.EXT_LSN: emit_ext_lsn(code, decoded.extension.lsn, dsp_instance); break;
+        case ExtensionOpcode.EXT_SLN: emit_ext_sln(code, decoded.extension.sln, dsp_instance); break;
+        case ExtensionOpcode.EXT_LSM: emit_ext_lsm(code, decoded.extension.lsm, dsp_instance); break;
+        case ExtensionOpcode.EXT_SLM: emit_ext_slm(code, decoded.extension.slm, dsp_instance); break;
+        case ExtensionOpcode.EXT_LSNM: emit_ext_lsnm(code, decoded.extension.lsnm, dsp_instance); break;
+        case ExtensionOpcode.EXT_SLNM: emit_ext_slnm(code, decoded.extension.slnm, dsp_instance); break;
+        case ExtensionOpcode.EXT_LD: emit_ext_ld(code, decoded.extension.ld, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDAX: emit_ext_ldax(code, decoded.extension.ldax, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDN: emit_ext_ldn(code, decoded.extension.ldn, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDAXN: emit_ext_ldaxn(code, decoded.extension.ldaxn, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDM: emit_ext_ldm(code, decoded.extension.ldm, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDAXM: emit_ext_ldaxm(code, decoded.extension.ldaxm, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDNM: emit_ext_ldnm(code, decoded.extension.ldnm, dsp_instance); break;
+        case ExtensionOpcode.EXT_LDAXNM: emit_ext_ldaxnm(code, decoded.extension.ldaxnm, dsp_instance); break;
     }
     
     for (int reg_index = 15; reg_index >= 0; reg_index--) {
@@ -1200,8 +1202,12 @@ void handle_extension_instruction(DspCode code, DecodedInstruction decoded) {
     code.extension_handled = true;
 }
 
-void handle_extension_opcode(DspCode code, DecodedInstruction decoded_instruction) {
+void handle_extension_opcode(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
     if (decoded_instruction.has_extension) {
-        handle_extension_instruction(code, decoded_instruction);
+        handle_extension_instruction(code, decoded_instruction, dsp_instance);
+    }
+
+    if (decoded_instruction.main.opcode == DspOpcode.MULCAC) {
+        log_dsp("Handling MULCAC opcode %s", decoded_instruction);
     }
 }

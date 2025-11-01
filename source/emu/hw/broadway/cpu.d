@@ -29,7 +29,7 @@ __gshared
 final class Broadway {
 
     public  BroadwayState       state;
-    private Mem                 mem;
+    public  Mem                 mem;
     public  Jit                 jit;
     private HleContext          hle_context;
     public  InterruptController interrupt_controller;
@@ -169,6 +169,14 @@ final class Broadway {
             exception_raised = false;
             u32 old_pc = state.pc;
 
+            if (old_pc == 0x802913ac) {
+                log_jit("shitter");
+            }
+
+            if (old_pc == 0x8019b6c8) {
+                error_jit("shit");
+            }
+
             if (old_pc == 0x8000403c) {
                 log_jit("bad function %x", state.lr);
             }
@@ -182,8 +190,8 @@ final class Broadway {
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
             if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
-                log_jit("PC: %x", state.pc);
-                log_state(&state);
+                // log_jit("PC: %x", state.pc);
+                // log_state(&state);
             }
 
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {

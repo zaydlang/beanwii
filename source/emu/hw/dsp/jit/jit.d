@@ -6,6 +6,7 @@ import emu.hw.dsp.jit.emission.code;
 import emu.hw.dsp.jit.emission.emit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
+import emu.hw.dsp.dsp;
 import gallinule.x86;
 import util.bitop;
 import util.log;
@@ -127,12 +128,17 @@ final class DspJit {
     CodeBlockTracker codeblocks;
     DspCode code;
     DspMemory dsp_memory;
+    DSP dsp_instance;
 
     this() {
         page_table = new DspPageTable();
         codeblocks = new CodeBlockTracker();
         code       = new DspCode();
         dsp_memory = new DspMemory();
+    }
+
+    void set_dsp_instance(DSP dsp) {
+        dsp_instance = dsp;
     }
 
     JitExitReason run(DspState* state) {
@@ -149,36 +155,47 @@ final class DspJit {
         }
     }
 
+    JitExitReason compile_and_execute(DspState* state, u16 pc) {
+        compile(state, pc);
+        
+        u32 jit_compilation_flags = get_jit_compilation_flags(state);
+        DspJitEntry entry = page_table.get(pc, jit_compilation_flags);
+        return execute_compiled_block(entry.func, state);
+    }
+
     JitExitReason run_cycles(DspState* state, u32 max_cycles) {
         u32 cycles_executed = 0;
         
         while (cycles_executed < max_cycles) {
             if (state.interrupt_pending) {
                 state.handle_interrupt();
-                cycles_executed++; // Interrupt handling takes 1 cycle
+                cycles_executed++;
                 continue;
             }
             
             u32 jit_compilation_flags = get_jit_compilation_flags(state);
-            DspJitEntry entry;
             
-            if (page_table.has(state.pc, jit_compilation_flags)) {
-                entry = page_table.get(state.pc, jit_compilation_flags);
-            } else {
-                JitExitReason result = compile_and_execute(state, state.pc);
-                if (result != JitExitReason.BlockEnd) {
-                    return result;
-                }
-                continue;
+            if (!page_table.has(state.pc, jit_compilation_flags)) {
+                compile(state, state.pc);
             }
             
-            // Check if we have enough cycles left for this block
+            DspJitEntry entry = page_table.get(state.pc, jit_compilation_flags);
+            
             if (cycles_executed + entry.instruction_count > max_cycles) {
-                break; // Not enough cycles remaining
+                break;
             }
+            
+            u16 old_pc = state.pc;
             
             JitExitReason result = execute_compiled_block(entry.func, state);
             cycles_executed += entry.instruction_count;
+            
+            if (state.loop_counter > 0) {
+                state.loop_counter--;
+                if (state.loop_counter > 0) {
+                    state.pc = old_pc;
+                }
+            }
             
             if (result != JitExitReason.BlockEnd) {
                 return result;
@@ -201,10 +218,10 @@ final class DspJit {
         page_table.invalidate_range(start, end);
     }
 
-    JitExitReason compile_and_execute(DspState* state, u16 pc) {
+    void compile(DspState* state, u16 pc) {
         code.init(state);
 
-        DspEmissionResult emission_result = emit_dsp_block(code, dsp_memory, pc);
+        DspEmissionResult emission_result = emit_dsp_block(code, dsp_memory, dsp_instance, pc);
         u8[] bytes = code.get();
 
         void* executable_code = codeblocks.put(bytes.ptr, bytes.length);
@@ -217,15 +234,50 @@ final class DspJit {
         );
         u32 jit_compilation_flags = get_jit_compilation_flags(state);
         page_table.put(pc, jit_compilation_flags, entry);
-        
-        return execute_compiled_block(func, state);
     }
 
     JitExitReason execute_compiled_block(DspJitFunction func, DspState* state) {
-        log_dsp("JIT executed block at PC=%x", state.pc);
-        
+            // if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
+        // log_dsp("Executing DSP block at PC=0x%04x", state.pc);
+            // }
+
+            // log_dsp("PC=0x%04x AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x] WR=[0x%04x,0x%04x,0x%04x,0x%04x] loop=%d", 
+            //         state.pc, state.ar[0], state.ar[1], state.ar[2], state.ar[3],
+            //         state.ix[0], state.ix[1], state.ix[2], state.ix[3],
+            //         state.wr[0], state.wr[1], state.wr[2], state.wr[3], state.loop_counter);
+            // log_dsp("AC0=0x%016x AC1=0x%016x AX0=0x%08x AX1=0x%08x",
+            //         state.ac[0].full, state.ac[1].full, state.ax[0].full, state.ax[1].full);
+            // log_dsp("Call_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Data_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+            //         state.call_stack.sp, state.call_stack.data[0], state.call_stack.data[1], state.call_stack.data[2], state.call_stack.data[3],
+            //         state.data_stack.sp, state.data_stack.data[0], state.data_stack.data[1], state.data_stack.data[2], state.data_stack.data[3]);
+            // log_dsp("Loop_Addr_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Loop_Cnt_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+            //         state.loop_address_stack.sp, state.loop_address_stack.data[0], state.loop_address_stack.data[1], state.loop_address_stack.data[2], state.loop_address_stack.data[3],
+            //         state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+            // if (state.pc == 0x007d) {
+            //     log_dsp("Breakpoint hit at PC=0x%04x", state.pc);
+            // }
         u32 result = func(cast(void*) state, cast(void*) dsp_memory);
         check_loop_address(state);
+        
+            // if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
+        // log_dsp("=== POST-EXECUTION STATE ===");
+        // log_dsp("PC=0x%04x AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x]", 
+        //         state.pc, state.ar[0], state.ar[1], state.ar[2], state.ar[3],
+        //         state.ix[0], state.ix[1], state.ix[2], state.ix[3]);
+        // log_dsp("WR=[0x%04x,0x%04x,0x%04x,0x%04x] AC0=0x%016x AC1=0x%016x", 
+        //         state.wr[0], state.wr[1], state.wr[2], state.wr[3],
+        //         state.ac[0].full, state.ac[1].full);
+        // log_dsp("AX0=0x%08x AX1=0x%08x PROD=[0x%04x,0x%04x,0x%04x,0x%04x]",
+        //         state.ax[0].full, state.ax[1].full,
+        //         state.prod_lo, state.prod_m1, state.prod_m2, state.prod_hi);
+        // log_dsp("Call_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Data_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+        //         state.call_stack.sp, state.call_stack.data[0], state.call_stack.data[1], state.call_stack.data[2], state.call_stack.data[3],
+        //         state.data_stack.sp, state.data_stack.data[0], state.data_stack.data[1], state.data_stack.data[2], state.data_stack.data[3]);
+        // log_dsp("Loop_Addr_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Loop_Cnt_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+        //         state.loop_address_stack.sp, state.loop_address_stack.data[0], state.loop_address_stack.data[1], state.loop_address_stack.data[2], state.loop_address_stack.data[3],
+        //         state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+        // log_dsp("SR=0x%04x CFG=0x%04x", state.peek_reg(19), state.config);
+            // }
 
         return cast(JitExitReason) result;
     }
@@ -240,10 +292,9 @@ final class DspJit {
     }
 
     void check_loop_address(DspState* state) {
-        log_dsp("all stacks peeks: call=%x, loop_addr=%x, loop_count=%d", state.call_stack.peek(), state.loop_address_stack.peek(), state.loop_counter_stack.peek());
         if (!state.loop_address_stack.is_empty()) {
             u16 loop_address = state.loop_address_stack.peek();
-            log_dsp("Checking loop address at PC=%x (loop start=%x)", state.pc, loop_address - 1);
+            // log_dsp("Checking loop address at PC=%x (loop start=%x)", state.pc, loop_address - 1);
             if (state.pc - 1 == loop_address) {
                 state.loop_counter_stack.data[state.loop_counter_stack.sp - 1]--;
                 if (state.loop_counter_stack.peek() == 0) {
@@ -251,7 +302,7 @@ final class DspJit {
                     state.loop_address_stack.pop();
                     state.loop_counter_stack.pop();
                 } else {
-                    log_dsp("Looping back to address %x, %d iterations remaining", state.call_stack.peek(), state.loop_counter_stack.peek());
+                    // log_dsp("Looping back to address %x, %d iterations remaining", state.call_stack.peek(), state.loop_counter_stack.peek());
                     state.pc = state.call_stack.peek();
                 }
             }

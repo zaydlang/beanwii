@@ -84,15 +84,17 @@ struct DspState {
     Stack loop_counter_stack;
     
     u16 pc;
+    u16 loop_counter = 0;
     
     DspPhase phase = DspPhase.Halted;
     u16 csr = 0;
-    u16 bootstrap_mailbox = 0;
-    
-    u32 mailbox_to_high = 0;
-    u32 mailbox_to_low = 0;
     u32[10] microcode_words;
     int microcode_count = 0;
+    
+    u16 cpu_mailbox_hi = 0;
+    u16 cpu_mailbox_lo = 0;
+    u16 dsp_mailbox_hi = 0;
+    u16 dsp_mailbox_lo = 0;
     
     bool interrupt_pending;
 
