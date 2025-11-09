@@ -59,12 +59,7 @@ final class DspCode {
     
     u8[] get() {
         emit_epilogue();
-
-        auto code = block.finalize();
-        ubyte[] copy = new ubyte[code.length];
-        copy[0 .. code.length] = code;
-
-        return copy;
+        return block.finalize();
     }
 
     int label_counter = 0;

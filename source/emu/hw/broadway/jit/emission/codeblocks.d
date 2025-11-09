@@ -3,6 +3,7 @@ module emu.hw.broadway.jit.emission.codeblocks;
 import core.stdc.string; 
 import core.sys.posix.sys.mman;
 import util.log;
+import util.page_allocator;
 
 final class CodeBlockTracker {
     struct Allocation {
@@ -10,11 +11,17 @@ final class CodeBlockTracker {
         size_t capacity;
     }
 
-    Allocation[] allocations;
+    PageAllocator!Allocation allocations;
+    
+    this() {
+        allocations = PageAllocator!Allocation(0);
+    }
 
     private void add_new_allocation() {
         void* new_ptr = mmap(null, 0x40000, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
-        allocations ~= Allocation(new_ptr, 0x40000);
+        Allocation* alloc = allocations.allocate();
+        alloc.page = new_ptr;
+        alloc.capacity = 0x40000;
     }
 
     void* put(void* code, size_t length) {
@@ -24,13 +31,13 @@ final class CodeBlockTracker {
             add_new_allocation();
         }
 
-        if (allocations[$ - 1].capacity < length) {
+        if (allocations[allocations.length - 1].capacity < length) {
             add_new_allocation();
         }
 
-        void* ptr = &allocations[$ - 1].page[0x40000 - allocations[$ - 1].capacity];
+        void* ptr = &allocations[allocations.length - 1].page[0x40000 - allocations[allocations.length - 1].capacity];
         memcpy(ptr, code, length);
-        allocations[$ - 1].capacity -= length;
+        allocations[allocations.length - 1].capacity -= length;
     
         return ptr;
     }
