@@ -275,7 +275,7 @@ private EmissionAction emit_b(Code code, u32 opcode) {
     u32  branch_address = sext_32(li, 24) << 2;
 
     if (!lk && !aa && branch_address == 0) {
-        return EmissionAction.CpuHalted;
+        return EmissionAction.IdleLoopDetected;
     }
 
     u32 branch_target = aa ? branch_address : code.get_guest_pc() + branch_address;
@@ -983,6 +983,43 @@ private EmissionAction emit_lhaux(Code code, u32 opcode) {
     code.exit_stack_alignment_context();
     code.pop(rdi);
 
+    code.set_reg(guest_rd, eax);
+
+    return EmissionAction.Continue;
+}
+
+private EmissionAction emit_lhbrx(Code code, u32 opcode) {
+    code.reserve_register(esi);
+    code.reserve_register(eax);
+    
+    auto guest_rd = opcode.bits(21, 25).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+
+    R32 ra = code.allocate_register();
+    if (guest_ra == GuestReg.R0) {
+        ra = code.allocate_register();
+        code.xor(ra, ra);
+    } else {
+        ra = code.get_reg(guest_ra);
+    }
+
+    auto rb = code.get_reg(guest_rb);
+    code.add(ra, rb);
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+
+        code.mov(rax, cast(u64) code.config.read_handler16);
+        code.call(rax);
+        code.movzx(eax, ax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+    
+    code.bswap(eax);
+    code.shr(eax, 16);
     code.set_reg(guest_rd, eax);
 
     return EmissionAction.Continue;
@@ -2666,6 +2703,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.LFSX:    return emit_lfsx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHAX:    return emit_lhax   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHAUX:   return emit_lhaux  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.LHBRX:   return emit_lhbrx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHZUX:   return emit_lhzux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LHZX:    return emit_lhzx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.LWZX:    return emit_lwzx   (code, opcode);
@@ -2695,6 +2733,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.STBUX:   return emit_stbux  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STBX:    return emit_stbx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFDX:   return emit_stfdx  (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.STFIWX:  return emit_stfiwx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFSX:   return emit_stfsx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHBRX:  return emit_sthbrx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHUX:   return emit_sthux  (code, opcode);
@@ -2841,6 +2880,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
     jit.idle_loop_detector.debug_prints = original_address == 0x80274d70;
 
     while (num_opcodes_processed < code.get_max_instructions_per_block()) {
+    // import std.stdio; writefln("Emitting block at %08x", address);
         code.set_guest_pc(address);
         u32 instruction = mem.read_be_u32(address);
         jit.idle_loop_detector.add(instruction);
@@ -3014,6 +3054,11 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     auto lr = code.get_reg(GuestReg.LR);
                     code.set_reg(GuestReg.PC, lr);
                     code.mov(rax, BlockReturnValue.GuestBlockEnd);
+                    break;
+                
+                case EmissionActionType.IdleLoopDetected:
+                    code.set_reg(GuestReg.PC, code.get_guest_pc());
+                    code.mov(rax, BlockReturnValue.IdleLoopDetected);
                     break;
             }
 

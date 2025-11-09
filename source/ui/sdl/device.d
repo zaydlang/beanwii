@@ -27,12 +27,65 @@ import ui.sdl.window;
 import util.bitop;
 import util.log;
 import util.number;
+import std.math;
+import std.stdio;
+
+extern(C) void audio_callback(void* userdata, ubyte* stream, int len) nothrow {
+    try {
+        SdlDevice device = cast(SdlDevice) userdata;
+        short* output = cast(short*) stream;
+        int samples_needed = cast(int)(len / (short.sizeof * 2));
+        
+        for (int i = 0; i < samples_needed; i++) {
+            short sample_l = device.last_sample_l;
+            short sample_r = device.last_sample_r;
+            
+            // Check if we have samples available in the FIFO buffer
+            if (device.read_cursor != device.write_cursor) {
+                sample_l = device.audio_buffer[device.read_cursor];
+                sample_r = device.audio_buffer[device.read_cursor + 1];
+                device.read_cursor = (device.read_cursor + 2) % device.audio_buffer.length;
+                device.last_sample_l = sample_l;
+                device.last_sample_r = sample_r;
+            }
+            
+            if (device.audio_test_enabled) {
+                float sine_sample = sin(device.sine_phase) * 8192.0f;
+                device.sine_phase += 2.0f * PI * 440.0f / 32000.0f;
+                if (device.sine_phase > 2.0f * PI) device.sine_phase -= 2.0f * PI;
+                
+                sample_l = cast(short) sine_sample;
+                sample_r = cast(short) sine_sample;
+            }
+
+            output[i * 2 + 0] = sample_l;
+            output[i * 2 + 1] = sample_r;
+        }
+    } catch (Exception e) {
+    }
+}
 
 class SdlDevice : MultiMediaDevice, Window {
     SDL_Window* window;
     SDL_Color* frame_buffer;
     SDL_Renderer* renderer;
     SDL_GLContext gl_context;
+
+    SDL_AudioDeviceID audio_device;
+    enum SAMPLE_RATE = 32000;
+    enum SAMPLES_PER_UPDATE = 1024;
+    enum BUFFER_SIZE_MULTIPLIER = 3;
+    enum NUM_CHANNELS = 2;
+    short[NUM_CHANNELS * SAMPLES_PER_UPDATE * BUFFER_SIZE_MULTIPLIER] audio_buffer;
+    int write_cursor = 0;
+    int read_cursor = 0;
+    bool audio_test_enabled = false;
+    float sine_phase = 0.0f;
+    int sample_counter = 0;
+    bool record_audio = false;
+    File audio_file;
+    short last_sample_l = 0;
+    short last_sample_r = 0;
 
     bool debugging;
 
@@ -72,8 +125,14 @@ class SdlDevice : MultiMediaDevice, Window {
 
     SdlButton pause_button;
 
-    this(Wii wii, int screen_scale, bool start_debugger) {
+    this(Wii wii, int screen_scale, bool start_debugger, bool record_audio = false) {
         this.wii = wii;
+        this.record_audio = record_audio;
+        
+        if (record_audio) {
+            audio_file = File("audio_recording.raw", "wb");
+            log_frontend("Audio recording enabled: saving to audio_recording.raw");
+        }
         
         loadSDL();
 
@@ -81,7 +140,7 @@ class SdlDevice : MultiMediaDevice, Window {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
-        if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
             error_frontend("SDL_Init returned an error: %s\n", SDL_GetError());
         }
 
@@ -123,6 +182,54 @@ class SdlDevice : MultiMediaDevice, Window {
         // SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
 
         loadOpenGL();
+
+        int num_audio_drivers = SDL_GetNumAudioDrivers();
+        log_frontend("Available audio drivers: %d", num_audio_drivers);
+        for (int i = 0; i < num_audio_drivers; i++) {
+            import std.string : fromStringz;
+            log_frontend("  %d: %s", i, fromStringz(SDL_GetAudioDriver(i)));
+        }
+        
+        const char* current_driver = SDL_GetCurrentAudioDriver();
+        if (current_driver) {
+            import std.string : fromStringz;
+            log_frontend("Current audio driver: %s", fromStringz(current_driver));
+        } else {
+            log_frontend("No audio driver initialized");
+        }
+
+        int num_playback_devices = SDL_GetNumAudioDevices(0);
+        int num_capture_devices = SDL_GetNumAudioDevices(1);
+        log_frontend("Available audio devices - Playback: %d, Capture: %d", num_playback_devices, num_capture_devices);
+        
+        for (int i = 0; i < num_playback_devices; i++) {
+            import std.string : fromStringz;
+            const char* device_name = SDL_GetAudioDeviceName(i, 0);
+            log_frontend("  Playback %d: %s", i, fromStringz(device_name));
+        }
+
+        SDL_AudioSpec audio_spec;
+        audio_spec.freq = SAMPLE_RATE;
+        audio_spec.format = AUDIO_S16SYS;
+        audio_spec.channels = NUM_CHANNELS;
+        audio_spec.samples = SAMPLES_PER_UPDATE;
+        audio_spec.callback = &audio_callback;
+        audio_spec.userdata = cast(void*) this;
+
+        SDL_AudioSpec obtained_spec;
+        audio_device = SDL_OpenAudioDevice(null, 0, &audio_spec, &obtained_spec, 0);
+        if (audio_device == 0) {
+            import std.string : fromStringz;
+            error_frontend("SDL_OpenAudioDevice failed: %s", fromStringz(SDL_GetError()));
+        }
+        
+        log_frontend("Audio device opened successfully: ID %d", audio_device);
+        
+        if (obtained_spec.freq != SAMPLE_RATE) {
+            error_frontend("Audio frequency validation failed: Expected 32kHz output, got %d Hz", obtained_spec.freq);
+        }
+        
+        SDL_PauseAudioDevice(audio_device, 0);
 
         glViewport(0, 0, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);
 
@@ -345,7 +452,38 @@ class SdlDevice : MultiMediaDevice, Window {
         }
 
         void push_sample(Sample s) {
+            // Calculate next write position
+            int next_write = (write_cursor + 2) % audio_buffer.length;
+            
+            // Check if buffer is full (would overwrite unread data)
+            if (next_write == read_cursor) {
+                // Buffer is full, drop the sample
+                return;
+            }
+            
+            // Write sample to FIFO buffer
+            audio_buffer[write_cursor] = s.L;
+            audio_buffer[write_cursor + 1] = s.R;
+            write_cursor = next_write;
+            
+            if (record_audio) {
+                audio_file.rawWrite([s.L, s.R]);
+                audio_file.flush();
+            }
+        }
 
+        int get_audio_buffer_capacity() {
+            return NUM_CHANNELS * SAMPLES_PER_UPDATE * BUFFER_SIZE_MULTIPLIER;
+        }
+
+        int get_audio_buffer_num_samples() {
+            int samples_in_buffer;
+            if (write_cursor >= read_cursor) {
+                samples_in_buffer = cast(int) ((write_cursor - read_cursor) / NUM_CHANNELS);
+            } else {
+                samples_in_buffer = cast(int) (((audio_buffer.length - read_cursor) + write_cursor) / NUM_CHANNELS);
+            }
+            return samples_in_buffer;
         }
 
         void handle_input() {
@@ -363,8 +501,17 @@ class SdlDevice : MultiMediaDevice, Window {
                 WiimoteButton.Right : SDL_SCANCODE_RIGHT,
             ];
 
+            u8* keyboard_state = SDL_GetKeyboardState(null);
+            
+            static bool audio_test_key_pressed = false;
+            bool audio_test_key_current = keyboard_state[SDL_SCANCODE_T] != 0;
+            if (audio_test_key_current && !audio_test_key_pressed) {
+                audio_test_enabled = !audio_test_enabled;
+                log_frontend("Audio test %s", audio_test_enabled ? "enabled" : "disabled");
+            }
+            audio_test_key_pressed = audio_test_key_current;
+
             foreach (wiimote_key, host_key; KeyMapping) {
-                u8* keyboard_state = SDL_GetKeyboardState(null);
                 wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
             }
         }

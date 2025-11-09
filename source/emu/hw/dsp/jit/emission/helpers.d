@@ -370,10 +370,18 @@ void write_arbitrary_reg(DspCode code, R64 value, int reg) {
         case 10: code.mov(code.wr_address(2), value.cvt16()); break;
         case 11: code.mov(code.wr_address(3), value.cvt16()); break;
     
-        case 12: error_dsp("TODO: implement ST0 write"); break;
-        case 13: error_dsp("TODO: implement ST1 write"); break;
-        case 14: error_dsp("TODO: implement ST2 write"); break;
-        case 15: error_dsp("TODO: implement ST3 write"); break;
+        case 12:
+        case 13:
+        case 14:
+        case 15:
+            R64 tmp1 = code.allocate_register();
+            R64 tmp2 = code.allocate_register();
+            R64 tmp3 = code.allocate_register();
+            push_stack(code, cast(StackType)(reg - 12), value, tmp1, tmp2, tmp3);
+            code.deallocate_register(tmp1);
+            code.deallocate_register(tmp2);
+            code.deallocate_register(tmp3);
+            break;
 
         case 16:
         case 17: 
@@ -490,18 +498,26 @@ void push_stack(DspCode code, StackType type, R64 value, R64 tmp1, R64 tmp2, R64
             break;
     }
     
-    code.cmp(tmp1.cvt32(), 4);
+    code.cmp(tmp1.cvt32(), 32);
     auto no_overflow = code.fresh_label();
     code.jl(no_overflow);
     
-    code.mov(rax, 0);
-    code.mov(rax, code.qwordPtr(rax));
+    code.mov(rdi, cast(u32) type);
+    code.mov(rax, cast(ulong) &dsp_stack_overflow_error);
+    code.enter_stack_alignment_context();
+    code.call(rax);
+    code.exit_stack_alignment_context();
     
     code.label(no_overflow);
     code.mov(tmp3, tmp1.cvt64());
     code.shl(tmp3.cvt32(), 1); // multiply by 2 (shift left by 1)
     code.add(tmp3, tmp2);
-    code.mov(code.wordPtr(tmp3), value.cvt16());
+
+    // bypass a shit bug in gallinule
+    code.sub(tmp3, 4);
+    code.mov(code.wordPtr(tmp3, 4), value.cvt16());
+    code.add(tmp3, 4);
+
     code.add(tmp1.cvt32(), 1);
     
     final switch (type) {
@@ -544,16 +560,23 @@ void pop_stack(DspCode code, StackType type, R64 result, R64 tmp1, R64 tmp2, R64
     auto no_underflow = code.fresh_label();
     code.jg(no_underflow);
     
-    code.mov(rax, 0);
-    code.mov(rax, code.qwordPtr(rax));
+    code.mov(rdi, cast(u32) type);
+    code.mov(rax, cast(ulong) &dsp_stack_underflow_error);
+    code.enter_stack_alignment_context();
+    code.call(rax);
+    code.exit_stack_alignment_context();
     
     code.label(no_underflow);
     code.sub(tmp1.cvt32(), 1);
     code.mov(tmp3, tmp1.cvt64());
     code.shl(tmp3.cvt32(), 1); // multiply by 2 (shift left by 1)
     code.add(tmp3, tmp2);
-    code.movzx(result.cvt32(), code.wordPtr(tmp3));
-    
+
+    // bypass a shit bug in gallinule
+    code.sub(tmp3, 4);
+    code.movzx(result.cvt32(), code.wordPtr(tmp3, 4));
+    code.add(tmp3, 4);
+
     final switch (type) {
         case StackType.CALL:
             code.mov(code.call_stack_sp_address(), tmp1.cvt8());
@@ -592,8 +615,11 @@ void emit_read_instruction_memory(DspCode code, R64 result, R64 address, R64 tmp
     code.jmp(done);
     
     code.label(invalid_access);
-    code.mov(rax, 0);
-    code.mov(rax, code.qwordPtr(rax));
+    code.mov(rdi, address);
+    code.mov(rax, cast(ulong) &dsp_invalid_instruction_memory_error);
+    code.enter_stack_alignment_context();
+    code.call(rax);
+    code.exit_stack_alignment_context();
     
     code.label(done);
 }
@@ -605,11 +631,17 @@ void emit_read_data_memory(DspCode code, R64 result, R64 address, R64 tmp1, R64 
     
     code.jge(io_memory);
     
+    // DRAM/COEF memory (0x0000-0x17FF) - always valid for reads
     code.lea(tmp2, code.data_memory_address());
     code.mov(tmp1, address);
     code.shl(tmp1.cvt32(), 1);
     code.add(tmp1, tmp2);
-    code.movzx(result.cvt32(), code.wordPtr(tmp1));
+
+    // bypass a shit bug in gallinule
+    code.sub(tmp1, 4);
+    code.movzx(result.cvt32(), code.wordPtr(tmp1, 4));
+    code.add(tmp1, 4);
+
     code.jmp(done);
     
     code.label(io_memory);
@@ -637,7 +669,11 @@ void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 
     code.mov(tmp1, address);
     code.shl(tmp1.cvt32(), 1);
     code.add(tmp1, tmp2);
-    code.mov(code.wordPtr(tmp1), value.cvt16());
+    // bypass a shit bug in gallinule
+    code.sub(tmp1, 4);
+    code.mov(code.wordPtr(tmp1, 4), value.cvt16());
+    code.add(tmp1, 4);
+
     code.jmp(done);
     
     code.label(coef_or_io);
@@ -645,7 +681,12 @@ void emit_write_data_memory(DspCode code, R64 value, R64 address, R64 tmp1, R64 
     auto io_memory = code.fresh_label();
     code.jge(io_memory);
     
-    code.jmp(done);
+    // Attempted write to COEF memory (0x1000-0x17FF) - error
+    code.mov(rdi, address);
+    code.mov(rax, cast(ulong) &dsp_coef_memory_write_error);
+    code.enter_stack_alignment_context();
+    code.call(rax);
+    code.exit_stack_alignment_context();
     
     code.label(io_memory);
     auto saved_regs = code.push_volatile_registers();

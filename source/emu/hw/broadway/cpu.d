@@ -169,8 +169,22 @@ final class Broadway {
             exception_raised = false;
             u32 old_pc = state.pc;
 
-            if (old_pc == 0x802913ac) {
-                log_jit("shitter");
+            if (old_pc == 0x8001ed94) {
+                debjit = true;
+
+
+}
+
+            if (debjit) {
+                // log_state(&state);
+                // log_state()
+            }
+            if (old_pc >= 0x80014b9c && old_pc < 0x800151fc) {
+                log_jit("StreamPlay() from %x", state.pc);
+            }
+
+            if (old_pc == 0x8002023c) {
+                log_jit("__lwp_thread_setstate(%x, %x) from %x", state.gprs[3], state.gprs[4], state.lr);
             }
 
             if (old_pc == 0x8019b6c8) {
@@ -191,7 +205,6 @@ final class Broadway {
             auto delta = jit_return_value.num_instructions_executed * 2;
             if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
                 // log_jit("PC: %x", state.pc);
-                // log_state(&state);
             }
 
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
@@ -201,6 +214,7 @@ final class Broadway {
 
             if (jit_return_value.block_return_value.value == BlockReturnValue.IdleLoopDetected &&
                 !jit_return_value.block_return_value.breakpoint_hit) {
+                // import std.stdio; writefln("idle pooping at %x", state.pc);
                 auto fast_forward = scheduler.tick_to_next_event();
                 scheduler.process_events();
                 elapsed += fast_forward;

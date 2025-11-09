@@ -163,6 +163,35 @@ EmissionAction emit_stfdx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_stfiwx(Code code, u32 opcode) {
+    auto guest_rs = opcode.bits(21, 25).to_fpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+
+    auto ra = code.get_reg(guest_ra);
+    auto rs = code.get_fpr(guest_rs);
+    auto rb = code.get_reg(guest_rb);
+
+    if (guest_ra == GuestReg.R0) {
+        code.mov(ra, rb);
+    } else {
+        code.add(ra, rb);
+    }
+
+    code.push(rdi);
+    code.enter_stack_alignment_context();
+        code.mov(rdi, cast(u64) code.config.mem_handler_context);
+        code.mov(esi, ra);
+        code.mov(edx, rs.cvt32());
+
+        code.mov(rax, cast(u64) code.config.write_handler32);
+        code.call(rax);
+    code.exit_stack_alignment_context();
+    code.pop(rdi);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_stfd(Code code, u32 opcode) {
     auto guest_rs = opcode.bits(21, 25).to_fpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;

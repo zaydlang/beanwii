@@ -101,6 +101,7 @@ final class Wii {
         this.dsp.connect_scheduler(this.scheduler);
         this.dsp.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.dsp.connect_mem(this.mem);
+        this.dsp.connect_audio_interface(this.audio_interface);
         this.hollywood.connect_mem(this.mem);
         this.hollywood.connect_pixel_engine(this.pixel_engine);
         this.hollywood.connect_scheduler(this.scheduler);
@@ -156,6 +157,7 @@ final class Wii {
 
     public void connect_multimedia_device(MultiMediaDevice device) {
         this.video_interface.set_present_videobuffer_callback(&device.present_videobuffer);
+        this.audio_interface.set_push_sample_callback(&device.push_sample);
     }
 
     private void run_apploader(WiiApploader* apploader, u8[] wii_disk_data) {

@@ -49,5 +49,60 @@ class Instruction:
     def __repr__(self):
         return f'Instruction(opcode={self.opcode}, operands={self.operands})'
 
+class ExtensionInstruction:
+    def __init__(self, line):
+        # Parse extension instruction like "'MV * xxxx xxxx 0001 ddss"
+        parts = line.split('*')
+        self.opcode = parts[0].strip().lstrip("'")  # Remove the ' prefix
+        
+        pattern_parts = parts[1].strip().split()
+        # Skip the "xxxx xxxx" main mask, take the extension pattern
+        extension_pattern = ''.join(pattern_parts[2:])  # Join remaining parts
+        assert len(extension_pattern) == 8, f"Extension pattern must be 8 bits, got {len(extension_pattern)}: {extension_pattern}"
+        
+        self.operands = []
+        self.fixed_repr = 0
+        self.fixed_mask = 0
+        self.size = 8  # Extension opcodes are always 8 bits
+        
+        # Parse the 8-bit extension pattern
+        high_index = 7
+        prev_char = ''
+        
+        for i in range(8):
+            char = extension_pattern[i]
+            
+            if char == '0' or char == '1':
+                self.fixed_repr |= (int(char) << (7 - i))
+                self.fixed_mask |= (1 << (7 - i))
+            
+            if char != prev_char:
+                if prev_char != '0' and prev_char != '1' and prev_char != '':
+                    self.operands.append(Operand(8 - i, high_index - 1, prev_char))
+                high_index = 8 - i
+            
+            prev_char = char
+        
+        if prev_char != '' and prev_char != '0' and prev_char != '1':
+            self.operands.append(Operand(0, high_index - 1, prev_char))
+        
+        self.operands.reverse()  # Reverse to have the lowest index first
+    
+    def __repr__(self):
+        return f'ExtensionInstruction(opcode={self.opcode}, operands={self.operands})'
+
 def get_instructions(file_name):
-    return [Instruction(line) for line in open(file_name, 'r')]
+    instructions = []
+    extension_instructions = []
+    
+    for line in open(file_name, 'r'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        
+        if line.startswith("'"):
+            extension_instructions.append(ExtensionInstruction(line))
+        else:
+            instructions.append(Instruction(line))
+    
+    return instructions, extension_instructions

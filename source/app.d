@@ -12,6 +12,7 @@ import ui.sdl.device;
 import ui.runner;
 import util.file;
 import util.log;
+import util.signal;
 
 
 // TODO: i really hate this construct. how to make this cleaner?
@@ -25,7 +26,7 @@ version (unittest) {} else {
 		CliArgs cli_args = parse_cli_args(args);
 		
 		wii = new Wii(cli_args.ringbuffer_size);
-		auto device = new SdlDevice(wii, 1, cli_args.start_debugger);
+		auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio);
 		wii.init_opengl();	
 		// auto device = new RengMultimediaDevice(wii, 1, true);
 
@@ -34,6 +35,11 @@ version (unittest) {} else {
 		wii.connect_multimedia_device(device);
 
 		set_logger_on_error_callback(&logger_on_error_callback);
+		
+		if (cli_args.install_segfault_handler) {
+			set_segfault_callback(&logger_on_error_callback);
+			install_segfault_handler();
+		}
 
 		parse_and_load_file(wii, disk_data);
 

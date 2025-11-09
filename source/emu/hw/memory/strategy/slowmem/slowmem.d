@@ -223,8 +223,9 @@ final class SlowMem : MemStrategy {
             auto memory_access = get_memory_access_from_paddr(address);
         }
 
-        if (address == 0x80521e70 + 0x20) {
-            log_cp("IMPORTANT Write to 0x%08x = 0x%08x(pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
+        if ((address & 0x7fffffff) == 0x00155D80) {
+                import std.stdio;
+            writefln("Write to SAMPLE 0x%08x = 0x%08x(pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
         }
 
         if (address == 0x80521be4 || address == 0x00521be4 || address == 0x80521be6) {

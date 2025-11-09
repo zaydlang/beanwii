@@ -5,6 +5,7 @@ module emu.hw.dsp.jit.emission.decoder;
 
 import util.bitop;
 import util.number;
+import util.log;
 
 struct DspInstruction {
     DspOpcode opcode;
@@ -502,7 +503,6 @@ struct LRIS {
 
 struct LOOPI {
     u16 i;
-	u16 a;
 }
 
 struct BLOOPI {
@@ -1097,7 +1097,7 @@ struct EXT_LDAXNM {
 
 ExtensionInstruction decode_extension(u16 instruction) {
 	u8 ext_opcode = instruction & 0xFF;
-	final switch (ext_opcode) {
+	switch (ext_opcode) {
 		case 0x00: return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP(cast(u16) (instruction & 0xFF).bits(0, 1)));
 		case 0x01: return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP(cast(u16) (instruction & 0xFF).bits(0, 1)));
 		case 0x02: return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP(cast(u16) (instruction & 0xFF).bits(0, 1)));
@@ -1354,6 +1354,9 @@ ExtensionInstruction decode_extension(u16 instruction) {
 		case 0xfd: return ExtensionInstruction(ExtensionOpcode.EXT_LDNM, ldnm : EXT_LDNM(cast(u16) (instruction & 0xFF).bit(5), cast(u16) (instruction & 0xFF).bit(4), cast(u16) (instruction & 0xFF).bits(0, 1)));
 		case 0xfe: return ExtensionInstruction(ExtensionOpcode.EXT_LDNM, ldnm : EXT_LDNM(cast(u16) (instruction & 0xFF).bit(5), cast(u16) (instruction & 0xFF).bit(4), cast(u16) (instruction & 0xFF).bits(0, 1)));
 		case 0xff: return ExtensionInstruction(ExtensionOpcode.EXT_LDAXNM, ldaxnm : EXT_LDAXNM(cast(u16) (instruction & 0xFF).bit(5), cast(u16) (instruction & 0xFF).bit(4)));
+		default:
+			log_dsp("Unknown extension opcode: 0x%02x", ext_opcode);
+			return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP());
 	}
 }
 
@@ -1363,7 +1366,7 @@ DspInstruction decode_instruction(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x4000) >> 14) << 1;
 	index |= ((instruction & 0x8000) >> 15) << 2;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_1(instruction, next_instruction);
 		case 1: return generated_table_2(instruction, next_instruction);
 		case 2: return generated_table_3(instruction, next_instruction);
@@ -1372,6 +1375,9 @@ DspInstruction decode_instruction(u16 instruction, u16 next_instruction) {
 		case 5: return generated_table_6(instruction, next_instruction);
 		case 6: return generated_table_7(instruction, next_instruction);
 		case 7: return generated_table_8(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1380,11 +1386,14 @@ DspInstruction generated_table_1(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x800) >> 11) << 0;
 	index |= ((instruction & 0x1000) >> 12) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_9(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.LRIS, 16, lris : LRIS(instruction.bits(8, 10), instruction.bits(0, 7)));
 		case 2: return generated_table_10(instruction, next_instruction);
 		case 3: return generated_table_11(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1393,11 +1402,14 @@ DspInstruction generated_table_9(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x200) >> 9) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_12(instruction, next_instruction);
 		case 1: return generated_table_13(instruction, next_instruction);
 		case 2: return DspInstruction(DspOpcode.ADDIS, 16, addis : ADDIS(instruction.bit(8), instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.CMPIS, 16, cmpis : CMPIS(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1408,7 +1420,7 @@ DspInstruction generated_table_12(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x80) >> 7) << 2;
 	index |= ((instruction & 0x100) >> 8) << 3;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_14(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.HALT, 16, halt : HALT());
 		case 2: return DspInstruction(DspOpcode.LOOP, 16, loop : LOOP(instruction.bits(0, 4)));
@@ -1416,6 +1428,9 @@ DspInstruction generated_table_12(u16 instruction, u16 next_instruction) {
 		case 4: return DspInstruction(DspOpcode.LRI, 32, lri : LRI(instruction.bits(0, 4), next_instruction));
 		case 6: return DspInstruction(DspOpcode.LR, 32, lr : LR(instruction.bits(0, 4), next_instruction));
 		case 7: return DspInstruction(DspOpcode.SR, 32, sr : SR(instruction.bits(0, 4), next_instruction));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1423,9 +1438,12 @@ DspInstruction generated_table_14(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x10) >> 4) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_15(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.ADDARN, 16, addarn : ADDARN(instruction.bits(2, 3), instruction.bits(0, 1)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1434,11 +1452,14 @@ DspInstruction generated_table_15(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x4) >> 2) << 0;
 	index |= ((instruction & 0x8) >> 3) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 		case 1: return DspInstruction(DspOpcode.DAR, 16, dar : DAR(instruction.bits(0, 1)));
 		case 2: return DspInstruction(DspOpcode.IAR, 16, iar : IAR(instruction.bits(0, 1)));
 		case 3: return DspInstruction(DspOpcode.SUBARN, 16, subarn : SUBARN(instruction.bits(0, 1)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1449,7 +1470,7 @@ DspInstruction generated_table_13(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x40) >> 6) << 2;
 	index |= ((instruction & 0x80) >> 7) << 3;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ADDI, 32, addi : ADDI(instruction.bit(8), next_instruction));
 		case 1: return generated_table_16(instruction, next_instruction);
 		case 2: return DspInstruction(DspOpcode.XORI, 32, xori : XORI(instruction.bit(8), next_instruction));
@@ -1463,6 +1484,9 @@ DspInstruction generated_table_13(u16 instruction, u16 next_instruction) {
 		case 12: return generated_table_17(instruction, next_instruction);
 		case 13: return DspInstruction(DspOpcode.RET_CC, 16, ret_cc : RET_CC(instruction.bits(0, 3)));
 		case 15: return DspInstruction(DspOpcode.RTI_CC, 16, rti_cc : RTI_CC(instruction.bits(0, 3)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1471,11 +1495,14 @@ DspInstruction generated_table_16(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x4) >> 2) << 0;
 	index |= ((instruction & 0x8) >> 3) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ILRR, 16, ilrr : ILRR(instruction.bit(8), instruction.bits(0, 1)));
 		case 1: return DspInstruction(DspOpcode.ILRRD, 16, ilrrd : ILRRD(instruction.bit(8), instruction.bits(0, 1)));
 		case 2: return DspInstruction(DspOpcode.ILRRI, 16, ilrri : ILRRI(instruction.bit(8), instruction.bits(0, 1)));
 		case 3: return DspInstruction(DspOpcode.ILRRN, 16, ilrrn : ILRRN(instruction.bit(8), instruction.bits(0, 1)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1486,10 +1513,13 @@ DspInstruction generated_table_17(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x4) >> 2) << 2;
 	index |= ((instruction & 0x8) >> 3) << 3;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ANDCF, 32, andcf : ANDCF(instruction.bit(8), next_instruction));
 		case 10: return DspInstruction(DspOpcode.LSRN, 16, lsrn : LSRN());
 		case 11: return DspInstruction(DspOpcode.ASRN, 16, asrn : ASRN());
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1498,11 +1528,14 @@ DspInstruction generated_table_10(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x200) >> 9) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_18(instruction, next_instruction);
 		case 1: return generated_table_19(instruction, next_instruction);
 		case 2: return generated_table_20(instruction, next_instruction);
 		case 3: return generated_table_21(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1510,9 +1543,12 @@ DspInstruction generated_table_18(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
-		case 0: return DspInstruction(DspOpcode.LOOPI, 32, loopi : LOOPI(instruction.bits(0, 7), next_instruction));
+	switch (index) {
+		case 0: return DspInstruction(DspOpcode.LOOPI, 16, loopi : LOOPI(instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.BLOOPI, 32, bloopi : BLOOPI(instruction.bits(0, 7), next_instruction));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1525,9 +1561,12 @@ DspInstruction generated_table_19(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x80) >> 7) << 4;
 	index |= ((instruction & 0x100) >> 8) << 5;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SBCLR, 16, sbclr : SBCLR(instruction.bits(0, 2)));
 		case 32: return DspInstruction(DspOpcode.SBSET, 16, sbset : SBSET(instruction.bits(0, 2)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1536,11 +1575,14 @@ DspInstruction generated_table_20(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x40) >> 6) << 0;
 	index |= ((instruction & 0x80) >> 7) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LSL, 16, lsl : LSL(instruction.bit(8), instruction.bits(0, 5)));
 		case 1: return DspInstruction(DspOpcode.LSR, 16, lsr : LSR(instruction.bit(8), instruction.bits(0, 5)));
 		case 2: return DspInstruction(DspOpcode.ASL, 16, asl : ASL(instruction.bit(8), instruction.bits(0, 5)));
 		case 3: return DspInstruction(DspOpcode.ASR, 16, asr : ASR(instruction.bit(8), instruction.bits(0, 5)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1548,9 +1590,12 @@ DspInstruction generated_table_21(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SI, 32, si : SI(instruction.bits(0, 7), next_instruction));
 		case 1: return generated_table_22(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1558,9 +1603,12 @@ DspInstruction generated_table_22(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x10) >> 4) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.JMPR_CC, 16, jmpr_cc : JMPR_CC(instruction.bits(5, 7), instruction.bits(0, 3)));
 		case 1: return DspInstruction(DspOpcode.CALLRCC, 16, callrcc : CALLRCC(instruction.bits(5, 7), instruction.bits(0, 3)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1568,9 +1616,12 @@ DspInstruction generated_table_11(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_23(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.MRR, 16, mrr : MRR(instruction.bits(5, 9), instruction.bits(0, 4)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1580,7 +1631,7 @@ DspInstruction generated_table_23(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x100) >> 8) << 1;
 	index |= ((instruction & 0x200) >> 9) << 2;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LRR, 16, lrr : LRR(instruction.bits(5, 6), instruction.bits(0, 4)));
 		case 1: return DspInstruction(DspOpcode.LRRD, 16, lrrd : LRRD(instruction.bits(5, 6), instruction.bits(0, 4)));
 		case 2: return DspInstruction(DspOpcode.LRRI, 16, lrri : LRRI(instruction.bits(5, 6), instruction.bits(0, 4)));
@@ -1589,6 +1640,9 @@ DspInstruction generated_table_23(u16 instruction, u16 next_instruction) {
 		case 5: return DspInstruction(DspOpcode.SRRD, 16, srrd : SRRD(instruction.bits(5, 6), instruction.bits(0, 4)));
 		case 6: return DspInstruction(DspOpcode.SRRI, 16, srri : SRRI(instruction.bits(5, 6), instruction.bits(0, 4)));
 		case 7: return DspInstruction(DspOpcode.SRRN, 16, srrn : SRRN(instruction.bits(5, 6), instruction.bits(0, 4)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1597,11 +1651,14 @@ DspInstruction generated_table_2(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x800) >> 11) << 0;
 	index |= ((instruction & 0x1000) >> 12) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LRS, 16, lrs : LRS(instruction.bits(8, 10), instruction.bits(0, 7)));
 		case 1: return generated_table_24(instruction, next_instruction);
 		case 2: return generated_table_25(instruction, next_instruction);
 		case 3: return generated_table_26(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1609,9 +1666,12 @@ DspInstruction generated_table_24(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SRSH, 16, srsh : SRSH(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.SRS, 16, srs : SRS(instruction.bits(8, 9), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1620,11 +1680,14 @@ DspInstruction generated_table_25(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x80) >> 7) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.XORR, 16, xorr : XORR(instruction.bit(9), instruction.bit(8), instruction.bits(0, 6)));
 		case 1: return generated_table_27(instruction, next_instruction);
 		case 2: return DspInstruction(DspOpcode.ANDR, 16, andr : ANDR(instruction.bit(9), instruction.bit(8), instruction.bits(0, 6)));
 		case 3: return DspInstruction(DspOpcode.LSRNRX, 16, lsrnrx : LSRNRX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 6)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1632,9 +1695,12 @@ DspInstruction generated_table_27(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.XORC, 16, xorc : XORC(instruction.bit(8), instruction.bits(0, 6)));
 		case 1: return DspInstruction(DspOpcode.NOT, 16, not : NOT(instruction.bit(8), instruction.bits(0, 6)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1643,11 +1709,14 @@ DspInstruction generated_table_26(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x80) >> 7) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ORR, 16, orr : ORR(instruction.bit(9), instruction.bit(8), instruction.bits(0, 6)));
 		case 1: return DspInstruction(DspOpcode.ASRNRX, 16, asrnrx : ASRNRX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 6)));
 		case 2: return generated_table_28(instruction, next_instruction);
 		case 3: return generated_table_29(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1655,9 +1724,12 @@ DspInstruction generated_table_28(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ANDC, 16, andc : ANDC(instruction.bit(8), instruction.bits(0, 6)));
 		case 1: return DspInstruction(DspOpcode.ORC, 16, orc : ORC(instruction.bit(8), instruction.bits(0, 6)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1665,9 +1737,12 @@ DspInstruction generated_table_29(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LSRNR, 16, lsrnr : LSRNR(instruction.bit(8), instruction.bits(0, 6)));
 		case 1: return DspInstruction(DspOpcode.ASRNR, 16, asrnr : ASRNR(instruction.bit(8), instruction.bits(0, 6)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1676,11 +1751,14 @@ DspInstruction generated_table_3(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x800) >> 11) << 0;
 	index |= ((instruction & 0x1000) >> 12) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ADDR, 16, addr : ADDR(instruction.bits(9, 10), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_30(instruction, next_instruction);
 		case 2: return DspInstruction(DspOpcode.SUBR, 16, subr : SUBR(instruction.bits(9, 10), instruction.bit(8), instruction.bits(0, 7)));
 		case 3: return generated_table_31(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1688,9 +1766,12 @@ DspInstruction generated_table_30(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ADDAX, 16, addax : ADDAX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_32(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1698,9 +1779,12 @@ DspInstruction generated_table_32(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ADD, 16, add : ADD(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.ADDP, 16, addp : ADDP(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1708,9 +1792,12 @@ DspInstruction generated_table_31(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SUBAX, 16, subax : SUBAX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_33(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1718,9 +1805,12 @@ DspInstruction generated_table_33(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SUB, 16, sub : SUB(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.SUBP, 16, subp : SUBP(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1729,11 +1819,14 @@ DspInstruction generated_table_4(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x800) >> 11) << 0;
 	index |= ((instruction & 0x1000) >> 12) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MOVR, 16, movr : MOVR(instruction.bits(9, 10), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_34(instruction, next_instruction);
 		case 2: return generated_table_35(instruction, next_instruction);
 		case 3: return generated_table_36(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1741,9 +1834,12 @@ DspInstruction generated_table_34(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MOVAX, 16, movax : MOVAX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_37(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1751,9 +1847,12 @@ DspInstruction generated_table_37(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MOV, 16, mov : MOV(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MOVP, 16, movp : MOVP(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1761,9 +1860,12 @@ DspInstruction generated_table_35(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x400) >> 10) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ADDAXL, 16, addaxl : ADDAXL(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_38(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1771,9 +1873,12 @@ DspInstruction generated_table_38(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.INCM, 16, incm : INCM(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.INC, 16, inc : INC(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1782,11 +1887,14 @@ DspInstruction generated_table_36(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x200) >> 9) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.DECM, 16, decm : DECM(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.DEC, 16, dec : DEC(instruction.bit(8), instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.NEG, 16, neg : NEG(instruction.bit(8), instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.MOVNP, 16, movnp : MOVNP(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1796,7 +1904,7 @@ DspInstruction generated_table_5(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x400) >> 10) << 1;
 	index |= ((instruction & 0x1000) >> 12) << 2;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_39(instruction, next_instruction);
 		case 1: return generated_table_40(instruction, next_instruction);
 		case 2: return generated_table_41(instruction, next_instruction);
@@ -1805,6 +1913,9 @@ DspInstruction generated_table_5(u16 instruction, u16 next_instruction) {
 		case 5: return DspInstruction(DspOpcode.MULMVZ, 16, mulmvz : MULMVZ(instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 6: return DspInstruction(DspOpcode.MULAC, 16, mulac : MULAC(instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 7: return DspInstruction(DspOpcode.MULMV, 16, mulmv : MULMV(instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1812,9 +1923,12 @@ DspInstruction generated_table_39(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.NX, 16, nx : NX(instruction.bit(11), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.CLR, 16, clr : CLR(instruction.bit(11), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1823,11 +1937,14 @@ DspInstruction generated_table_40(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x100) >> 8) << 0;
 	index |= ((instruction & 0x800) >> 11) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.CMP, 16, cmp : CMP(instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MULAXH, 16, mulaxh : MULAXH(instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.M2, 16, m2 : M2(instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.M0, 16, m0 : M0(instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1836,11 +1953,14 @@ DspInstruction generated_table_41(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x100) >> 8) << 0;
 	index |= ((instruction & 0x800) >> 11) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.CLRP, 16, clrp : CLRP(instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.TSTPROD, 16, tstprod : TSTPROD(instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.CLR15, 16, clr15 : CLR15(instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.SET15, 16, set15 : SET15(instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1848,9 +1968,12 @@ DspInstruction generated_table_42(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x800) >> 11) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.TSTAXH, 16, tstaxh : TSTAXH(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return generated_table_44(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1858,9 +1981,12 @@ DspInstruction generated_table_44(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.SET16, 16, set16 : SET16(instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.SET40, 16, set40 : SET40(instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1868,9 +1994,12 @@ DspInstruction generated_table_43(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MUL, 16, mul : MUL(instruction.bit(11), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.ASR16, 16, asr16 : ASR16(instruction.bit(11), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1879,11 +2008,14 @@ DspInstruction generated_table_6(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x200) >> 9) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_45(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.MULXMVZ, 16, mulxmvz : MULXMVZ(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.MULXAC, 16, mulxac : MULXAC(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.MULXMV, 16, mulxmv : MULXMV(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1891,9 +2023,12 @@ DspInstruction generated_table_45(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MULX, 16, mulx : MULX(instruction.bit(12), instruction.bit(11), instruction.bits(0, 7)));
 		case 1: return generated_table_46(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1901,9 +2036,12 @@ DspInstruction generated_table_46(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x1000) >> 12) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.ABS, 16, abs : ABS(instruction.bit(11), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.TST, 16, tst : TST(instruction.bit(11), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1912,11 +2050,14 @@ DspInstruction generated_table_7(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x200) >> 9) << 0;
 	index |= ((instruction & 0x400) >> 10) << 1;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return generated_table_47(instruction, next_instruction);
 		case 1: return DspInstruction(DspOpcode.MULCMVZ, 16, mulcmvz : MULCMVZ(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.MULCAC, 16, mulcac : MULCAC(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
 		case 3: return DspInstruction(DspOpcode.MULCMV, 16, mulcmv : MULCMV(instruction.bit(12), instruction.bit(11), instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1924,9 +2065,12 @@ DspInstruction generated_table_47(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x100) >> 8) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MULC, 16, mulc : MULC(instruction.bit(12), instruction.bit(11), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.CMPAXH, 16, cmpaxh : CMPAXH(instruction.bit(12), instruction.bit(11), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1936,7 +2080,7 @@ DspInstruction generated_table_8(u16 instruction, u16 next_instruction) {
 	index |= ((instruction & 0x800) >> 11) << 1;
 	index |= ((instruction & 0x1000) >> 12) << 2;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.MADDX, 16, maddx : MADDX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MSUBX, 16, msubx : MSUBX(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 2: return DspInstruction(DspOpcode.MADDC, 16, maddc : MADDC(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
@@ -1945,6 +2089,9 @@ DspInstruction generated_table_8(u16 instruction, u16 next_instruction) {
 		case 5: return generated_table_49(instruction, next_instruction);
 		case 6: return DspInstruction(DspOpcode.ADDPAXZ, 16, addpaxz : ADDPAXZ(instruction.bit(9), instruction.bit(8), instruction.bits(0, 7)));
 		case 7: return generated_table_50(instruction, next_instruction);
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1952,9 +2099,12 @@ DspInstruction generated_table_48(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LSL16, 16, lsl16 : LSL16(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MADD, 16, madd : MADD(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1962,9 +2112,12 @@ DspInstruction generated_table_49(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.LSR16, 16, lsr16 : LSR16(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MSUB, 16, msub : MSUB(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 
@@ -1972,9 +2125,12 @@ DspInstruction generated_table_50(u16 instruction, u16 next_instruction) {
 	u16 index = 0;
 	index |= ((instruction & 0x200) >> 9) << 0;
 
-	final switch (index) {
+	switch (index) {
 		case 0: return DspInstruction(DspOpcode.CLRL, 16, clrl : CLRL(instruction.bit(8), instruction.bits(0, 7)));
 		case 1: return DspInstruction(DspOpcode.MOVPZ, 16, movpz : MOVPZ(instruction.bit(8), instruction.bits(0, 7)));
+		default:
+			log_dsp("Unknown instruction opcode: 0x%04x (index: %d)", instruction, index);
+			return DspInstruction(DspOpcode.NOP, 16, nop : NOP());
 	}
 }
 

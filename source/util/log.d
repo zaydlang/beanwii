@@ -19,11 +19,12 @@ enum LogColor : string {
 }
 
 enum Whitelist = [
+    // LogSource.ACCELERATOR,
     // LogSource.AI,
     // LogSource.USB,
     // LogSource.BLUETOOTH,
     // LogSource.BROADWAY,
-    LogSource.CP,
+    // LogSource.CP,
     // LogSource.DISK,
     // LogSource.DSP,
     // LogSource.FRONTEND,
@@ -32,7 +33,7 @@ enum Whitelist = [
     // LogSource.GDB,
     // LogSource.HOLLYWOOD,
     // LogSource.IPC,
-    LogSource.JIT,
+    // LogSource.JIT,
     // LogSource.MMIO,
     // LogSource.OS_REPORT,
     // LogSource.PE,
@@ -71,6 +72,7 @@ enum LogSource {
     PE,
     USB,
     DSP,
+    ACCELERATOR,
     BLUETOOTH,
     DOL,
     FRONTEND,
@@ -78,6 +80,7 @@ enum LogSource {
     MMIO,
     GDB,
     UTIL,
+    GALLINULE,
 
     NONE // dummy
 }

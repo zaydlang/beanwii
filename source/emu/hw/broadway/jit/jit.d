@@ -128,7 +128,7 @@ final class Jit {
                 break;
 
             case BlockReturnValue.CpuHalted:
-                error_jit("CPU halted");
+                // error_jit("CPU halted");
                 break;
             
             case BlockReturnValue.BranchTaken:
@@ -149,6 +149,7 @@ final class Jit {
 
     // returns the number of instructions executed
     public JitReturnValue run(BroadwayState* state) {
+        log_jit("JIT: Running block at %x", state.pc);
         if (code_page_table.has(state.pc)) {
             JitEntry entry = code_page_table.get_assume_has(state.pc);
             entry.num_times_executed++;

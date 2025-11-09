@@ -6,6 +6,7 @@ import std.traits;
 import std.typecons;
 import tern.algorithm;
 import tern.state;
+import util.log;
 
 Reg!to cvt(ushort to, ushort from)(Reg!from r) {
     return Reg!to(r.index, (r.index & 4) && to == 8);
@@ -248,6 +249,7 @@ final:
         this.register = register.index;
         this.offset = offset;
         this.segment = segment;
+        assert_gallinule(!(offset == 0 && register.index >= 8), "This is a known bug in gallinule.");
     }
 
     this(T)(T register, uint offset = 0)
@@ -256,6 +258,8 @@ final:
         this.size = TemplateArgsOf!(T)[0];
         this.register = register.index;
         import std.stdio;
+        // assert(offset != 0);
+        assert_gallinule(!(offset == 0 && register.index >= 8), "This is a known bug in gallinule.");
         // // // //("Address(T)(T register, uint offset = 0) %x %x %s", this.size, this.offset, register);
         this.offset = offset;
     }
@@ -1329,10 +1333,10 @@ import std.stdio;
         //     this.buffer = this.buffer[0..branch[0]]~buffer~this.buffer[branch[0]..$];
         // }
             auto bytes = this.buffer.buffie();
-            for (int i = 0; i < bytes.length - 8; i+= 8) {
-                import std.stdio;
-                //("%02x %02x %02x %02x %02x %02x %02x %02x", bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
-            }
+            // for (int i = 0; i < bytes.length - 8; i+= 8) {
+            //     import std.stdio;
+            //     //("%02x %02x %02x %02x %02x %02x %02x %02x", bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
+            // }
         // reverse(branches);
         for (int i = cast(int) branches.length - 1; i >= 0; i--) {
             auto branch = branches[i];
@@ -3234,7 +3238,6 @@ import std.stdio;
     auto mov(R16 dst, Address!16 src) => emit!0(0x8b, dst, src);
     auto mov(R32 dst, Address!32 src) => emit!0(0x8b, dst, src);
     auto mov(R64 dst, Address!64 src) => emit!0(0x8b, dst, src);
-    
     auto mov(R8 dst, ubyte imm8) => emit!(0, NRM)(0xb0, dst, imm8);
     auto mov(R16 dst, ushort imm16) => emit!(0, NRM)(0xb8, dst, imm16);
     auto mov(R32 dst, uint imm32) => emit!(0, NRM)(0xb8, dst, imm32);
@@ -3743,4 +3746,388 @@ unittest
     writefln(block.finalize().toHexString);
     assert(block.finalize().toHexString == 
         "660FC6C203");
+}
+
+@("gallinule_mov")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(ax, wordPtr(rdi, 0x8));
+        mov(r8d, dwordPtr(rdi, 0x8));
+        mov(wordPtr(rdi, 0x8), ax);
+        mov(dwordPtr(rdi, 0x8), r8d);
+        mov(wordPtr(r12), ax);
+        mov(wordPtr(r12d), ax);
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == 
+        "668B4708" ~
+        "448B4708" ~
+        "66894708" ~
+        "44894708" ~
+        "6641890424");
+}
+
+@("gallinule_mov_qword_ptr_r12_rax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(qwordPtr(r12), rax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4989042490");
+}
+
+@("gallinule_mov_dword_ptr_r12_eax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(dwordPtr(r12), eax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4189042490");
+}
+
+@("gallinule_mov_word_ptr_r12_ax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(wordPtr(r12), ax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "664189042490");
+}
+
+@("gallinule_mov_qword_ptr_rax_r12")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(qwordPtr(rax), r12);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4C892090");
+}
+
+@("gallinule_mov_dword_ptr_rax_r12d")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(dwordPtr(rax), r12d);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "44892090");
+}
+
+@("gallinule_mov_word_ptr_rax_r12w")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(wordPtr(rax), r12w);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "6644892090");
+}
+
+@("gallinule_mov_rax_qword_ptr_r12")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(rax, qwordPtr(r12));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "498B042490");
+}
+
+@("gallinule_mov_eax_dword_ptr_r12")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(eax, dwordPtr(r12));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "418B042490");
+}
+
+@("gallinule_mov_ax_word_ptr_r12")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(ax, wordPtr(r12));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "66418B042490");
+}
+
+@("gallinule_mov_r12_qword_ptr_rax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12, qwordPtr(rax));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4C8B2090");
+}
+
+@("gallinule_mov_r12d_dword_ptr_rax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12d, dwordPtr(rax));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "448B2090");
+}
+
+@("gallinule_mov_r12w_word_ptr_rax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12w, wordPtr(rax));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "66448B2090");
+}
+
+@("gallinule_mov_qword_ptr_rdi_rax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(qwordPtr(rdi), rax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "48890790");
+}
+
+@("gallinule_mov_dword_ptr_rdi_eax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(dwordPtr(rdi), eax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "890790");
+}
+
+@("gallinule_mov_word_ptr_rdi_ax")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(wordPtr(rdi), ax);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "66890790");
+}
+
+@("gallinule_mov_qword_ptr_r12_r13")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(qwordPtr(r12), r13);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4D892C2490");
+}
+
+@("gallinule_mov_dword_ptr_r12_r13d")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(dwordPtr(r12), r13d);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "45892C2490");
+}
+
+@("gallinule_mov_word_ptr_r12_r13w")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(wordPtr(r12), r13w);
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "6645892C2490");
+}
+
+@("gallinule_mov_rax_qword_ptr_rdi")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(rax, qwordPtr(rdi));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "488B0790");
+}
+
+@("gallinule_mov_eax_dword_ptr_rdi")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(eax, dwordPtr(rdi));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "8B0790");
+}
+
+@("gallinule_mov_ax_word_ptr_rdi")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(ax, wordPtr(rdi));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "668B0790");
+}
+
+@("gallinule_mov_r12_qword_ptr_r13_0")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12, qwordPtr(r13, 0x0));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "4D8B650090");
+}
+
+@("gallinule_mov_r12d_dword_ptr_r13_0")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12d, dwordPtr(r13, 0x0));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "458B650090");
+}
+
+@("gallinule_mov_r12w_word_ptr_r13_0")
+unittest
+{
+    Block!true block;
+    with (block) {
+        mov(r12w, wordPtr(r13, 0x0));
+        nop();
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == "66458B650090");
 }
