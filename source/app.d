@@ -1,4 +1,5 @@
 import std.stdio;
+import core.memory;
 
 import emu.hw.disk.apploader;
 import emu.hw.disk.dol;
@@ -23,6 +24,8 @@ void logger_on_error_callback(){
 
 version (unittest) {} else {
 	void main(string[] args) {
+		GC.disable();
+		
 		CliArgs cli_args = parse_cli_args(args);
 		
 		wii = new Wii(cli_args.ringbuffer_size);
