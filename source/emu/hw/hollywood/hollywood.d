@@ -13,6 +13,7 @@ import util.bitop;
 import util.force_cast;
 import util.log;
 import util.number;
+import util.page_allocator;
 import util.ringbuffer;
 
 alias Shape = Hollywood.Shape;
@@ -117,7 +118,7 @@ final class Hollywood {
         bool textured;
         int enabled_textures_bitmap;
 
-        Shape[] shapes;
+        PageAllocator!Shape shapes;
     }
 
     struct Shape {
@@ -251,7 +252,8 @@ final class Hollywood {
 
     ProjectionMode projection_mode;
 
-    ShapeGroup[] shape_groups;
+    PageAllocator!ShapeGroup shape_groups;
+    PageAllocator!Vertex vertex_allocator;
     VertexDescriptor[8] vertex_descriptors;
     TextureDescriptor[8] texture_descriptors;
 
@@ -301,6 +303,8 @@ final class Hollywood {
     this() {
         pending_fifo_data = new RingBuffer!u8(0x100000);
         fifo_debug_history = new RingBuffer!FifoDebugValue(100);
+        shape_groups = PageAllocator!ShapeGroup(0);
+        vertex_allocator = PageAllocator!Vertex(0);
         log_hollywood("Hollywood constructor");
     }
 
@@ -1371,78 +1375,6 @@ final class Hollywood {
         }
     }
 
-    private size_t[] calculate_expected_sizes_for_each_vertex_in_next_shape() {
-        auto vcd = &vertex_descriptors[current_vat];
-        auto vat = &vats[current_vat];
-
-        size_t[] sizes;
-
-        if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
-            error_hollywood("PositionNormalMatrix location not implemented");
-        }
-
-        for (int i = 0; i < 8; i++) {
-            if (vcd.texcoord_matrix_location[i] != VertexAttributeLocation.NotPresent) {
-                error_hollywood("TexcoordMatrix location not implemented");
-            }
-        }
-
-        if (vcd.position_location != VertexAttributeLocation.NotPresent) {
-            if (vcd.position_location == VertexAttributeLocation.Indexed8Bit) {
-                sizes ~= 1;
-            } else if (vcd.position_location == VertexAttributeLocation.Indexed16Bit) {
-                sizes ~= 2;
-            } else if (vcd.position_location == VertexAttributeLocation.Direct) {
-                for (int i = 0; i < 8; i++) {
-                    for (int j = 0; j < vat.position_count; j++) {
-                        sizes ~= calculate_expected_size_of_coord(vat.position_format);
-                    }
-                }
-            }
-        }
-
-        if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
-            if (vcd.normal_location == VertexAttributeLocation.Indexed8Bit) {
-                sizes ~= 1;
-            } else if (vcd.normal_location == VertexAttributeLocation.Indexed16Bit) {
-                sizes ~= 2;
-            } else if (vcd.normal_location == VertexAttributeLocation.Direct) {
-                for (int i = 0; i < vat.normal_count; i++) {
-                    sizes ~= calculate_expected_size_of_normal(vat.normal_format);
-                }
-            }
-        }
-
-        for (int i = 0; i < 2; i++) {
-            if (vcd.color_location[i] != VertexAttributeLocation.NotPresent) {
-                if (vcd.color_location[i] == VertexAttributeLocation.Indexed8Bit) {
-                    sizes ~= 1;
-                } else if (vcd.color_location[i] == VertexAttributeLocation.Indexed16Bit) {
-                    sizes ~= 2;
-                } else if (vcd.color_location[i] == VertexAttributeLocation.Direct) {
-                    sizes ~= calculate_expected_size_of_color(vat.color_format[i]);
-                }
-            }
-        }
-
-        for (int i = 0; i < 8; i++) {
-            if (vcd.texcoord_location[i] != VertexAttributeLocation.NotPresent) {
-                if (vcd.texcoord_location[i] == VertexAttributeLocation.Indexed8Bit) {
-                    sizes ~= 1;
-                } else if (vcd.texcoord_location[i] == VertexAttributeLocation.Indexed16Bit) {
-                    sizes ~= 2;
-                } else if (vcd.texcoord_location[i] == VertexAttributeLocation.Direct) {
-                    for (int j = 0; j < vat.texcoord_count[i]; j++) {
-                        sizes ~= calculate_expected_size_of_coord(vat.texcoord_format[i]);
-                    }
-                }
-            }
-        }
-
-        log_hollywood("sizes: %s", sizes);
-        return sizes;
-    }
-
     private u32 get_vertex_attribute(VertexAttributeLocation location, size_t offset, size_t size, int arr_idx) {
         u32 data = 0;
 
@@ -1500,7 +1432,7 @@ final class Hollywood {
         glUseProgram(gl_program);
 
         ShapeGroup shape_group;
-        shape_group.shapes = [];
+        shape_group.shapes = PageAllocator!Shape(0);
         shape_group.textured = false;
         shape_group.position_matrix = general_matrix_ram[0 .. 12]; // ????
         shape_group.projection_matrix = projection_matrix;
@@ -1530,11 +1462,11 @@ final class Hollywood {
         }
 
         int offset = 0;
-        Vertex[] vertices;
+        vertex_allocator.reset();
             auto vcd = &vertex_descriptors[current_vat];
             auto vat = &vats[current_vat];
         for (int i = 0; i < number_of_expected_vertices; i++) {
-            Vertex v;
+            Vertex* v = vertex_allocator.allocate();
             
             // auto vcd = &vertex_descriptors[current_vat];
             // auto vat = &vats[current_vat];
@@ -1684,7 +1616,6 @@ final class Hollywood {
                 }
             }
 
-            vertices ~= v;
         }
 
         for (int i = 0; i < 8; i++) {
@@ -1730,33 +1661,29 @@ final class Hollywood {
 
         switch (current_draw_command) {
             case GXFifoCommand.DrawQuads:
-                log_hollywood("DrawQuads(%d)", vertices.length);
-                for (int i = 0; i < vertices.length; i += 4) {
-                    Shape shape;
-                    shape.vertices = vertices[i .. i + 3];
-                    shape_group.shapes ~= shape;
+                log_hollywood("DrawQuads(%d)", vertex_allocator.length);
+                for (int i = 0; i < vertex_allocator.length; i += 4) {
+                    Shape* shape = shape_group.shapes.allocate();
+                    shape.vertices = [vertex_allocator[i], vertex_allocator[i + 1], vertex_allocator[i + 2]];
                 }
 
-                for (int i = 0; i < vertices.length; i += 4) {
-                    Shape shape;
-                    shape.vertices = [vertices[i + 0], vertices[i + 2], vertices[i + 3]];
-                    shape_group.shapes ~= shape;
+                for (int i = 0; i < vertex_allocator.length; i += 4) {
+                    Shape* shape = shape_group.shapes.allocate();
+                    shape.vertices = [vertex_allocator[i + 0], vertex_allocator[i + 2], vertex_allocator[i + 3]];
                 }
                 break;
             
             case GXFifoCommand.DrawTriangleFan:
-                for (int i = 1; i < vertices.length - 2; i++) {
-                    Shape shape;
-                    shape.vertices = [vertices[0], vertices[i + 1], vertices[i + 2]];
-                    shape_group.shapes ~= shape;
+                for (int i = 1; i < vertex_allocator.length - 2; i++) {
+                    Shape* shape = shape_group.shapes.allocate();
+                    shape.vertices = [vertex_allocator[0], vertex_allocator[i + 1], vertex_allocator[i + 2]];
                 }
                 break;
             
             case GXFifoCommand.DrawTriangleStrip:
-                for (int i = 0; i < vertices.length - 2; i++) {
-                    Shape shape;
-                    shape.vertices = [vertices[i], vertices[i + 1], vertices[i + 2]];
-                    shape_group.shapes ~= shape;
+                for (int i = 0; i < vertex_allocator.length - 2; i++) {
+                    Shape* shape = shape_group.shapes.allocate();
+                    shape.vertices = [vertex_allocator[i], vertex_allocator[i + 1], vertex_allocator[i + 2]];
                 }
                 break;
             
@@ -1767,7 +1694,8 @@ final class Hollywood {
             default: error_hollywood("Unimplemented draw command: %s", current_draw_command);
         }
         
-        shape_groups ~= shape_group;
+        ShapeGroup* slot = shape_groups.allocate();
+        *slot = shape_group;
         if (shape_groups.length == 17) {
             log_hollywood("awni: %s", texture_descriptors[0]);
         }
@@ -1776,7 +1704,7 @@ final class Hollywood {
     bool shit = false;
 
     public void draw() {
-        draw_shape_groups(shape_groups);
+        draw_shape_groups(shape_groups.all()[0 .. shape_groups.length]);
     }
 
     void draw_shape_groups(ShapeGroup[] shape_groups) {
@@ -1822,7 +1750,7 @@ final class Hollywood {
             debug_drawn_shape_groups ~= shape_group;
         }
 
-        this.shape_groups = [];
+        this.shape_groups.reset();
     }
 
     void draw_shape_group(ShapeGroup shape_group, int texnum) {
@@ -1895,7 +1823,7 @@ final class Hollywood {
         uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
         glBindVertexArray(vertex_array_object);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
-        glBufferData(GL_ARRAY_BUFFER, 30 * shape_group.shapes.length * GLfloat.sizeof * 3, shape_group.shapes.ptr, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 30 * shape_group.shapes.length * GLfloat.sizeof * 3, shape_group.shapes.all(), GL_STATIC_DRAW);
 
         auto position_location = glGetAttribLocation(gl_program, "in_Position");
         glEnableVertexAttribArray(position_location);
