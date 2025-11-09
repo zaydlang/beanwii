@@ -4,14 +4,15 @@ IAR * 0000 0000 0000 10aa
 ADDARN * 0000 0000 0001 ssdd
 HALT * 0000 0000 0010 0001
 LOOP * 0000 0000 010r rrrr
-BLOOP * 0000 0000 011r rrrr
+BLOOP * 0000 0000 011r rrrr aaaa aaaa aaaa aaaa
 LRI * 0000 0000 100r rrrr iiii iiii iiii iiii
 LR * 0000 0000 110r rrrr mmmm mmmm mmmm mmmm
 SR * 0000 0000 111r rrrr mmmm mmmm mmmm mmmm
 IF cc * 0000 0010 0111 cccc
 JMP cc * 0000 0010 1001 cccc aaaa aaaa aaaa aaaa
-CALL cc * 0000 0010 1011 cccc
+CALL cc * 0000 0010 1011 cccc aaaa aaaa aaaa aaaa
 RET cc * 0000 0010 1101 cccc
+RTI cc * 0000 0010 1111 cccc
 ASRN * 0000 0010 1100 1011
 LSRN * 0000 0010 1100 1010
 ASRNR * 0011 111d 1xxx xxxx
@@ -25,11 +26,14 @@ ORI * 0000 001r 0110 0000 iiii iiii iiii iiii
 CMPI * 0000 001r 1000 0000 iiii iiii iiii iiii
 ANDCF * 0000 001r 1100 0000 iiii iiii iiii iiii
 ANDF * 0000 001r 1010 0000 iiii iiii iiii iiii
-ILRR * 0000 001r 0001 mmaa
+ILRR * 0000 001r 0001 00aa
+ILRRD * 0000 001d 0001 01ss
+ILRRI * 0000 001d 0001 10ss
+ILRRN * 0000 001d 0001 11ss
 ADDIS * 0000 010d iiii iiii
 CMPIS * 0000 011d iiii iiii
 LRIS * 0000 1rrr iiii iiii
-LOOPI * 0001 0000 iiii iiii aaaa aaaa aaaa aaaa
+LOOPI * 0001 0000 iiii iiii
 BLOOPI * 0001 0001 iiii iiii aaaa aaaa aaaa aaaa
 SBCLR * 0001 0010 0000 0iii
 SBSET * 0001 0011 0000 0iii
@@ -38,13 +42,20 @@ LSR * 0001 010r 01ss ssss
 ASL * 0001 010r 10ss ssss
 ASR * 0001 010r 11ss ssss
 SI * 0001 0110 iiii iiii mmmm mmmm mmmm mmmm
-CALLR * 0001 0111 rrr1 1111
-JMPR * 0001 0111 rrr0 1111
-LRR * 0001 100x xaar rrrr
-SRR * 0001 101x xaar rrrr
+CALLRCC * 0001 0111 rrr1 cccc
+JMPR cc * 0001 0111 rrr0 cccc
+LRR * 0001 1000 0aar rrrr
+LRRD * 0001 1000 1aar rrrr
+LRRI * 0001 1001 0aar rrrr
+LRRN * 0001 1001 1aar rrrr
+SRR * 0001 1010 0aar rrrr
+SRRD * 0001 1010 1aar rrrr
+SRRI * 0001 1011 0aar rrrr
+SRRN * 0001 1011 1aar rrrr
 MRR * 0001 11dd ddds ssss
 LRS * 0010 0rrr mmmm mmmm
-SRS * 0010 1rrr mmmm mmmm
+SRS * 0010 11rr mmmm mmmm
+SRSH * 0010 100s mmmm mmmm
 XORC * 0011 000d 1xxx xxxx
 XORR * 0011 00sr 0xxx xxxx
 ANDR * 0011 01sr 0xxx xxxx
@@ -112,3 +123,30 @@ MSUB * 1111 011s xxxx xxxx
 ADDPAXZ * 1111 10sd xxxx xxxx
 CLRL * 1111 110r xxxx xxxx
 MOVPZ * 1111 111d xxxx xxxx
+
+# Extension Opcodes
+'NOP * xxxx xxxx 0000 00xx
+'DR * xxxx xxxx 0000 01rr
+'IR * xxxx xxxx 0000 10rr
+'NR * xxxx xxxx 0000 11rr
+'MV * xxxx xxxx 0001 ddss
+'S * xxxx xxxx 001s s0dd
+'SN * xxxx xxxx 001s s1dd
+'L * xxxx xxxx 01dd d0ss
+'LN * xxxx xxxx 01dd d1ss
+'LS * xxxx xxxx 10dd 000s
+'SL * xxxx xxxx 10dd 001s
+'LSN * xxxx xxxx 10dd 010s
+'SLN * xxxx xxxx 10dd 011s
+'LSM * xxxx xxxx 10dd 100s
+'SLM * xxxx xxxx 10dd 101s
+'LSNM * xxxx xxxx 10dd 110s
+'SLNM * xxxx xxxx 10dd 111s
+'LD * xxxx xxxx 11dr 00ss
+'LDAX * xxxx xxxx 11sr 0011
+'LDN * xxxx xxxx 11dr 01ss
+'LDAXN * xxxx xxxx 11sr 0111
+'LDM * xxxx xxxx 11dr 10ss
+'LDAXM * xxxx xxxx 11sr 1011
+'LDNM * xxxx xxxx 11dr 11ss
+'LDAXNM * xxxx xxxx 11sr 1111

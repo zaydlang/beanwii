@@ -1,6 +1,6 @@
 from parse_spec import *
 
-instructions = get_instructions('tools/dsp_codegen/spec')
+instructions, extension_instructions = get_instructions('tools/dsp_codegen/spec')
 
 def generate_operand_assertion(operand):
     size = operand.high_index - operand.low_index + 1
@@ -8,6 +8,9 @@ def generate_operand_assertion(operand):
 
 def generate_operand_insertion(operand):
     return f'instruction |= ({operand.char.lower()} << {operand.low_index})'
+
+def generate_extension_operand_insertion(operand):
+    return f'extension |= ({operand.char.lower()} << {operand.low_index})'
 
 with open('assembler.py', 'w+') as f:
     f.write('''
@@ -33,6 +36,35 @@ def {name}({', '.join([f'{op.char.lower()}' for op in reversed(operands)])}):
 \tinstructions.append((instruction, {instruction.size}))
 ''')
     
+    
+    # Generate extension instruction functions
+    for ext_instruction in extension_instructions:
+        opcode = ext_instruction.opcode
+        operands = ext_instruction.operands
+
+        name = f'ext_{opcode.lower()}'
+        f.write(f'''    
+def {name}({', '.join([f'{op.char.lower()}' for op in reversed(operands)])}):
+\t# Validate that last instruction can have extension
+\tif not instructions:
+\t\traise ValueError("No main instruction to extend")
+\t
+\tlast_instruction, size = instructions[-1]
+\tif (last_instruction >> 12) < 4:
+\t\traise ValueError("Last instruction cannot have extension (first nybble < 4)")
+\t
+\tif (last_instruction & 0xFF) != 0:
+\t\traise ValueError("Last instruction already has an extension")
+\t
+\t{'\n\t'.join([generate_operand_assertion(op) for op in reversed(operands)])}
+\t
+\textension = {hex(ext_instruction.fixed_repr)}
+\t{'\n\t'.join([generate_extension_operand_insertion(op) for op in reversed(operands)])}
+\t
+\t# Modify last instruction by ORing in the extension
+\tinstructions[-1] = (last_instruction | extension, size)
+''')
+
     f.write(f'''
 
 def get_label():

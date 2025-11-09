@@ -14,7 +14,8 @@ enum EmissionActionType {
     CpuHalted,
     DecrementerChanged,
     VolatileStateChanged,
-    RanHLEFunction
+    RanHLEFunction,
+    IdleLoopDetected
 }
 
 struct EmissionAction {
@@ -91,6 +92,12 @@ struct EmissionAction {
     static EmissionAction RanHLEFunction() {
         EmissionAction action;
         action.type = EmissionActionType.RanHLEFunction;
+        return action;
+    }
+
+    static EmissionAction IdleLoopDetected() {
+        EmissionAction action;
+        action.type = EmissionActionType.IdleLoopDetected;
         return action;
     }
 

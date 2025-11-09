@@ -43,12 +43,13 @@ def generate_pseudo_values(count):
             case 11:
                 values.append(0x7fff)
             case 12:
-                values.append(0)
+                values.append(0x8000)
             case 13:
-                values.append(0)
+                values.append(0x8001)
             case _:
                 values.append(random.randint(0, 0xffff))
     
+    # return [0] * 1
     return values
 
 def load_accumulators():
@@ -77,6 +78,7 @@ def store_accumulators():
     
         assembler.lri(18, 0)
         assembler.sr(i, i)
+
 
     for i in range(32):
         if i == 18:
@@ -122,7 +124,7 @@ def do_tests(instruction_generator, num_tests):
     assembler.jmp_cc(0b1111, label)
 
     bytes_data, length = assembler.assemble()
-    # print(bytes_data)
+    print(bytes_data)
 
     # length = len(bytes_data)
 

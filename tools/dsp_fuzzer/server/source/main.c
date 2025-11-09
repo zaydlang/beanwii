@@ -107,6 +107,8 @@ void* httpd(void* arg) {
                     u16 test_case_index = (header[4] << 8) | header[5];
                     u16 num_test_cases = (header[6] << 8) | header[7];
                     u16 iram_code_length = (header[8] << 8) | header[9];
+                    printf("Received header: magic=0x%04X, test_case_length=%d, test_case_index=%d, num_test_cases=%d, iram_code_length=%d\n",
+                           magic, test_case_length, test_case_index, num_test_cases, iram_code_length);
                     
                     if (magic != 0xBEEF) {
                         printf("Invalid magic in header: 0x%04X\n", magic);
@@ -237,8 +239,10 @@ void* httpd(void* arg) {
                             DSP_AddTask(&task);
 
                             for (int j = 0; j < 31; j++) {
+                                printf("%x\n", j);
                                 while(!DSP_CheckMailFrom());
                                 uint32_t mb = DSP_ReadMailFrom();
+                                
                                 result_data[i * 31 + j] = mb & 0xFFFF;
                             }
                             printf("Test case %d done\n", i + 1);

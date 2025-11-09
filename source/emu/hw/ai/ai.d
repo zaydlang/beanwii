@@ -3,6 +3,7 @@ module emu.hw.ai.ai;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.broadway.interrupt;
 import emu.scheduler;
+import ui.device;
 import util.bitop;
 import util.log;
 import util.number;
@@ -22,20 +23,54 @@ final class AudioInterface {
         this.interrupt_controller = interrupt_controller;
     }
 
+    void delegate(Sample) push_sample_callback;
+    void set_push_sample_callback(void delegate(Sample) callback) {
+        this.push_sample_callback = callback;
+    }
+
+    void push_sample(Sample s) {
+        if (push_sample_callback) {
+            push_sample_callback(s);
+        }
+    }
+
+    void push_sample(short left, short right) {
+        push_sample(Sample(left, right));
+    }
+
+    private Mem mem;
+    void connect_mem(Mem mem) {
+        this.mem = mem;
+    }
+
+    private u32 current_audio_address;
+    private u32 samples_remaining;
+    private bool audio_streaming_active;
+
+    void start_audio_stream(u32 start_address, u32 sample_count) {
+        this.current_audio_address = start_address;
+        this.samples_remaining = sample_count;
+        this.audio_streaming_active = true;
+        log_ai("Starting audio stream: address=0x%08X, samples=%d", start_address, sample_count);
+    }
+
     ulong audio_sampling_event_id;
     int sample_rate_khz;
 
     u32 ai_control;
     void write_AI_CONTROL(int target_byte, u8 value) {
-        // log_ai("Writing to AI_CONTROL %x %x from %x", target_byte, value, interrupt_controller.cpu.);
+        log_ai("Writing to AI_CONTROL %x %x from %x (lr %x)", target_byte, value, interrupt_controller.broadway.state.pc, 
+            interrupt_controller.broadway.state.lr);
         ai_control = ai_control.set_byte(target_byte, value);
 
         ai_control &= ~(1 << 5);
 
         if (target_byte == 0) {
             sample_rate_khz = value.bit(1) ? 32 : 48;
+            log_ai("Set sample rate to %d kHz", sample_rate_khz);
         
             if (value.bit(0)) {
+                log_ai("Enabling audio sampling");
                 reschedule_audio_sampling();
             } else {
                 log_ai("Disabling audio sampling");
@@ -54,14 +89,14 @@ final class AudioInterface {
     }
 
     void reschedule_audio_sampling() {
-        auto num_cycles = 33_513_982 / (sample_rate_khz * 1000);
+        auto num_cycles = 33_513_982 / (32 * 1000);
         scheduler.remove_event(audio_sampling_event_id);
 
         audio_sampling_event_id = scheduler.add_event_relative_to_clock(&this.sample_audio, num_cycles);
     }
 
     void sample_audio() {
-        auto num_cycles = 33_513_982 / (sample_rate_khz * 1000);
+        auto num_cycles = 33_513_982 / (32 * 1000);
         scheduler.remove_event(audio_sampling_event_id);
 
         audio_sampling_event_id = scheduler.add_event_relative_to_self(&this.sample_audio, num_cycles);
@@ -71,6 +106,7 @@ final class AudioInterface {
         log_ai("Sampling audio %x %x %x", aiscnt, aiit, num_cycles);
 
         if (aiscnt == aiit) {
+            log_ai("aiscnt == aiit (%d), raising interrupt", aiit);
             ai_control |= 1 << 3;
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.AI);
         }

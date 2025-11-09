@@ -50,7 +50,7 @@ struct DspState {
     FlagState flag_state;
 
     struct Stack {
-        u16[4] data;
+        u16[32] data;
         u8 sp = 0;
 
         void push(u16 value) {
@@ -58,7 +58,7 @@ struct DspState {
             data[sp] = value;
             
             sp++;
-            assert_dsp(sp < 4, "Stack overflow");
+            assert_dsp(sp < 32, "Stack overflow");
         }
 
         u16 pop() {

@@ -9,7 +9,38 @@ final class DspMemory {
     u16[0x1800] data_memory;
 
     this() {
+        load_coef_memory();
+    }
 
+    private void load_coef_memory() {
+        import std.file : exists, read;
+        import std.path : buildPath;
+
+        string coef_path = buildPath("roms", "dsp_coef.bin");
+        
+        if (!exists(coef_path)) {
+            log_dsp("DSP COEF file not found at %s, using zeroed COEF memory", coef_path);
+            return;
+        }
+
+        try {
+            ubyte[] file_data = cast(ubyte[]) read(coef_path);
+            
+            if (file_data.length != 0x1000) {
+                error_dsp("DSP COEF file size mismatch: expected 4096 bytes, got %d bytes", file_data.length);
+                return;
+            }
+
+            u16[] coef_data = new u16[0x800];
+            for (size_t i = 0; i < 0x800; i++) {
+                coef_data[i] = (cast(u16) file_data[i * 2] << 8) | file_data[i * 2 + 1];
+            }
+
+            upload_coef(coef_data);
+            log_dsp("Loaded DSP COEF memory from %s", coef_path);
+        } catch (Exception e) {
+            error_dsp("Failed to load DSP COEF file: %s", e.msg);
+        }
     }
 
     u16 read_instruction(u16 address) {

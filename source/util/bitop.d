@@ -54,7 +54,7 @@ public s64 sext_64(T)(T value, u32 size) {
     auto negative = value.bit(size - 1);
     s32 result = value;
 
-    if (negative) result |= (((1 << (64 - size)) - 1) << size);
+    if (negative) result |= (((1UL << (64 - size)) - 1) << size);
     return result;
 }
 

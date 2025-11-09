@@ -18,6 +18,8 @@ final class Runner {
     size_t sync_to_audio_lower;
     size_t sync_to_audio_upper;
 
+    int audio_buffer_threshold;
+
     StopWatch stopwatch;
 
     int fps = 0;
@@ -30,6 +32,7 @@ final class Runner {
         this.frontend = frontend;
 
         this.should_cycle_wii = true;
+        this.audio_buffer_threshold = frontend.get_audio_buffer_capacity() / 2;
     }
 
     void tick() {
@@ -50,7 +53,10 @@ final class Runner {
 
         while (!frontend.should_exit()) {
             if (frontend.is_running()) {
-                wii.cycle(729_000_000 / 60);
+                int audio_samples = frontend.get_audio_buffer_num_samples();
+                if (audio_samples < audio_buffer_threshold) {
+                    wii.cycle(729_000_000 / 60);
+                }
             }
             
             tick();

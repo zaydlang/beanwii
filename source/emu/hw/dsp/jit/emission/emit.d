@@ -6,6 +6,7 @@ import emu.hw.dsp.jit.emission.decoder;
 import emu.hw.dsp.jit.emission.extended;
 import emu.hw.dsp.jit.emission.flags;
 import emu.hw.dsp.jit.emission.helpers;
+import emu.hw.dsp.jit.emission.idle_loop_detector;
 import emu.hw.dsp.jit.jit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
@@ -23,35 +24,76 @@ struct DspEmissionResult {
 }
 
 
-DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, DSP dsp_instance, u16 pc) {
-    u16 current_instruction = dsp_mem.read_instruction(pc);
-    u16 next_instruction    = dsp_mem.read_instruction(cast(u16) (pc + 1));
-    DecodedInstruction decoded = decode_instruction_with_extension(current_instruction, next_instruction);
-    DspInstruction dsp_instruction = decoded.main;
-    
-    // Reset extension handling flag at start of instruction translation
-    code.extension_handled = false;
+private bool ends_block(DspJitResultType result_type) {
+    final switch (result_type) {
+        case DspJitResultType.DspHalted:
+        case DspJitResultType.IfCc:
+        case DspJitResultType.Call:
+        case DspJitResultType.CallCc:
+        case DspJitResultType.CallR:
+        case DspJitResultType.CallRcc:
+        case DspJitResultType.Jmp:
+        case DspJitResultType.JmpCc:
+        case DspJitResultType.JmpR:
+        case DspJitResultType.JmpRcc:
+        case DspJitResultType.RetCc:
+        case DspJitResultType.RtiCc:
+        case DspJitResultType.BLoop:
+        case DspJitResultType.BLoopi:
+        case DspJitResultType.Loop:
+        case DspJitResultType.Loopi:
+            return true;
+        
+        case DspJitResultType.Continue:
+            return false;
+    }
+}
 
-    DspJitResult result = emit_instruction(code, decoded, dsp_instance);
+DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, DSP dsp_instance, u16 pc, u8 max_block_size, DspIdleLoopDetector idle_loop_detector) {
+    u16 current_pc = pc;
+    u32 instruction_count = 0;
+    u32 words_used = 0;
     
-    // Assert that extension was properly handled if the instruction could have one
-    assert_dsp(code.extension_handled == decoded.has_extension, "Extension handling mismatch!");
+    // Initialize idle loop detector for this block
+    idle_loop_detector.reset(pc);
     
+    while (words_used < max_block_size) {
+        u16 current_instruction = dsp_mem.read_instruction(current_pc);
+        u16 next_instruction = dsp_mem.read_instruction(cast(u16) (current_pc + 1));
+        DecodedInstruction decoded = decode_instruction_with_extension(current_instruction, next_instruction);
+        DspInstruction dsp_instruction = decoded.main;
+        
+        // Add instruction to idle loop detector
+        idle_loop_detector.add(dsp_instruction);
+        
+        code.extension_handled = false;
+        DspJitResult result = emit_instruction(code, decoded, dsp_instance);
+        assert_dsp(code.extension_handled == decoded.has_extension, "Extension handling mismatch!");
+        
+        instruction_count++;
+        u32 instruction_words = cast(u32) (dsp_instruction.size / 16);
+        words_used += instruction_words;
+        current_pc = cast(u16)(current_pc + instruction_words);
+        
+        if (ends_block(result.type)) {
+            return handle_block_end(code, dsp_mem, result, dsp_instruction, current_pc, instruction_count, idle_loop_detector, pc);
+        }
+        
+        code.free_all_registers();
+        code.add(code.get_pc_addr(), cast(u8) instruction_words);
+    }
+    
+    code.mov(rax, JitExitReason.BlockEnd);
+    assert_dsp(instruction_count > 0, "Block must contain at least one instruction");
+    return DspEmissionResult(instruction_count);
+}
+
+private DspEmissionResult handle_block_end(DspCode code, DspMemory dsp_mem, DspJitResult result, DspInstruction dsp_instruction, u16 current_pc, u32 instruction_count, DspIdleLoopDetector idle_loop_detector, u16 original_pc) {    
     if (result.type == DspJitResultType.IfCc) {
-        u16 next_next_instruction = dsp_mem.read_instruction(cast(u16) (pc + 2));
-        DspInstruction next_dsp_instruction = decode_instruction(next_instruction, next_next_instruction);
-        ulong size_of_next_instruction = next_dsp_instruction.size / 16;
-
         code.not(result.condition);
         code.and(result.condition, 1);
-        // if (size_of_next_instruction == 1) {
-            code.add(result.condition, 1);
-            code.add(code.get_pc_addr(), result.condition.cvt16());
-        // } else {
-            // code.sal(result.condition, 1);
-            // code.or(result.condition, 1);
-            // code.add(code.get_pc_addr(), result.condition.cvt16());
-        // }
+        code.add(result.condition, 1);
+        code.add(code.get_pc_addr(), result.condition.cvt16());
     } else if (result.type == DspJitResultType.CallCc) {
         R64 value = code.allocate_register();
         R64 tmp1 = code.allocate_register();
@@ -88,15 +130,16 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, DSP dsp_instan
         R64 tmp3 = code.allocate_register();
         
         auto skip_call = code.fresh_label();
+        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
+
         code.test(result.condition, result.condition);
         code.jz(skip_call);
         
         code.movzx(value.cvt32(), code.get_pc_addr());
-        code.add(value.cvt32(), cast(u8) (dsp_instruction.size / 16));
         push_stack(code, StackType.CALL, value, tmp1, tmp2, tmp3);
+        code.mov(code.get_pc_addr(), result.target_register.cvt16());
         
         code.label(skip_call);
-        code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
     } else if (result.type == DspJitResultType.Jmp) {
         // todo optimization
     } else if (result.type == DspJitResultType.JmpCc) {
@@ -158,6 +201,8 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, DSP dsp_instan
         code.mov(code.get_pc_addr(), value.cvt16());
         
         code.label(skip_rti);
+    } else if (result.type == DspJitResultType.BLoop) {
+        // skip
     } else {
         code.add(code.get_pc_addr(), cast(u8) (dsp_instruction.size / 16));
     }
@@ -176,9 +221,27 @@ DspEmissionResult emit_dsp_block(DspCode code, DspMemory dsp_mem, DSP dsp_instan
     case DspJitResultType.JmpRcc:    code.mov(rax, JitExitReason.BranchTaken); break;
     case DspJitResultType.RetCc:     code.mov(rax, JitExitReason.BranchTaken); break;
     case DspJitResultType.RtiCc:     code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.BLoop:     code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.BLoopi:    code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.Loop:      code.mov(rax, JitExitReason.BranchTaken); break;
+    case DspJitResultType.Loopi:     code.mov(rax, JitExitReason.BranchTaken); break;
     }
 
-    return DspEmissionResult(1); // 1 instruction emitted
+    // Check for idle loop: if idle pattern detected, emit runtime PC check
+    if (idle_loop_detector.is_in_idle_loop()) {
+        auto skip_idle_detection = code.fresh_label();
+        R32 tmp_pc = code.allocate_register().cvt32();
+        
+        code.movzx(tmp_pc, code.get_pc_addr());
+        code.cmp(tmp_pc, original_pc);
+        code.jne(skip_idle_detection);
+        
+        code.mov(rax, JitExitReason.IdleLoopDetected);
+        
+        code.label(skip_idle_detection);
+    }
+
+    return DspEmissionResult(instruction_count);
 }
 
 void maybe_handle_sr_sxm(DspCode code, int ac_index) {
@@ -710,15 +773,26 @@ DspJitResult emit_bloop(DspCode code, DecodedInstruction decoded_instruction, DS
     code.movzx(next_pc.cvt32(), code.get_pc_addr());
     code.add(next_pc.cvt32(), cast(u8) (instruction.size / 16));
     
-    push_stack(code, StackType.CALL, next_pc, tmp1, tmp2, tmp3);
     
-    code.mov(value_a.cvt32(), instruction.bloop.a);
-    push_stack(code, StackType.LOOP_ADDRESS, value_a, tmp1, tmp2, tmp3);
-
     read_arbitrary_reg(code, value_i, instruction.bloop.r);
-    push_stack(code, StackType.LOOP_COUNTER, value_i, tmp1, tmp2, tmp3);
     
-    return DspJitResult.Continue;
+    code.cmp(value_i.cvt32(), 0);
+    auto skip_loop = code.fresh_label();
+    auto done = code.fresh_label();
+    code.je(skip_loop);
+
+    code.mov(value_a.cvt32(), instruction.bloop.a);
+    push_stack(code, StackType.CALL, next_pc, tmp1, tmp2, tmp3);
+    push_stack(code, StackType.LOOP_ADDRESS, value_a, tmp1, tmp2, tmp3);
+    push_stack(code, StackType.LOOP_COUNTER, value_i, tmp1, tmp2, tmp3);
+    code.add(code.get_pc_addr(), cast(u8) (instruction.size / 16));
+    code.jmp(done);
+
+code.label(skip_loop);
+    code.mov(code.get_pc_addr(), cast(u16) (instruction.bloop.a + 1));
+
+code.label(done);
+    return DspJitResult.BLoop();
 }
 
 DspJitResult emit_bloopi(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
@@ -729,6 +803,8 @@ DspJitResult emit_bloopi(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     R64 tmp3 = code.allocate_register();
+
+    assert_dsp(instruction.bloopi.i > 0, "BLOOPI instruction with zero immediate loop count encountered");
     
     code.movzx(next_pc.cvt32(), code.get_pc_addr());
     code.add(next_pc.cvt32(), cast(u8) (instruction.size / 16));
@@ -741,7 +817,17 @@ DspJitResult emit_bloopi(DspCode code, DecodedInstruction decoded_instruction, D
     code.mov(value_i.cvt32(), instruction.bloopi.i);
     push_stack(code, StackType.LOOP_COUNTER, value_i, tmp1, tmp2, tmp3);
     
-    return DspJitResult.Continue;
+    return DspJitResult.BLoopi();
+}
+
+DspJitResult emit_loop(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
+    DspInstruction instruction = decoded_instruction.main;
+    R64 value = code.allocate_register();
+    
+    read_arbitrary_reg(code, value, instruction.loop.r);
+    code.mov(code.loop_counter_address(), value.cvt16());
+    
+    return DspJitResult.Loop();
 }
 
 DspJitResult emit_loopi(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
@@ -749,7 +835,7 @@ DspJitResult emit_loopi(DspCode code, DecodedInstruction decoded_instruction, DS
     
     code.mov(code.loop_counter_address(), instruction.loopi.i);
     
-    return DspJitResult.Continue;
+    return DspJitResult.Loopi();
 }
 
 DspJitResult emit_clr15(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
@@ -867,9 +953,9 @@ DspJitResult emit_cmpi(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.ac_hm_address(instruction.cmpi.r));
+    code.mov(tmp1, code.ac_full_address(instruction.cmpi.r));
     code.mov(tmp2, sext_64(instruction.cmpi.i, 16) << 40);
-    code.sal(tmp1, 64 - 24);
+    code.sal(tmp1, 64 - 40);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
@@ -886,9 +972,9 @@ DspJitResult emit_cmpis(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.ac_hm_address(instruction.cmpis.d));
+    code.mov(tmp1, code.ac_full_address(instruction.cmpis.d));
     code.mov(tmp2, sext_64(instruction.cmpis.i, 8) << 40);
-    code.sal(tmp1, 64 - 24);
+    code.sal(tmp1, 64 - 40);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
@@ -1327,6 +1413,11 @@ DspJitResult emit_lr(DspCode code, DecodedInstruction decoded_instruction, DSP d
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     
+    if (dsp_instance.dsp_state.pc == 0x349) {
+        import std.stdio;
+        writefln("instruction parameters: %s", instruction.lr);
+    }
+
     code.mov(address, instruction.lr.m);
     emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);
     write_arbitrary_reg(code, value, instruction.lr.r);
@@ -3112,11 +3203,13 @@ DspJitResult emit_call_cc(DspCode code, DecodedInstruction decoded_instruction, 
 DspJitResult emit_callrcc(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {
     DspInstruction instruction = decoded_instruction.main;
     R32 tmp = code.allocate_register().cvt32();
+    R32 location = code.allocate_register().cvt32();
     R32 condition = code.allocate_register().cvt32();
     
+    read_arbitrary_reg(code, location.cvt64(), instruction.callrcc.r);
     emit_get_condition(code, condition, tmp, cast(Condition) instruction.callrcc.c);
     
-    return DspJitResult.CallRcc(condition, instruction.callrcc.r);
+    return DspJitResult.CallRcc(condition, location);
 }
 
 DspJitResult emit_ret_cc(DspCode code, DecodedInstruction decoded_instruction, DSP dsp_instance) {

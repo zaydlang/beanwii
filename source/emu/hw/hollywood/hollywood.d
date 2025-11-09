@@ -367,9 +367,9 @@ final class Hollywood {
     }
 
     void write_GX_FIFO(T)(T value, int offset) {
-        if (!command_processor.fifos_linked) {
-            return;
-        }
+        // if (!command_processor.fifos_linked) {
+        //     return;
+        // }
 
         log_hollywood("GX FIFO write: %08x %d %d %x %x", value, offset, T.sizeof, mem.cpu.state.pc, mem.cpu.state.lr);
         fifo_write_ptr += T.sizeof;

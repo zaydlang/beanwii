@@ -48,12 +48,14 @@ def loop(r):
 	instruction |= (r << 0)
 	instructions.append((instruction, 16))
     
-def bloop(r):
+def bloop(r, a):
 	assert 0 <= r and r < 32
+	assert 0 <= a and a < 65536
         
-	instruction = 0x60
-	instruction |= (r << 0)
-	instructions.append((instruction, 16))
+	instruction = 0x600000
+	instruction |= (r << 16)
+	instruction |= (a << 0)
+	instructions.append((instruction, 32))
     
 def lri(r, i):
 	assert 0 <= r and r < 32
@@ -98,17 +100,26 @@ def jmp_cc(c, a):
 	instruction |= (a << 0)
 	instructions.append((instruction, 32))
     
-def call_cc(c):
+def call_cc(c, a):
 	assert 0 <= c and c < 16
+	assert 0 <= a and a < 65536
         
-	instruction = 0x2b0
-	instruction |= (c << 0)
-	instructions.append((instruction, 16))
+	instruction = 0x2b00000
+	instruction |= (c << 16)
+	instruction |= (a << 0)
+	instructions.append((instruction, 32))
     
 def ret_cc(c):
 	assert 0 <= c and c < 16
         
 	instruction = 0x2d0
+	instruction |= (c << 0)
+	instructions.append((instruction, 16))
+    
+def rti_cc(c):
+	assert 0 <= c and c < 16
+        
+	instruction = 0x2f0
 	instruction |= (c << 0)
 	instructions.append((instruction, 16))
     
@@ -229,15 +240,40 @@ def andf(r, i):
 	instruction |= (i << 0)
 	instructions.append((instruction, 32))
     
-def ilrr(r, m, a):
+def ilrr(r, a):
 	assert 0 <= r and r < 2
-	assert 0 <= m and m < 4
 	assert 0 <= a and a < 4
         
 	instruction = 0x210
 	instruction |= (r << 8)
-	instruction |= (m << 2)
 	instruction |= (a << 0)
+	instructions.append((instruction, 16))
+    
+def ilrrd(d, s):
+	assert 0 <= d and d < 2
+	assert 0 <= s and s < 4
+        
+	instruction = 0x214
+	instruction |= (d << 8)
+	instruction |= (s << 0)
+	instructions.append((instruction, 16))
+    
+def ilrri(d, s):
+	assert 0 <= d and d < 2
+	assert 0 <= s and s < 4
+        
+	instruction = 0x218
+	instruction |= (d << 8)
+	instruction |= (s << 0)
+	instructions.append((instruction, 16))
+    
+def ilrrn(d, s):
+	assert 0 <= d and d < 2
+	assert 0 <= s and s < 4
+        
+	instruction = 0x21c
+	instruction |= (d << 8)
+	instruction |= (s << 0)
 	instructions.append((instruction, 16))
     
 def addis(d, i):
@@ -344,38 +380,92 @@ def si(i, m):
 	instruction |= (m << 0)
 	instructions.append((instruction, 32))
     
-def callr(r):
+def callrcc(r, c):
 	assert 0 <= r and r < 8
+	assert 0 <= c and c < 16
         
-	instruction = 0x171f
+	instruction = 0x1710
 	instruction |= (r << 5)
+	instruction |= (c << 0)
 	instructions.append((instruction, 16))
     
-def jmpr(r):
+def jmpr_cc(r, c):
 	assert 0 <= r and r < 8
+	assert 0 <= c and c < 16
         
-	instruction = 0x170f
+	instruction = 0x1700
 	instruction |= (r << 5)
+	instruction |= (c << 0)
 	instructions.append((instruction, 16))
     
-def lrr(x, a, r):
-	assert 0 <= x and x < 4
+def lrr(a, r):
 	assert 0 <= a and a < 4
 	assert 0 <= r and r < 32
         
 	instruction = 0x1800
-	instruction |= (x << 7)
 	instruction |= (a << 5)
 	instruction |= (r << 0)
 	instructions.append((instruction, 16))
     
-def srr(x, a, r):
-	assert 0 <= x and x < 4
+def lrrd(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1880
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def lrri(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1900
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def lrrn(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1980
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def srr(a, r):
 	assert 0 <= a and a < 4
 	assert 0 <= r and r < 32
         
 	instruction = 0x1a00
-	instruction |= (x << 7)
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def srrd(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1a80
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def srri(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1b00
+	instruction |= (a << 5)
+	instruction |= (r << 0)
+	instructions.append((instruction, 16))
+    
+def srrn(a, r):
+	assert 0 <= a and a < 4
+	assert 0 <= r and r < 32
+        
+	instruction = 0x1b80
 	instruction |= (a << 5)
 	instruction |= (r << 0)
 	instructions.append((instruction, 16))
@@ -399,11 +489,20 @@ def lrs(r, m):
 	instructions.append((instruction, 16))
     
 def srs(r, m):
-	assert 0 <= r and r < 8
+	assert 0 <= r and r < 4
+	assert 0 <= m and m < 256
+        
+	instruction = 0x2c00
+	instruction |= (r << 8)
+	instruction |= (m << 0)
+	instructions.append((instruction, 16))
+    
+def srsh(s, m):
+	assert 0 <= s and s < 2
 	assert 0 <= m and m < 256
         
 	instruction = 0x2800
-	instruction |= (r << 8)
+	instruction |= (s << 8)
 	instruction |= (m << 0)
 	instructions.append((instruction, 16))
     
@@ -1053,6 +1152,556 @@ def movpz(d, x):
 	instruction |= (d << 8)
 	instruction |= (x << 0)
 	instructions.append((instruction, 16))
+    
+def ext_nop(x):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= x and x < 4
+	
+	extension = 0x0
+	extension |= (x << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_dr(r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= r and r < 4
+	
+	extension = 0x4
+	extension |= (r << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ir(r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= r and r < 4
+	
+	extension = 0x8
+	extension |= (r << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_nr(r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= r and r < 4
+	
+	extension = 0xc
+	extension |= (r << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_mv(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 4
+	
+	extension = 0x10
+	extension |= (d << 2)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_s(s, d):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 4
+	assert 0 <= d and d < 4
+	
+	extension = 0x20
+	extension |= (s << 3)
+	extension |= (d << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_sn(s, d):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 4
+	assert 0 <= d and d < 4
+	
+	extension = 0x24
+	extension |= (s << 3)
+	extension |= (d << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_l(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 8
+	assert 0 <= s and s < 4
+	
+	extension = 0x40
+	extension |= (d << 3)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ln(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 8
+	assert 0 <= s and s < 4
+	
+	extension = 0x44
+	extension |= (d << 3)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ls(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x80
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_sl(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x82
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_lsn(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x84
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_sln(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x86
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_lsm(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x88
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_slm(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x8a
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_lsnm(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x8c
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_slnm(d, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 4
+	assert 0 <= s and s < 2
+	
+	extension = 0x8e
+	extension |= (d << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ld(d, r, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 2
+	assert 0 <= r and r < 2
+	assert 0 <= s and s < 4
+	
+	extension = 0xc0
+	extension |= (d << 5)
+	extension |= (r << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldax(s, r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 2
+	assert 0 <= r and r < 2
+	
+	extension = 0xc3
+	extension |= (s << 5)
+	extension |= (r << 4)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldn(d, r, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 2
+	assert 0 <= r and r < 2
+	assert 0 <= s and s < 4
+	
+	extension = 0xc4
+	extension |= (d << 5)
+	extension |= (r << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldaxn(s, r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 2
+	assert 0 <= r and r < 2
+	
+	extension = 0xc7
+	extension |= (s << 5)
+	extension |= (r << 4)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldm(d, r, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 2
+	assert 0 <= r and r < 2
+	assert 0 <= s and s < 4
+	
+	extension = 0xc8
+	extension |= (d << 5)
+	extension |= (r << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldaxm(s, r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 2
+	assert 0 <= r and r < 2
+	
+	extension = 0xcb
+	extension |= (s << 5)
+	extension |= (r << 4)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldnm(d, r, s):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= d and d < 2
+	assert 0 <= r and r < 2
+	assert 0 <= s and s < 4
+	
+	extension = 0xcc
+	extension |= (d << 5)
+	extension |= (r << 4)
+	extension |= (s << 0)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
+    
+def ext_ldaxnm(s, r):
+	# Validate that last instruction can have extension
+	if not instructions:
+		raise ValueError("No main instruction to extend")
+	
+	last_instruction, size = instructions[-1]
+	if (last_instruction >> 12) < 4:
+		raise ValueError("Last instruction cannot have extension (first nybble < 4)")
+	
+	if (last_instruction & 0xFF) != 0:
+		raise ValueError("Last instruction already has an extension")
+	
+	assert 0 <= s and s < 2
+	assert 0 <= r and r < 2
+	
+	extension = 0xcf
+	extension |= (s << 5)
+	extension |= (r << 4)
+	
+	# Modify last instruction by ORing in the extension
+	instructions[-1] = (last_instruction | extension, size)
 
 
 def get_label():

@@ -1,11 +1,14 @@
 module emu.hw.dsp.dsp;
 
+import emu.hw.ai.ai;
 import emu.hw.broadway.interrupt;
+import emu.hw.dsp.accelerator;
 import emu.hw.dsp.jit.jit;
 import emu.hw.dsp.jit.memory;
 import emu.hw.dsp.state;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
+import ui.device;
 import util.bitop;
 import util.number;
 import util.log;
@@ -16,9 +19,11 @@ final class DSP {
     Scheduler scheduler;
     InterruptController interrupt_controller;
     Mem mem;
+    AudioInterface audio_interface;
 
     DspJit jit;
     DspState dsp_state;
+    DSPAccelerator accelerator;
     
     private EventID aid_interrupt_event_id;
     private EventID update_event_id;
@@ -34,6 +39,7 @@ final class DSP {
         jit = new DspJit();
         jit.set_dsp_instance(this);
         dsp_state = DspState();
+        accelerator = new DSPAccelerator();
 
         dsp_state.wr[0] = 0xffff;
         dsp_state.wr[1] = 0xffff;
@@ -51,6 +57,11 @@ final class DSP {
 
     void connect_mem(Mem mem) {
         this.mem = mem;
+        accelerator.connect_mem(mem);
+    }
+
+    void connect_audio_interface(AudioInterface audio_interface) {
+        this.audio_interface = audio_interface;
     }
 
     u8 read_DSP_MAILBOX_FROM_LOW(int target_byte) {
@@ -59,6 +70,7 @@ final class DSP {
             
             if (target_byte == 1) {
                 dsp_state.dsp_mailbox_hi &= ~0x8000;
+                resume_from_idle_loop();
             }
 
             log_dsp("Read DSP_MAILBOX_FROM_LOW[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
@@ -101,13 +113,10 @@ final class DSP {
     }
 
     void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
+        import std.stdio;
         log_dsp("Write DSP_MAILBOX_TO_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         
-        if (dsp_state.phase == DspPhase.Running) {
-            dsp_state.cpu_mailbox_lo = cast(u16) dsp_state.cpu_mailbox_lo.set_byte(target_byte, value);
-        } else {
-            dsp_state.cpu_mailbox_lo = cast(u16) dsp_state.cpu_mailbox_lo.set_byte(target_byte, value);
-        }
+        dsp_state.cpu_mailbox_lo = cast(u16) dsp_state.cpu_mailbox_lo.set_byte(target_byte, value);
         
         if (target_byte == 1 && dsp_state.phase == DspPhase.AcceptingMicrocode && dsp_state.microcode_count < 10) {
             u32 microcode_config = (cast(u32) dsp_state.cpu_mailbox_hi << 16) | dsp_state.cpu_mailbox_lo;
@@ -124,7 +133,7 @@ final class DSP {
                 log_dsp("  init_vec: 0x%08x", dsp_state.microcode_words[9]);
                 
                 // Upload IRAM code from main memory
-                u32 iram_maddr = dsp_state.microcode_words[1];
+                u32 iram_maddr = dsp_state.microcode_words[1] & 0x7FFFFFFF;
                 u32 iram_len = dsp_state.microcode_words[5];
                 u16 init_vec = cast(u16) dsp_state.microcode_words[9];
                 
@@ -132,7 +141,7 @@ final class DSP {
                     u32 iram_words = iram_len / 2;
                     u16[] iram_data = new u16[iram_words];
                     for (u32 i = 0; i < iram_words; i++) {
-                        iram_data[i] = mem.read_be_u16(iram_maddr + i * 2);
+                        iram_data[i] = mem.paddr_read_u16(iram_maddr + i * 2);
                     }
                     jit.dsp_memory.upload_iram(iram_data);
                 }
@@ -144,6 +153,12 @@ final class DSP {
                 schedule_next_aid_interrupt();
                 schedule_next_update();
             }
+        } else {
+            if (target_byte == 1) {
+                dsp_state.cpu_mailbox_hi |= 0x8000;
+            }
+            // Resume DSP if it was idle waiting for mailbox
+            resume_from_idle_loop();
         }
     }
 
@@ -162,6 +177,9 @@ final class DSP {
         log_dsp("Write DSP_MAILBOX_TO_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         
         dsp_state.cpu_mailbox_hi = cast(u16) dsp_state.cpu_mailbox_hi.set_byte(target_byte, value);
+        
+        // Resume DSP if it was idle waiting for mailbox
+        resume_from_idle_loop();
     }
 
     T read_DSP_CSR(T)(int offset) {
@@ -170,7 +188,7 @@ final class DSP {
     }
 
     void write_DSP_CSR(T)(T value, int offset) {
-        log_dsp("Write DSP_CSR<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        // log_dsp("Write DSP_CSR<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         
         if (value.bit(0)) {
             if (dsp_state.phase == DspPhase.Halted) {
@@ -185,7 +203,7 @@ final class DSP {
         if (value.bit(1)) {
             if (dsp_state.phase == DspPhase.Running) {
                 dsp_state.phase = DspPhase.Halted;
-                log_dsp("DSP halted due to CSR bit 1 write");
+                error_dsp("DSP halted due to CSR bit 1 write");
             }
         }
         
@@ -262,38 +280,60 @@ final class DSP {
     }
 
     u8 read_AR_DMA_START_HIGH(int target_byte) {
-        log_dsp("Read AR_DMA_START_HIGH[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        return 0;
+        u8 result = ar_dma_start_high.get_byte(target_byte);
+        log_cp("Read AR_DMA_START_HIGH[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return result;
     }
 
     void write_AR_DMA_START_HIGH(int target_byte, u8 value) {
-        log_dsp("Write AR_DMA_START_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_cp("Write AR_DMA_START_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        ar_dma_start_high = cast(u16) ar_dma_start_high.set_byte(target_byte, value);
     }
 
     u8 read_AR_DMA_START_LOW(int target_byte) {
-        log_dsp("Read AR_DMA_START_LOW[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        return 0;
+        u8 result = ar_dma_start_low.get_byte(target_byte);
+        log_cp("Read AR_DMA_START_LOW[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return result;
     }
 
     void write_AR_DMA_START_LOW(int target_byte, u8 value) {
-        log_dsp("Write AR_DMA_START_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_cp("Write AR_DMA_START_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        ar_dma_start_low = cast(u16) ar_dma_start_low.set_byte(target_byte, value);
     }
 
     T read_AR_DMA_CNT(T)(int offset) {
-        log_dsp("Read AR_DMA_CNT<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        return cast(T) 0;
+        log_cp("Read AR_DMA_CNT<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) ar_dma_cnt;
     }
 
+    bool play_to_ai;
+    u32 ai_sample_length;
+    u16 ar_dma_cnt;
+    u16 ar_dma_start_high;
+    u16 ar_dma_start_low;
+    
+    u32 current_audio_address;
+    u32 samples_remaining;
+    ulong audio_stream_event_id;
+    bool audio_streaming_active;
     void write_AR_DMA_CNT(T)(T value, int offset) {
         log_dsp("Write AR_DMA_CNT<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        
-        if (value.bit(15)) {
-            this.trigger_dsp_dma();
+        assert_dsp(offset == 0, "AR_DMA_CNT write with unsupported offset %d", offset);
+        assert_dsp(T.sizeof == 2, "AR_DMA_CNT write with unsupported size %d", T.sizeof);
+        ar_dma_cnt = cast(u16) value;
+
+        log_cp("Write AR_DMA_CNT<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+
+        this.play_to_ai = value.bit(15);
+        this.ai_sample_length = cast(u32) value.bits(0, 14) * 32;
+
+        if (this.play_to_ai && !audio_streaming_active) {
+            start_audio_streaming();
         }
     }
 
     u8 read_DSP_DMA_BYTES_LEFT(int target_byte) {
-        log_dsp("Read DSP_DMA_BYTES_LEFT[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_cp("Read DSP_DMA_BYTES_LEFT[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return 0;
     }
 
@@ -323,6 +363,7 @@ final class DSP {
             dsp_state.dsp_mailbox_hi |= 0x8000;
             break;
         case 0xFFFE:
+
             break;
         case 0xFFFF:
             break;
@@ -341,13 +382,34 @@ final class DSP {
             return dma_mm_addr_high;
         case 0xFFCF:
             return dma_mm_addr_low;
+        case 0xFFA0: .. case 0xFFAF:
+        case 0xFFD1:
+        case 0xFFD2:
+        case 0xFFD3:
+        case 0xFFD4:
+        case 0xFFD5:
+        case 0xFFD6:
+        case 0xFFD7:
+        case 0xFFD8:
+        case 0xFFD9:
+        case 0xFFDA:
+        case 0xFFDB:
+        case 0xFFDC:
+        case 0xFFDD:
+        case 0xFFDE:
+        case 0xFFDF:
+            return accelerator.read_register(address);
         case 0xFFFC:
+            log_dsp("DSP IO read to DSP_MAILBOX_FROM_HIGH: 0x%04X", dsp_state.dsp_mailbox_hi);
             return dsp_state.dsp_mailbox_hi;
         case 0xFFFD:
+            log_dsp("DSP IO read to DSP_MAILBOX_FROM_HIGH: 0x%04X", dsp_state.dsp_mailbox_lo);
             return dsp_state.dsp_mailbox_lo;
         case 0xFFFE:
+            log_dsp("DSP IO read to CPU_MAILBOX_HIGH: 0x%04X", dsp_state.cpu_mailbox_hi);
             return dsp_state.cpu_mailbox_hi;
         case 0xFFFF:
+            log_dsp("DSP IO read to CPU_MAILBOX_LOW: 0x%04X", dsp_state.cpu_mailbox_lo);
             u16 value = dsp_state.cpu_mailbox_lo;
             dsp_state.cpu_mailbox_hi &= ~0x8000;
             return value;
@@ -379,22 +441,41 @@ final class DSP {
         case 0xFFCF:
             dma_mm_addr_low = value;
             break;
+        case 0xFFA0: .. case 0xFFAF:
+        case 0xFFD1:
+        case 0xFFD2:
+        case 0xFFD3:
+        case 0xFFD4:
+        case 0xFFD5:
+        case 0xFFD6:
+        case 0xFFD7:
+        case 0xFFD8:
+        case 0xFFD9:
+        case 0xFFDA:
+        case 0xFFDB:
+        case 0xFFDC:
+        case 0xFFDE:
+        case 0xFFDF:
+            accelerator.write_register(address, value);
+            break;
         case 0xFFFB:
-            if (value != 1) {
-                error_dsp("DSP DIRQ: Invalid value 0x%04X, only 1 is allowed", value);
+            if (value != 1 && value != 0) {
+                error_dsp("DSP DIRQ: Invalid value 0x%04X, only 0 or 1 is allowed", value);
                 return;
             }
             
-            if (dsp_state.csr.bit(8)) {
+            if (value == 1 && dsp_state.csr.bit(8)) {
                 dsp_state.csr |= 1 << 7;
                 log_dsp("DSP DIRQ: Processing interrupt request, raising CPU interrupt");
                 interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
             }
             break;
         case 0xFFFC:
+            log_dsp("DSP IO write to DSP_MAILBOX_FROM_HIGH: 0x%04X", value);
             dsp_state.dsp_mailbox_hi = value & 0x7FFF;
             break;
         case 0xFFFD:
+            log_dsp("DSP IO write to DSP_MAILBOX_FROM_LOW: 0x%04X", value);
             dsp_state.dsp_mailbox_lo = value;
             dsp_state.dsp_mailbox_hi |= 0x8000;
             break;
@@ -425,22 +506,39 @@ final class DSP {
         update_event_id = scheduler.add_event_relative_to_clock(&update, 1000);
     }
 
+    private void resume_from_idle_loop() {
+        if (is_in_idle_loop) {
+            is_in_idle_loop = false;
+            log_dsp("DSP waking up (mailbox written, resuming from idle loop)");
+            schedule_next_update();
+        }
+    }
+
+    private bool is_in_idle_loop = false;
+
     private void update() {
         if (dsp_state.phase != DspPhase.Running) {
             return;
         }
         
+        u16 wr3_before = dsp_state.wr[3];
         JitExitReason reason = jit.run_cycles(&dsp_state, 100);
+        u16 wr3_after = dsp_state.wr[3];
         
         if (reason == JitExitReason.DspHalted) {
             dsp_state.phase = DspPhase.Halted;
             error_dsp("DSP halted");
+        } else if (reason == JitExitReason.IdleLoopDetected) {
+            is_in_idle_loop = true;
+            log_dsp("DSP going to sleep (idle loop detected at PC=0x%04X)", dsp_state.pc);
+            return; // Don't reschedule
         }
         
         schedule_next_update();
     }
 
     private void trigger_dsp_dma() {
+        log_cp("Triggering DSP DMA transfer");
         scheduler.add_event_relative_to_clock(&this.complete_dsp_dma, 1000);
     }
 
@@ -456,27 +554,27 @@ final class DSP {
     private void execute_dsp_dma_transfer() {
         u32 main_memory_address = ((cast(u32) dma_mm_addr_high << 16) | dma_mm_addr_low) & 0x7FFFFFFF;
         u16 dsp_address = dma_dsp_address;
-        u16 transfer_bytes = dma_block_length;
+        u16 transfer_bytes = dma_block_length / 2;
         
         bool cpu_to_dsp = !(dma_control_reg & (1 << 0));
         bool use_imem = (dma_control_reg & (1 << 1)) != 0;
         
-        log_dsp("DSP DMA: %s %d bytes between DSP 0x%04X (%s) and main memory 0x%08X", 
+        log_dsp("DSP DMA: %s %d bytes between DSP 0x%04X (%s) and main memory 0x%08X at pc %x", 
                 cpu_to_dsp ? "CPU->DSP" : "DSP->CPU", transfer_bytes,
-                dsp_address, use_imem ? "IMEM" : "DMEM", main_memory_address);
+                dsp_address, use_imem ? "IMEM" : "DMEM", main_memory_address, dsp_state.pc);
         
-        u16 transfer_words = transfer_bytes / 2;
+        u16 transfer_words = transfer_bytes;
         
         for (u16 i = 0; i < transfer_words; i++) {
+            u16 data;
             if (cpu_to_dsp) {
-                u16 data = mem.paddr_read_u16(main_memory_address + i * 2);
+                data = mem.paddr_read_u16(main_memory_address + i * 2);
                 if (use_imem) {
                     jit.dsp_memory.write_instruction(cast(u16)(dsp_address + i), data);
                 } else {
                     jit.dsp_memory.write_data(cast(u16)(dsp_address + i), data);
                 }
             } else {
-                u16 data;
                 if (use_imem) {
                     data = jit.dsp_memory.read_instruction(cast(u16)(dsp_address + i));
                 } else {
@@ -490,23 +588,129 @@ final class DSP {
         scheduler.add_event_relative_to_clock(&complete_dsp_dma, 100);
     }
 
+    private void start_audio_streaming() {
+        current_audio_address = ((cast(u32) ar_dma_start_high << 16) | ar_dma_start_low) & 0x7FFFFFFF;
+        samples_remaining = ai_sample_length / 4;
+        audio_streaming_active = true;
+        
+        log_dsp("Starting 32kHz audio stream: address=0x%08X, samples=%d", current_audio_address, samples_remaining);
+        
+        auto audio_cycles = 33_513_982 / 32000;
+        audio_stream_event_id = scheduler.add_event_relative_to_clock(&this.stream_next_sample, audio_cycles / 2);
+    }
+
+    private void stream_next_sample() {
+        log_dsp("Streaming next audio sample: address=0x%08X, samples_remaining=%d", current_audio_address, samples_remaining);
+        
+        if (samples_remaining == 0) {
+            current_audio_address = ((cast(u32) ar_dma_start_high << 16) | ar_dma_start_low) & 0x7FFFFFFF;
+            samples_remaining = ai_sample_length / 2;
+            audio_streaming_active = false;
+            log_dsp("Audio stream exhausted: address=0x%08X, samples=%d, streaming_active=%s", current_audio_address, samples_remaining, audio_streaming_active ? "true" : "false");
+
+            // ?????
+            trigger_dsp_dma();
+            return;
+        }
+        
+        if (samples_remaining > 0 && audio_interface) {
+            short left = cast(short) mem.paddr_read_u16(current_audio_address);
+            short right = cast(short) mem.paddr_read_u16(current_audio_address + 2);
+
+            if ((left & 0x7fff) != 0 || (right & 0x7fff) != 0) {
+                import std.stdio;
+                // writefln("Audio sample: address=0x%08X left=0x%04X right=0x%04X", current_audio_address, cast(u16) left, cast(u16) right);
+            }
+            
+            audio_interface.push_sample(left, right);
+            
+            current_audio_address += 4;
+            samples_remaining--;
+        }
+        
+        auto audio_cycles = 33_513_982 / 32000;
+        audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles / 2);
+    }
+
     void dump_dsp_registers() {
-        log_dsp("=== DSP REGISTER DUMP ===");
-        log_dsp("PC=0x%04x loop_counter=%d", dsp_state.pc, dsp_state.loop_counter);
-        log_dsp("AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x]", 
+        import std.stdio;
+        writefln("=== DSP REGISTER DUMP ===");
+        writefln("PC=0x%04x loop_counter=%d", dsp_state.pc, dsp_state.loop_counter);
+        writefln("AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x]", 
                 dsp_state.ar[0], dsp_state.ar[1], dsp_state.ar[2], dsp_state.ar[3],
                 dsp_state.ix[0], dsp_state.ix[1], dsp_state.ix[2], dsp_state.ix[3]);
-        log_dsp("WR=[0x%04x,0x%04x,0x%04x,0x%04x] AC=[0x%016x,0x%016x]", 
+        writefln("WR=[0x%04x,0x%04x,0x%04x,0x%04x] AC=[0x%016x,0x%016x]", 
                 dsp_state.wr[0], dsp_state.wr[1], dsp_state.wr[2], dsp_state.wr[3],
                 dsp_state.ac[0].full, dsp_state.ac[1].full);
-        log_dsp("Call Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]", 
+                // size : 32
+        writefln("Call Stack1: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x]", 
                 dsp_state.call_stack.sp,
                 dsp_state.call_stack.data[0], dsp_state.call_stack.data[1], 
-                dsp_state.call_stack.data[2], dsp_state.call_stack.data[3]);
-        log_dsp("Data Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]", 
+                dsp_state.call_stack.data[2], dsp_state.call_stack.data[3],
+                dsp_state.call_stack.data[4], dsp_state.call_stack.data[5],
+                dsp_state.call_stack.data[6], dsp_state.call_stack.data[7]);
+        writefln("Call Stack2: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x]", 
+                dsp_state.call_stack.sp,
+                dsp_state.call_stack.data[8], dsp_state.call_stack.data[9],
+                dsp_state.call_stack.data[10], dsp_state.call_stack.data[11],
+                dsp_state.call_stack.data[12], dsp_state.call_stack.data[13],
+                dsp_state.call_stack.data[14], dsp_state.call_stack.data[15]);
+        writefln("Call Stack3: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x]", 
+                dsp_state.call_stack.sp,
+                dsp_state.call_stack.data[16], dsp_state.call_stack.data[17],
+                dsp_state.call_stack.data[18], dsp_state.call_stack.data[19],
+                dsp_state.call_stack.data[20], dsp_state.call_stack.data[21],
+                dsp_state.call_stack.data[22], dsp_state.call_stack.data[23]);
+        writefln("Call Stack4: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x]", 
+                dsp_state.call_stack.sp,
+                dsp_state.call_stack.data[24], dsp_state.call_stack.data[25],
+                dsp_state.call_stack.data[26], dsp_state.call_stack.data[27],
+                dsp_state.call_stack.data[28], dsp_state.call_stack.data[29],
+                dsp_state.call_stack.data[30], dsp_state.call_stack.data[31]);
+
+        writefln("Data Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x,0x%04x]", 
                 dsp_state.data_stack.sp,
                 dsp_state.data_stack.data[0], dsp_state.data_stack.data[1], 
-                dsp_state.data_stack.data[2], dsp_state.data_stack.data[3]);
-        log_dsp("========================");
+                dsp_state.data_stack.data[2], dsp_state.data_stack.data[3],
+                dsp_state.data_stack.data[4], dsp_state.data_stack.data[5],
+                dsp_state.data_stack.data[6], dsp_state.data_stack.data[7]);
+        
+        writefln("========================");
     }
+}
+
+void dsp_stack_overflow_error(u32 stack_type) {
+    switch (stack_type) {
+    case 0: error_dsp("DSP call stack overflow (ST0)"); break;
+    case 1: error_dsp("DSP data stack overflow (ST1)"); break;
+    case 2: error_dsp("DSP loop address stack overflow"); break;
+    case 3: error_dsp("DSP loop counter stack overflow"); break;
+    default: error_dsp("DSP stack overflow (unknown type %d)", stack_type); break;
+    }
+}
+
+void dsp_stack_underflow_error(u32 stack_type) {
+    switch (stack_type) {
+    case 0: error_dsp("DSP call stack underflow (ST0)"); break;
+    case 1: error_dsp("DSP data stack underflow (ST1)"); break;
+    case 2: error_dsp("DSP loop address stack underflow"); break;
+    case 3: error_dsp("DSP loop counter stack underflow"); break;
+    default: error_dsp("DSP stack underflow (unknown type %d)", stack_type); break;
+    }
+}
+
+void dsp_invalid_instruction_memory_error(u16 address) {
+    error_dsp("DSP invalid instruction memory access at address 0x%04X", address);
+}
+
+void dsp_invalid_data_memory_read_error(u16 address) {
+    error_dsp("DSP invalid data memory read at address 0x%04X", address);
+}
+
+void dsp_invalid_data_memory_write_error(u16 address) {
+    error_dsp("DSP invalid data memory write at address 0x%04X", address);
+}
+
+void dsp_coef_memory_write_error(u16 address) {
+    error_dsp("DSP attempted write to read-only COEF memory at address 0x%04X", address);
 }
