@@ -595,7 +595,7 @@ final class DSP {
         
         log_dsp("Starting 32kHz audio stream: address=0x%08X, samples=%d", current_audio_address, samples_remaining);
         
-        auto audio_cycles = 33_513_982 / 32000;
+        auto audio_cycles = 729_000_000 / 32000;
         audio_stream_event_id = scheduler.add_event_relative_to_clock(&this.stream_next_sample, audio_cycles / 2);
     }
 
@@ -628,7 +628,7 @@ final class DSP {
             samples_remaining--;
         }
         
-        auto audio_cycles = 33_513_982 / 32000;
+        auto audio_cycles = 729_000_000 / 32000;
         audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles / 2);
     }
 
