@@ -6,6 +6,7 @@ import emu.hw.memory.strategy.memstrategy;
 import util.bitop;
 import util.log;
 import util.number;
+import util.page_allocator;
 
 struct TextureDescriptor {
     size_t width;
@@ -68,6 +69,8 @@ enum TexcoordSource {
 alias TextureCache = khash!(u64, Color[]);
 TextureCache texture_cache;
 
+PageAllocator!(Color, false) texture_allocator;
+
 size_t size_of_texture(TextureDescriptor descriptor) {
     final switch (descriptor.type) {
         case TextureType.I4:
@@ -109,7 +112,7 @@ Color[] load_texture_rgb565(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  4);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -144,7 +147,7 @@ Color[] load_texture_rgb5a3(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  4);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -188,7 +191,7 @@ Color[] load_texture_i4(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  8);
     int tiles_y = div_roundup(cast(int) height, 8);
@@ -241,7 +244,7 @@ Color[] load_texture_i8(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  8);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -277,7 +280,7 @@ Color[] load_texture_ia4(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  8);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -316,7 +319,7 @@ Color[] load_texture_ia8(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  4);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -358,7 +361,7 @@ Color[] load_texture_compressed(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
     
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  8);
     int tiles_y = div_roundup(cast(int) height, 8);
@@ -465,7 +468,7 @@ Color[] load_texture_rgba32(TextureDescriptor descriptor, Mem mem) {
     auto height = descriptor.height;
     auto base_address = descriptor.base_address;
 
-    auto texture = new Color[width * height];
+    auto texture = texture_allocator.allocate_array(width * height);
 
     int tiles_x = div_roundup(cast(int) width,  4);
     int tiles_y = div_roundup(cast(int) height, 4);
@@ -501,6 +504,11 @@ Color[] load_texture_rgba32(TextureDescriptor descriptor, Mem mem) {
 }
 
 Color[] load_texture(TextureDescriptor descriptor, Mem mem) {
+    if (texture_allocator.length == 0) {
+        texture_allocator = PageAllocator!(Color, false)(0);
+    }
+    
+    
     log_hollywood("Loading texture %d: %s", mem.mmio.hollywood.shape_groups.length, descriptor);
 
     u64 hash = calculate_texture_hash(descriptor, mem);

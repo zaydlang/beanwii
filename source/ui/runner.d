@@ -32,7 +32,7 @@ final class Runner {
         this.frontend = frontend;
 
         this.should_cycle_wii = true;
-        this.audio_buffer_threshold = frontend.get_audio_buffer_capacity() / 2;
+        this.audio_buffer_threshold = frontend.get_audio_buffer_capacity() / 4;
     }
 
     void tick() {
