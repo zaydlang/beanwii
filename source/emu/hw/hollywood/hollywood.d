@@ -98,7 +98,7 @@ final class Hollywood {
     }
 
     struct Texture {
-        Color* data;
+        int texture_id;
         size_t width;
         size_t height;
         TextureWrap wrap_s;
@@ -282,6 +282,7 @@ final class Hollywood {
     private GLuint gl_program;
 
     private GlObjectManager gl_object_manager;
+    private TextureManager texture_manager;
     
     private u32 display_list_address;
     private u32 display_list_size;
@@ -311,6 +312,7 @@ final class Hollywood {
     void init_opengl() {
         blitting_processor = new BlittingProcessor();
         gl_object_manager = new GlObjectManager();
+        texture_manager = new TextureManager();
 
         state = State.WaitingForCommand;
 
@@ -1442,7 +1444,7 @@ final class Hollywood {
         for (int i = 0; i < 8; i++) {
             if (tev_config.stages[i].texmap_enable) { 
                 int j = tev_config.stages[i].texmap;
-                shape_group.texture[j].data = load_texture(texture_descriptors[j], mem).ptr;
+                shape_group.texture[j].texture_id = texture_manager.load_texture(texture_descriptors[j], mem, gl_object_manager);
                 shape_group.texture[j].width = texture_descriptors[j].width;
                 shape_group.texture[j].height = texture_descriptors[j].height;
                 shape_group.texture[j].wrap_s = texture_descriptors[j].wrap_s;
@@ -1769,7 +1771,7 @@ final class Hollywood {
 
                 // Give the image to OpenGL
                 // log_hollywood("projection color: %s", shape.texture[0]);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) shape_group.texture[i].height, cast(GLint) shape_group.texture[i].width, 0, GL_BGRA, GL_UNSIGNED_BYTE, shape_group.texture[i].data);
+                glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
 
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -2002,7 +2004,7 @@ final class Hollywood {
         glBindTexture(GL_TEXTURE_2D, texture_id);
         glActiveTexture(GL_TEXTURE0);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(GLint) texture.height, cast(GLint) texture.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, texture.data);
+        glBindTexture(GL_TEXTURE_2D, texture.texture_id);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

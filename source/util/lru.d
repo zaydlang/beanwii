@@ -1,19 +1,70 @@
 module util.lru;
 
-// import util.bitop;
+struct ClockCache(K, V, size_t Size) {
+    struct Entry {
+        K key;
+        V value;
+        bool valid;
+        bool reference_bit;
+    }
+    
+    Entry[Size] entries;
+    size_t clock_hand;
+    size_t count;
+    
+    size_t insert(K key) {
+        foreach (i, ref entry; entries) {
+            if (entry.valid && entry.key == key) {
+                entry.reference_bit = true;
+                return i;
+            }
+        }
 
-// abstract class LRUCache(Size, T) {
-//     struct Item {
-//         T value;
-//         size_t index_in_clock;
-//     }
+        if (count < Size) {
+            foreach (i, ref entry; entries) {
+                if (!entry.valid) {
+                    entry.key = key;
+                    entry.valid = true;
+                    entry.reference_bit = true;
+                    count++;
+                    return i;
+                }
+            }
+        }
 
-//     static assert (Size % 64 == 0, "Size must be a multiple of 64");
+        while (true) {
+            Entry* victim = &entries[clock_hand];
+            size_t victim_index = clock_hand;
+            clock_hand = (clock_hand + 1) % Size;
 
-//     private uint64_t[Size / 64] clock;
-//     private T[Size] data;
+            if (!victim.reference_bit) {
+                victim.key = key;
+                victim.valid = true;
+                victim.reference_bit = true;
+                return victim_index;
+            }
 
-//     Item insert(T key) {
-        
-//     }
-// }
+            victim.reference_bit = false;
+        }
+    }
+
+    long lookup(K key) {
+        foreach (i, ref entry; entries) {
+            if (entry.valid && entry.key == key) {
+                entry.reference_bit = true;
+                return cast(long) i;
+            }
+        }
+
+        return -1;
+    }
+
+    void clear() {
+        foreach (ref entry; entries) {
+            entry.valid = false;
+        }
+
+        clock_hand = 0;
+        count = 0;
+    }
+}
