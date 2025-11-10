@@ -16,7 +16,6 @@ final class GlObjectManager {
         vertex_array_objects_count = 0;
         vertex_buffer_objects_count = 0;
         uniform_buffer_objects_count = 0;
-        texture_objects_count = 0;
     }
 
     uint allocate_vertex_array_object() {
