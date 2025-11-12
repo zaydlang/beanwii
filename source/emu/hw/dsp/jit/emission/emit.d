@@ -1413,10 +1413,6 @@ DspJitResult emit_lr(DspCode code, DecodedInstruction decoded_instruction, DSP d
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
     
-    if (dsp_instance.dsp_state.pc == 0x349) {
-        import std.stdio;
-        writefln("instruction parameters: %s", instruction.lr);
-    }
 
     code.mov(address, instruction.lr.m);
     emit_read_data_memory(code, value, address, tmp1, tmp2, dsp_instance);

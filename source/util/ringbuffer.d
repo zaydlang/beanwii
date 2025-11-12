@@ -59,4 +59,10 @@ final class RingBuffer(T) {
     int get_size() {
         return size;
     }
+
+    void clear() {
+        read_ptr  = 0;
+        write_ptr = 0;
+        size      = 0;
+    }
 }

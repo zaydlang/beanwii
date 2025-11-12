@@ -12,6 +12,7 @@ import emu.hw.broadway.jit.jit;
 import emu.hw.ipc.ipc;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
+import ldc.intrinsics;
 import util.bitop;
 import util.endian;
 import util.log;
@@ -159,65 +160,32 @@ final class Broadway {
 
     bool debjit = false;
     bool had_17 = false;
+
     public BroadwayReturnValue cycle(u32 num_cycles) {
-        if (state.halted) {
-            log_function("CPU is halted, not running\n");
-        }
-        
         u32 elapsed = 0;
+        size_t num_fast_forwarded = 0;
         while (elapsed < num_cycles) {
             exception_raised = false;
-            u32 old_pc = state.pc;
-
-            if (old_pc == 0x8001ed94) {
-                debjit = true;
-
-
-}
-
-            if (debjit) {
-                // log_state(&state);
-                // log_state()
-            }
-            if (old_pc >= 0x80014b9c && old_pc < 0x800151fc) {
-                log_jit("StreamPlay() from %x", state.pc);
-            }
-
-            if (old_pc == 0x8002023c) {
-                log_jit("__lwp_thread_setstate(%x, %x) from %x", state.gprs[3], state.gprs[4], state.lr);
-            }
-
-            if (old_pc == 0x8019b6c8) {
-                error_jit("shit");
-            }
-
-            if (old_pc == 0x8000403c) {
-                log_jit("bad function %x", state.lr);
-            }
-            if (old_pc == 0x804c5f88) {
-                log_jit("dickwad: %x", state.gprs[3]);
-            }
-            if (old_pc == 0x804a38fc) {
-                log_jit("crash_and_cry()");
-            }
 
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
-            if (mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
-                // log_jit("PC: %x", state.pc);
-            }
 
+version (release) {
+} else {
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
                 gdb_stub.breakpoint_hit(state.pc);
                 return BroadwayReturnValue(elapsed, true);
             }
+}
 
-            if (jit_return_value.block_return_value.value == BlockReturnValue.IdleLoopDetected &&
+            if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
+                raise_exception(ExceptionType.FloatingPointUnavailable);
+            } else if (jit_return_value.block_return_value.value == BlockReturnValue.IdleLoopDetected &&
                 !jit_return_value.block_return_value.breakpoint_hit) {
-                // import std.stdio; writefln("idle pooping at %x", state.pc);
                 auto fast_forward = scheduler.tick_to_next_event();
                 scheduler.process_events();
                 elapsed += fast_forward;
+                num_fast_forwarded += fast_forward;
 
                 handle_pending_interrupts();
 
@@ -230,10 +198,6 @@ final class Broadway {
 
             scheduler.tick(delta);
             scheduler.process_events();
-
-            if (state.pc == 0) {
-                error_jit("PC is zero, %x", old_pc);
-            }
         
             handle_pending_interrupts();
             elapsed += delta;
@@ -365,7 +329,7 @@ final class Broadway {
         if (exception_raised) error_jit("Exception already raised");
         exception_raised = true;
 
-        assert(type == ExceptionType.Decrementer || type == ExceptionType.ExternalInterrupt);
+        assert(type == ExceptionType.Decrementer || type == ExceptionType.ExternalInterrupt || type == ExceptionType.FloatingPointUnavailable);
 
         state.srr0 = state.pc;
         state.srr1 &= ~(0b0000_0111_1100_0000_1111_1111_1111_1111);
@@ -390,8 +354,9 @@ final class Broadway {
         u32 base = ip ? 0xFFF0_0000 : 0x0000_0000;
 
         switch (type) {
-        case ExceptionType.ExternalInterrupt: state.pc = base + 0x500; break;
-        case ExceptionType.Decrementer:       state.pc = base + 0x900; break;
+        case ExceptionType.ExternalInterrupt:        state.pc = base + 0x500; break;
+        case ExceptionType.FloatingPointUnavailable: state.pc = base + 0x800; break;
+        case ExceptionType.Decrementer:              state.pc = base + 0x900; break;
         default: assert(0);
         }
     }
@@ -408,9 +373,11 @@ final class Broadway {
     void handle_pending_interrupts() {
         log_interrupt("Pending interrupts: %x (%x)", pending_interrupts, state.msr.bit(15));
         if (pending_interrupts > 0) {
-            if (state.msr.bit(15)) {
+            auto exception_to_raise = core.bitop.bsf(pending_interrupts);
+            
+            // FloatingPointUnavailable bypasses MSR.EE check
+            if (exception_to_raise == ExceptionType.FloatingPointUnavailable || state.msr.bit(15)) {
                 log_interrupt("Handling pending interrupt: %x", pending_interrupts);
-                auto exception_to_raise = core.bitop.bsf(pending_interrupts);
                 // log_function("Raising exception: %s", exception_to_raise);
                 handle_exception(cast(ExceptionType) exception_to_raise);
                 pending_interrupts &= ~(1 << exception_to_raise);
@@ -422,6 +389,8 @@ final class Broadway {
 
     void raise_exception(ExceptionType type) {
         log_interrupt("Raise exception: %s %d", type, state.msr.bit(15));
+        
+        
         pending_interrupts |= (1 << type);
     }
 

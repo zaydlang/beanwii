@@ -2,6 +2,7 @@ module emu.hw.broadway.jit.emission.helpers;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
+import emu.hw.broadway.jit.emission.return_value;
 import gallinule.x86;
 import util.bitop;
 import util.number;
@@ -64,4 +65,27 @@ void is_cond_ok(Code code, int bo, int bi, R32 result) {
 void abort(Code code) {
     code.xor(rdi, rdi);
     code.mov(rdi, code.qwordPtr(rdi));
+}
+
+void check_fp_enabled_or_jump(Code code) {
+    if (code.has_checked_fp()) {
+        return;
+    }
+    
+    code.mark_fp_checked();
+    
+    auto msr = code.allocate_register_prefer(r15d);
+    auto offset = get_reg_offset(GuestReg.MSR);
+    code.mov(msr, code.dwordPtr(code.CPU_BASE_REG, cast(int) offset));
+    
+    code.test(msr, 1 << 13);
+
+    auto fp_enabled_label = code.fresh_label();
+    code.jnz(fp_enabled_label);
+    
+    code.set_reg(GuestReg.PC, code.get_guest_pc());
+    code.mov(rax, BlockReturnValue.FloatingPointUnavailable);
+    code.jmp(code.get_epilogue_label());
+
+    code.label(fp_enabled_label);
 }

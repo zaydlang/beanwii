@@ -118,6 +118,16 @@ final class Code {
         return u16_to_reg32(cast(u16) reg);
     }
 
+    R32 allocate_register_prefer(R32 preferred) {
+        int preferred_index = reg32_to_u16(preferred);
+        if ((allocated_regs & (1 << preferred_index)) == 0) {
+            allocated_regs |= 1 << preferred_index;
+            return preferred;
+        } else {
+            return allocate_register();
+        }
+    }
+
     void reserve_register(R32 reg) {
         allocated_regs |= 1 << reg32_to_u16(reg);
     }
@@ -134,6 +144,33 @@ final class Code {
     int label_counter = 0;
     string fresh_label() {
         return "label_" ~ to!string(label_counter++);
+    }
+
+    private bool fp_checked = false;
+    private u32 first_fp_pc;
+    
+    public string get_epilogue_label() { 
+        return "epilogue"; 
+    }
+    
+    public void reset_fp_checked() {
+        fp_checked = false;
+    }
+    
+    public bool has_checked_fp() {
+        return fp_checked;
+    }
+    
+    public void mark_fp_checked() {
+        fp_checked = true;
+    }
+    
+    public void set_first_fp_pc(u32 pc) {
+        first_fp_pc = pc;
+    }
+    
+    public u32 get_first_fp_pc() {
+        return first_fp_pc;
     }
 
     int stack_alignment;

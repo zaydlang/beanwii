@@ -89,7 +89,6 @@ final class SlowMem : MemStrategy {
         if (!real_mode) {
             // See: wii.setup_global_memory_value(u8[] wii_disk_data);
             // assert(address != 0x8000_3198);
-
             if        (0x80000000 <= address && address <= 0x817FFFFF) {
                 return MemoryAccess(MemoryRegion.MEM1, address - 0x80000000);
             } else if (0x90000000 <= address && address <= 0x93FFFFFF) {
@@ -223,10 +222,6 @@ final class SlowMem : MemStrategy {
             auto memory_access = get_memory_access_from_paddr(address);
         }
 
-        if ((address & 0x7fffffff) == 0x00155D80) {
-                import std.stdio;
-            writefln("Write to SAMPLE 0x%08x = 0x%08x(pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
-        }
 
         if (address == 0x80521be4 || address == 0x00521be4 || address == 0x80521be6) {
             log_cp("IMPORTANT Write to 0x%08x = 0x%08x(pc: %x, lr: %x) %d", address, value, cpu.state.pc, cpu.state.lr, T.sizeof);
