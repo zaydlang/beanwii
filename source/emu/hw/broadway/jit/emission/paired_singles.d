@@ -33,6 +33,8 @@ EmissionAction emit_psq_st_generic(Code code, R32 address, GuestReg guest_rs, in
 }
 
 EmissionAction emit_psq_st(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_ra = opcode.bits(16, 20).to_gpr;    
@@ -53,6 +55,8 @@ EmissionAction emit_psq_st(Code code, u32 opcode) {
 }
 
 EmissionAction emit_psq_stx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -75,6 +79,8 @@ EmissionAction emit_psq_stx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_psq_stu(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_ra = opcode.bits(16, 20).to_gpr;    
@@ -118,6 +124,8 @@ EmissionAction emit_psq_l_generic(Code code, R64 dest, GuestReg guest_rd, R32 ad
 }
 
 EmissionAction emit_psq_lu(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_ra = opcode.bits(16, 20).to_gpr;
@@ -141,6 +149,8 @@ EmissionAction emit_psq_lu(Code code, u32 opcode) {
 }
 
 EmissionAction emit_psq_l(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_ra = opcode.bits(16, 20).to_gpr;
@@ -162,6 +172,8 @@ EmissionAction emit_psq_l(Code code, u32 opcode) {
 }
 
 EmissionAction emit_psq_lx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse_or_lsqe(code);
 
     auto guest_rb = opcode.bits(11, 15).to_gpr;
@@ -184,6 +196,8 @@ EmissionAction emit_psq_lx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_abs(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rb = opcode.bits(11, 15).to_fpr;
@@ -202,6 +216,8 @@ EmissionAction emit_ps_abs(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_add(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -218,6 +234,8 @@ EmissionAction emit_ps_add(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_msubx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -237,6 +255,8 @@ EmissionAction emit_ps_msubx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_subx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -253,6 +273,8 @@ EmissionAction emit_ps_subx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_maddx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -272,6 +294,8 @@ EmissionAction emit_ps_maddx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_sum0(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
     auto guest_rd = opcode.bits(21, 25).to_fpr;
@@ -290,6 +314,8 @@ EmissionAction emit_ps_sum0(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_sum1(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
     auto guest_rd = opcode.bits(21, 25).to_fpr;
@@ -308,6 +334,8 @@ EmissionAction emit_ps_sum1(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_mulx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -324,6 +352,8 @@ EmissionAction emit_ps_mulx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
     auto crfd = opcode.bits(23, 25);
@@ -343,6 +373,8 @@ EmissionAction emit_ps_cmpo0(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_cmpu0(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
     auto crfd = opcode.bits(23, 25);
@@ -362,6 +394,8 @@ EmissionAction emit_ps_cmpu0(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_cmpu1(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     auto guest_ra = opcode.bits(16, 20).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
     auto crfd = opcode.bits(23, 25);
@@ -381,6 +415,8 @@ EmissionAction emit_ps_cmpu1(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -401,6 +437,8 @@ EmissionAction emit_ps_madds0x(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_madds1x(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_fpr;
@@ -421,6 +459,8 @@ EmissionAction emit_ps_madds1x(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_absx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(11, 15).to_fpr;
@@ -440,6 +480,8 @@ EmissionAction emit_ps_absx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_negx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(11, 15).to_fpr;
@@ -460,6 +502,8 @@ EmissionAction emit_ps_negx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_mr(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -473,6 +517,8 @@ EmissionAction emit_ps_mr(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_merge11(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -489,6 +535,8 @@ EmissionAction emit_ps_merge11(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_merge01(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -505,6 +553,8 @@ EmissionAction emit_ps_merge01(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_merge00(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -521,6 +571,8 @@ EmissionAction emit_ps_merge00(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_merge10(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -537,6 +589,8 @@ EmissionAction emit_ps_merge10(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_div(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_ra = opcode.bits(16, 20).to_ps;
@@ -553,6 +607,8 @@ EmissionAction emit_ps_div(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_muls0(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -572,6 +628,8 @@ EmissionAction emit_ps_muls0(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_muls1(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
 
     auto guest_rd = opcode.bits(21, 25).to_ps;
@@ -591,6 +649,8 @@ EmissionAction emit_ps_muls1(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
     log_function("BIG DICKS!");
 
@@ -617,6 +677,8 @@ EmissionAction emit_ps_nmaddx(Code code, u32 opcode) {
 }
 
 EmissionAction emit_ps_nmsubx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
     abort_if_no_pse(code);
     log_function("BIG DICKS!");
 

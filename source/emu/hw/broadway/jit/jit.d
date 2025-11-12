@@ -11,6 +11,7 @@ import emu.hw.broadway.jit.emission.idle_loop_detector;
 import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.jit.page_table;
 import emu.hw.broadway.cpu;
+import emu.hw.broadway.exception_type;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
 import std.meta;
@@ -105,11 +106,6 @@ final class Jit {
 
     BlockReturnValue process_jit_function(JitFunction func, BroadwayState* state) {
         state.cycle_quota = 0;
-        // log_state(state);
-        if (state.pc == 0x800653c4) {
-            // log_wii("JIT: %x %x %x", state.pc, 0,0);
-        }
-
 
         BlockReturnValue ret = func(state);
 
@@ -138,6 +134,9 @@ final class Jit {
                 break;
             
             case BlockReturnValue.IdleLoopDetected:
+                break;
+            
+            case BlockReturnValue.FloatingPointUnavailable:
                 break;
             
             default:
@@ -196,25 +195,31 @@ final class Jit {
     }
 
     void add_dependent(u32 parent, u32 child) {
+        log_jit("Adding dependency: parent=0x%08x -> child=0x%08x", parent, child);
         auto list = parent in dependents;
 
-        if (list !is null) {
+        if (list is null) {
+            log_jit("Creating new dependency list for parent=0x%08x", parent);
             dependents[parent] = [child];
         } else {
+            log_jit("Appending to existing dependency list for parent=0x%08x (current size: %d)", parent, (*list).length);
             dependents[parent] ~= child;
         }
     }
 
     void invalidate(u32 address) {
-        // log_jit("Invalidating %x", address);
+        log_jit("Invalidating block at 0x%08x", address);
         
         basic_block_link_requests.remove(address);
 
         if (code_page_table.has(address)) {
+            log_jit("Block exists in page table, removing and invalidating dependents");
             code_page_table.remove(address);
 
             if (address in dependents) {
+                log_jit("Found %d dependents for block 0x%08x", dependents[address].length, address);
                 foreach (dependent; dependents[address]) {
+                    log_jit("Recursively invalidating dependent 0x%08x", dependent);
                     invalidate(dependent);
                 }
             }
@@ -223,22 +228,30 @@ final class Jit {
 
     int x = 0;
     void submit_basic_block_link_patch_point(u32 parent, u32 child, u64 patch_point_offset) {
+        log_jit("Submitting link request: parent=0x%08x child=0x%08x offset=0x%016x", parent, child, patch_point_offset);
         basic_block_link_requests.put(parent, [BasicBlockLinkRequest(patch_point_offset, child, 0, peek_next_jit_id(), mem.cpu.scheduler.get_current_time())]);
     }
 
     void process_basic_block_link_requests_for_parent(u32 parent) {
         if (!basic_block_link_requests.has(parent)) {
+            log_jit("No link requests for parent 0x%08x", parent);
             return;
         }
-        // log_jit("basic_block_link_requests.get_assume_has(parent): %s", basic_block_link_requests.get_assume_has(parent));
+        
+        auto requests = basic_block_link_requests.get_assume_has(parent);
+        log_jit("Processing %d link requests for parent 0x%08x", requests.length, parent);
 
-        foreach (request; basic_block_link_requests.get_assume_has(parent)) {
+        foreach (request; requests) {
+            log_jit("Processing request: child=0x%08x offset=0x%016x id=%d", request.child, request.patch_point_offset, request.id);
+            
             if (!code_page_table.has(request.child)) {
+                log_jit("Child block 0x%08x not found in page table, skipping", request.child);
                 continue;
             }
 
             auto child_entry = code_page_table.get_assume_has(request.child);
             if (request.id != child_entry.id) {
+                log_jit("ID mismatch for child 0x%08x: request_id=%d child_id=%d, skipping", request.child, request.id, child_entry.id);
                 continue;
             }
 
@@ -248,13 +261,18 @@ final class Jit {
             u64 func = cast(u64) parent_entry.func + 15;
             u8* patch_point = cast(u8*) (cast(u64) child_entry.func + patch_point_offset);
 
+            log_jit("Patching at offset 0x%016x in child func 0x%016x, jumping to parent func 0x%016x", 
+                   patch_point_offset, cast(u64) child_entry.func, func);
+
             for (int i = 0; i < 25; i++) {
                 if (patch_point[i] != 0x90) {
                     error_jit("Patch point %x at index %d is not nop. Dumping stuff: %x %s %x %s %s", patch_point[i], i, parent, child_entry, patch_point_offset, request, basic_block_link_requests.get_assume_has(parent));
                 }
             }
 
-            // cmpl state.cycle_quota, 1000
+            log_jit("Writing patch code to link blocks");
+            
+            // cmpl state.cycle_quota, 0x30e8
             patch_point[0] = 0x81;
             patch_point[1] = 0xbf;
             patch_point[2] = 0xda;
@@ -262,7 +280,7 @@ final class Jit {
             patch_point[4] = 0x00;
             patch_point[5] = 0x00;
             patch_point[6] = 0xe8;
-            patch_point[7] = 0x03;
+            patch_point[7] = 0x30;
             patch_point[8] = 0x00;
             patch_point[9] = 0x00;
 
@@ -288,9 +306,11 @@ final class Jit {
             patch_point[24] = 0xe0;
 
             add_dependent(parent, request.child);
+            log_jit("Successfully linked child 0x%08x to parent 0x%08x", request.child, parent);
         }
         
         basic_block_link_requests.remove(parent);
+        log_jit("Removed all link requests for parent 0x%08x", parent);
     }
 
     u64 jit_id;
