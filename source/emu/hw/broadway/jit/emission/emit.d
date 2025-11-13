@@ -731,9 +731,7 @@ private EmissionAction emit_icbi(Code code, u32 opcode) {
 }
 
 private EmissionAction emit_isync(Code code, u32 opcode) {
-    code.mov(code.bytePtr(rdi, cast(int) BroadwayState.icache_flushed.offsetof), 1);
-
-    return EmissionAction.ICacheInvalidation;
+    return EmissionAction.Continue;
 }
 
 private EmissionAction emit_lbz(Code code, u32 opcode) {
