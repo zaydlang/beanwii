@@ -2,6 +2,7 @@ module util.page_allocator;
 
 import core.sys.posix.sys.mman;
 import core.stdc.string;
+import util.log;
 
 struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     private T* memory;
