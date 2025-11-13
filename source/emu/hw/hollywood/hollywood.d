@@ -1433,12 +1433,12 @@ final class Hollywood {
         log_hollywood("process_new_shape %d %s %s", shape_groups.length, vats[current_vat], vertex_descriptors[current_vat]);
         glUseProgram(gl_program);
 
-        ShapeGroup shape_group;
-        shape_group.shapes = PageAllocator!Shape(0);
+        ShapeGroup* shape_group = shape_groups.allocate();
+        shape_group.shapes.reset();
+
         shape_group.textured = false;
         shape_group.position_matrix = general_matrix_ram[0 .. 12]; // ????
         shape_group.projection_matrix = projection_matrix;
-
 
         int enabled_textures_bitmap;
         for (int i = 0; i < 8; i++) {
@@ -1663,7 +1663,6 @@ final class Hollywood {
 
         switch (current_draw_command) {
             case GXFifoCommand.DrawQuads:
-                log_hollywood("DrawQuads(%d)", vertex_allocator.length);
                 for (int i = 0; i < vertex_allocator.length; i += 4) {
                     Shape* shape = shape_group.shapes.allocate();
                     shape.vertices = [vertex_allocator[i], vertex_allocator[i + 1], vertex_allocator[i + 2]];
@@ -1695,9 +1694,7 @@ final class Hollywood {
             
             default: error_hollywood("Unimplemented draw command: %s", current_draw_command);
         }
-        
-        ShapeGroup* slot = shape_groups.allocate();
-        *slot = shape_group;
+
         if (shape_groups.length == 17) {
             log_hollywood("awni: %s", texture_descriptors[0]);
         }
@@ -1749,10 +1746,13 @@ final class Hollywood {
             }
             i++;
             draw_shape_group(shape_group, texnum);
-            debug_drawn_shape_groups ~= shape_group;
+            // debug_drawn_shape_groups ~= shape_group;
         }
 
         this.shape_groups.reset();
+        foreach (ShapeGroup shape_group; shape_groups) {
+            shape_group.shapes.reset();
+        }
     }
 
     void draw_shape_group(ShapeGroup shape_group, int texnum) {
@@ -1762,15 +1762,9 @@ final class Hollywood {
                 int i = cast(int) enabled_textures_bitmap.bfs;
                 enabled_textures_bitmap &= ~(1 << i);
 
-                GLuint texture_id = gl_object_manager.allocate_texture_object();
-
-                // "Bind" the newly created texture : all future texture functions will modify this texture
-                glActiveTexture(GL_TEXTURE0 + i);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glActiveTexture(GL_TEXTURE0 + i);
-
                 // Give the image to OpenGL
                 // log_hollywood("projection color: %s", shape.texture[0]);
+                glActiveTexture(GL_TEXTURE0 + i);
                 glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
 
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
