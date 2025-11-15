@@ -13,7 +13,6 @@ import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.state;
 import emu.hw.memory.strategy.memstrategy;
-import emu.hw.memory.strategy.slowmem.jit_memory_access;
 import gallinule.x86;
 import util.bitop;
 import util.log;
@@ -2134,7 +2133,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
 
     while (num_opcodes_processed < code.get_max_instructions_per_block()) {
         code.set_guest_pc(address);
-        u32 instruction = mem.read_be_u32(address);
+        u32 instruction = mem.cpu_read_u32(address);
         jit.idle_loop_detector.add(instruction);
         EmissionAction action = disassemble(code, instruction);
         bool breakpoint_hit = jit.has_breakpoint(address);

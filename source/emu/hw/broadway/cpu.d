@@ -66,14 +66,14 @@ final class Broadway {
         this.hle_context = new HleContext(&this.mem);
 
         jit = new Jit(JitConfig(
-            cast(ReadHandler)  (&this.mem.read_be_u8)   .funcptr,
-            cast(ReadHandler)  (&this.mem.read_be_u16)  .funcptr,
-            cast(ReadHandler)  (&this.mem.read_be_u32)  .funcptr,
-            cast(ReadHandler)  (&this.mem.read_be_u64)  .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u8)  .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u16) .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u32) .funcptr,
-            cast(WriteHandler) (&this.mem.write_be_u64) .funcptr,
+            cast(ReadHandler)  (&this.mem.cpu_read_u8)   .funcptr,
+            cast(ReadHandler)  (&this.mem.cpu_read_u16)  .funcptr,
+            cast(ReadHandler)  (&this.mem.cpu_read_u32)  .funcptr,
+            cast(ReadHandler)  (&this.mem.cpu_read_u64)  .funcptr,
+            cast(WriteHandler) (&this.mem.cpu_write_u8)  .funcptr,
+            cast(WriteHandler) (&this.mem.cpu_write_u16) .funcptr,
+            cast(WriteHandler) (&this.mem.cpu_write_u32) .funcptr,
+            cast(WriteHandler) (&this.mem.cpu_write_u64) .funcptr,
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(MfsprHandler) (&this.mfspr_handler)    .funcptr,
             cast(MtsprHandler) (&this.mtspr_handler)    .funcptr,
@@ -138,7 +138,7 @@ final class Broadway {
         int new_count = 0;
         for (int i = 0; i < 32; i++) {
             if (is_sussy(state.ps[i].ps0) || is_sussy(state.ps[i].ps1)) {
-                // log_function("BIG CH: %x %x\n", mem.read_be_u32(state.pc - 4), 0);
+                // log_function("BIG CH: %x %x\n", mem.cpu_read_u32(state.pc - 4), 0);
                 // log_state(&state);
             new_count |= 1 << i;
 
@@ -408,14 +408,14 @@ version (release) {
         writefln("Dumping stack. pc: %x lr: %x", state.pc, state.lr);
         for (int i = 0; i < 500 / 8; i ++) {
             writefln("%08x %08x %08x %08x %08x %08x %08x %08x", 
-                mem.read_be_u32(state.gprs[1] + i * 32),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 4),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 8),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 12),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 16),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 20),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 24),
-                mem.read_be_u32(state.gprs[1] + i * 32 + 28));
+                mem.cpu_read_u32(state.gprs[1] + i * 32),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 4),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 8),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 12),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 16),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 20),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 24),
+                mem.cpu_read_u32(state.gprs[1] + i * 32 + 28));
         }
     }
 
@@ -528,13 +528,13 @@ version (release) {
 
         if (dma_event.dma_ld) {
             for (int i = 0; i < dma_event.dma_len; i += 4) {
-                u32 value = mem.paddr_read_u32(dma_event.mem_addr + i);
-                mem.paddr_write_u32(dma_event.lc_address + i, value);
+                u32 value = mem.physical_read_u32(dma_event.mem_addr + i);
+                mem.physical_write_u32(dma_event.lc_address + i, value);
             }
         } else {
             for (int i = 0; i < dma_event.dma_len; i += 4) {
-                u32 value = mem.paddr_read_u32(dma_event.lc_address + i);
-                mem.paddr_write_u32(dma_event.mem_addr + i, value);
+                u32 value = mem.physical_read_u32(dma_event.lc_address + i);
+                mem.physical_write_u32(dma_event.mem_addr + i, value);
             }
         }
     }

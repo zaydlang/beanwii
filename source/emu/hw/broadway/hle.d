@@ -44,8 +44,8 @@ final class HleContext {
 
         import util.array;
         // patch the code to add an HLE opcode in memory
-        mem.write_be_u32(hle_func_address, generate_hle_opcode(hle_function_id));
-        log_apploader("%x %x", cast(u64) mem, mem.read_be_u32(hle_func_address));
+        mem.cpu_write_u32(hle_func_address, generate_hle_opcode(hle_function_id));
+        log_apploader("%x %x", cast(u64) mem, mem.cpu_read_u32(hle_func_address));
                 log_slowmem("verify: 0x%08x", mem.hle_trampoline.read_be!u32(0));
 
         this.num_hle_functions++;
@@ -91,15 +91,15 @@ public void hle_os_report(void* context, BroadwayState* state) {
     int current_gpr_arg = 4; 
 
     do {
-        next_char = mem.read_be_u8(string_ptr++);
+        next_char = mem.cpu_read_u8(string_ptr++);
         if (next_char == '%') {
-            char format_type = mem.read_be_u8(string_ptr++);
+            char format_type = mem.cpu_read_u8(string_ptr++);
                 switch (format_type) {
                 case 's':
                     char inserted_char;
                     u32 current_address = state.gprs[current_gpr_arg++];
                     do {
-                        inserted_char = mem.read_be_u8(current_address++);
+                        inserted_char = mem.cpu_read_u8(current_address++);
                         output ~= inserted_char;
                     } while (inserted_char != 0);
                     break;
@@ -145,13 +145,13 @@ public void hle_os_report2(void* context, BroadwayState* state) {
 
     u32 p = string_ptr;
     string tmp;
-    while (mem.read_be_u8(p) != 0) {
-        if (mem.read_be_u8(p) == '%') {
+    while (mem.cpu_read_u8(p) != 0) {
+        if (mem.cpu_read_u8(p) == '%') {
             p++;
             tmp ~= "/";
         } else
 
-        tmp ~= cast(char) mem.read_be_u8(p++);
+        tmp ~= cast(char) mem.cpu_read_u8(p++);
     }
 
     log_os_report("asshole: %s, %x %x %x", tmp, state.gprs[4], state.gprs[5], state.gprs[6]);
@@ -162,15 +162,15 @@ public void hle_os_report2(void* context, BroadwayState* state) {
     int current_gpr_arg = 4; 
 
     do {
-        next_char = mem.read_be_u8(string_ptr++);
+        next_char = mem.cpu_read_u8(string_ptr++);
         if (next_char == '%') {
-            char format_type = mem.read_be_u8(string_ptr++);
+            char format_type = mem.cpu_read_u8(string_ptr++);
                 switch (format_type) {
                 case 's':
                     char inserted_char;
                     u32 current_address = state.gprs[current_gpr_arg++];
                     do {
-                        inserted_char = mem.read_be_u8(current_address++);
+                        inserted_char = mem.cpu_read_u8(current_address++);
                         output ~= inserted_char;
                     } while (inserted_char != 0);
                     break;

@@ -195,7 +195,7 @@ final class ExternalInterface {
 
                 if (is_write) {
                     for (int i = 0; i < length; i++) {
-                        u8 b = mem.paddr_read_u8(address + i);
+                        u8 b = mem.physical_read_u8(address + i);
                         channel.write(b);
                     }
 
@@ -205,7 +205,7 @@ final class ExternalInterface {
                 if (is_read) {
                     for (int i = 0; i < length; i++) {
                         u8 b = channel.read();
-                        mem.paddr_write_u8(address + i, b);
+                        mem.physical_write_u8(address + i, b);
                     }
 
                     channel.read_complete();

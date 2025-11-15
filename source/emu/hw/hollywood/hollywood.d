@@ -625,7 +625,7 @@ final class Hollywood {
         address &= 0x01FF_FFFF;
 
         for (int i = 0; i < size; i++) {
-            auto value = mem.paddr_read_u8(address + i * 1);
+            auto value = mem.physical_read_u8(address + i * 1);
             log_hollywood("Display list: %08x %08x", address + i * 1, value);
         }
 
@@ -644,7 +644,7 @@ final class Hollywood {
             u32 value;
             for (int i = 0; i < size_to_read; i++) {
                 value <<= 8;
-                value |= mem.paddr_read_u8(address + i);
+                value |= mem.physical_read_u8(address + i);
             }
 
             switch (size_to_read) {
@@ -1414,9 +1414,9 @@ final class Hollywood {
         u32 array_offset = array_addr + (array_stride * idx) + (offset * cast(int) size);
 
         final switch (size) {
-        case 1: return mem.paddr_read_u8(array_offset);
-        case 2: return mem.paddr_read_u16(array_offset);
-        case 4: return mem.paddr_read_u32(array_offset);
+        case 1: return mem.physical_read_u8(array_offset);
+        case 2: return mem.physical_read_u16(array_offset);
+        case 4: return mem.physical_read_u32(array_offset);
         }
     }
 

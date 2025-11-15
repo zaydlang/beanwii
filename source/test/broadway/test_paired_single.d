@@ -50,7 +50,7 @@ class PairedSingleTester {
 
     void write_test_data(u32 address, u8[] data) {
         for (int i = 0; i < data.length; i++) {
-            mem.write_be_u8(address + i, data[i]);
+            mem.cpu_write_u8(address + i, data[i]);
         }
     }
 
@@ -71,7 +71,7 @@ class PairedSingleTester {
 
     void verify_memory_contents(u32 address, u8[] expected, string test_name) {
         for (int i = 0; i < expected.length; i++) {
-            u8 actual = mem.read_be_u8(address + i);
+            u8 actual = mem.cpu_read_u8(address + i);
             if (actual != expected[i]) {
                 writefln("FAIL %s: memory[0x%08x+%d] expected 0x%02x, got 0x%02x", 
                     test_name, address, i, expected[i], actual);
@@ -83,7 +83,7 @@ class PairedSingleTester {
 
     void execute_instruction(u32 instruction) {
         broadway.set_pc(TEST_INSTRUCTION_ADDR);
-        mem.write_be_u32(TEST_INSTRUCTION_ADDR, instruction);
+        mem.cpu_write_u32(TEST_INSTRUCTION_ADDR, instruction);
         broadway.single_step();
     }
 
@@ -219,7 +219,7 @@ class PairedSingleTester {
         broadway.set_gpr(3, TEST_DATA_ADDR);
         
         for (int i = 0; i < 8; i++) {
-            mem.write_be_u8(TEST_DATA_ADDR + i, 0x00);
+            mem.cpu_write_u8(TEST_DATA_ADDR + i, 0x00);
         }
         
         u32 instruction = encode_psq_st(6, 3, 1, 0, 0);

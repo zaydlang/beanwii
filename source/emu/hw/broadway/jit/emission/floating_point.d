@@ -6,7 +6,7 @@ import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.helpers;
-import emu.hw.memory.strategy.slowmem.jit_memory_access;
+import emu.hw.memory.strategy.memstrategy;
 import gallinule.x86;
 import util.bitop;
 import util.log;
