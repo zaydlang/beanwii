@@ -5,7 +5,7 @@ enum MemStrategy {
     FastMem,
 }
 
-enum ChosenMemStrategy = MemStrategy.SlowMem;
+enum ChosenMemStrategy = MemStrategy.FastMem;
 
 static if (ChosenMemStrategy == MemStrategy.SlowMem) {
     public import emu.hw.memory.strategy.slowmem.slowmem;
@@ -13,5 +13,6 @@ static if (ChosenMemStrategy == MemStrategy.SlowMem) {
     alias Mem = SlowMem;
 } else static if (ChosenMemStrategy == MemStrategy.FastMem) {
     public import emu.hw.memory.strategy.fastmem.fastmem;
+    public import emu.hw.memory.strategy.fastmem.jit_memory_access;
     alias Mem = FastMem;
 }
