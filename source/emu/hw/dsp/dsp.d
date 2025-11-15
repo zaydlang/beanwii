@@ -141,7 +141,7 @@ final class DSP {
                     u32 iram_words = iram_len / 2;
                     u16[] iram_data = new u16[iram_words];
                     for (u32 i = 0; i < iram_words; i++) {
-                        iram_data[i] = mem.paddr_read_u16(iram_maddr + i * 2);
+                        iram_data[i] = mem.physical_read_u16(iram_maddr + i * 2);
                     }
                     jit.dsp_memory.upload_iram(iram_data);
                 }
@@ -568,7 +568,7 @@ final class DSP {
         for (u16 i = 0; i < transfer_words; i++) {
             u16 data;
             if (cpu_to_dsp) {
-                data = mem.paddr_read_u16(main_memory_address + i * 2);
+                data = mem.physical_read_u16(main_memory_address + i * 2);
                 if (use_imem) {
                     jit.dsp_memory.write_instruction(cast(u16)(dsp_address + i), data);
                 } else {
@@ -580,7 +580,7 @@ final class DSP {
                 } else {
                     data = jit.dsp_memory.read_data(cast(u16)(dsp_address + i));
                 }
-                mem.paddr_write_u16(main_memory_address + i * 2, data);
+                mem.physical_write_u16(main_memory_address + i * 2, data);
             }
         }
         
@@ -614,8 +614,8 @@ final class DSP {
         }
         
         if (samples_remaining > 0 && audio_interface) {
-            short left = cast(short) mem.paddr_read_u16(current_audio_address);
-            short right = cast(short) mem.paddr_read_u16(current_audio_address + 2);
+            short left = cast(short) mem.physical_read_u16(current_audio_address);
+            short right = cast(short) mem.physical_read_u16(current_audio_address + 2);
 
             if ((left & 0x7fff) != 0 || (right & 0x7fff) != 0) {
                 import std.stdio;

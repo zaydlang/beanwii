@@ -422,9 +422,9 @@ final class Bluetooth {
             default: error_bluetooth("unimplemented HCI control request: ogf=%d ocf=%04x", ogf, ocf);
         }
 
-        u32 ioctl_vector = mem.paddr_read_u32(paddr + 0x18);
+        u32 ioctl_vector = mem.physical_read_u32(paddr + 0x18);
         log_bluetooth("pushing to paddr: %x", ioctl_vector);
-        ipc_response_queue.push_later(paddr, cast(int)  mem.paddr_read_u32(ioctl_vector + 52), 40_000);
+        ipc_response_queue.push_later(paddr, cast(int)  mem.physical_read_u32(ioctl_vector + 52), 40_000);
 
         update();
 
@@ -941,7 +941,7 @@ final class Bluetooth {
         if (data.length > user_buf_len) error_bluetooth("fuck");
 
         for (int i = 0; i < data.length; i++) {
-            mem.paddr_write_u8(user_buf_addr + i, data[i]);
+            mem.physical_write_u8(user_buf_addr + i, data[i]);
         }
     }
 
@@ -954,11 +954,11 @@ final class Bluetooth {
             auto reply = pending_acl.front;
             pending_acl.removeFront();
 
-            u32 acl_ioctl_vector = mem.paddr_read_u32(acl_paddr + 0x18);
+            u32 acl_ioctl_vector = mem.physical_read_u32(acl_paddr + 0x18);
             log_bluetooth("pushing to acl paddr: %x", acl_ioctl_vector);
             log_bluetooth("queued acl response: %s", reply.to_hex_string);
-            copy_to_user_buf(mem.paddr_read_u32(acl_ioctl_vector + 16), reply,
-                mem.paddr_read_u32(acl_ioctl_vector + 20));
+            copy_to_user_buf(mem.physical_read_u32(acl_ioctl_vector + 16), reply,
+                mem.physical_read_u32(acl_ioctl_vector + 20));
             ipc_response_queue.push_later(acl_paddr, cast(int) reply.length, 40_000);
             acl_paddr = 0;
         }
@@ -967,11 +967,11 @@ final class Bluetooth {
             auto reply = pending_hci.front;
             pending_hci.removeFront();
 
-            u32 hci_ioctl_vector = mem.paddr_read_u32(hci_paddr + 0x18);
+            u32 hci_ioctl_vector = mem.physical_read_u32(hci_paddr + 0x18);
             log_bluetooth("pushing to hci paddr: %x", hci_ioctl_vector);
             log_bluetooth("queued hci response: %s", reply.to_hex_string);
-            copy_to_user_buf(mem.paddr_read_u32(hci_ioctl_vector + 16), reply,
-                mem.paddr_read_u32(hci_ioctl_vector + 20));
+            copy_to_user_buf(mem.physical_read_u32(hci_ioctl_vector + 16), reply,
+                mem.physical_read_u32(hci_ioctl_vector + 20));
             ipc_response_queue.push_later(hci_paddr, cast(int) reply.length, 40_000);
             hci_paddr = 0;
         }

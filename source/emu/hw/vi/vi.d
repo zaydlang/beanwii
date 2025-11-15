@@ -630,7 +630,7 @@ final class VideoInterface {
         //     log_vi("Scanning out field %d from base address %08x", field, base_address);
         //     for (int y = field; y < XBFR_HEIGHT; y += 2) {
         //     for (int x = 0;     x < XBFR_WIDTH;  x += 2) {
-        //         u32 ycbycr = mem.paddr_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
+        //         u32 ycbycr = mem.physical_read_u32(base_address + x * 2 + y * XBFR_WIDTH * 2);
 
         //         float cr = ycbycr.get_byte(0);
         //         float y2 = ycbycr.get_byte(1);

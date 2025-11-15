@@ -166,9 +166,9 @@ final class GDBStub {
         auto size = parts[2].parse!u32(10);
 
         switch (size) {
-            case 1: writef("  %02x\n", mem.read_be_u8(address)); break;
-            case 2: writef("  %04x\n", mem.read_be_u16(address)); break;
-            case 4: writef("  %08x\n", mem.read_be_u32(address)); break;
+            case 1: writef("  %02x\n", mem.cpu_read_u8(address)); break;
+            case 2: writef("  %04x\n", mem.cpu_read_u16(address)); break;
+            case 4: writef("  %08x\n", mem.cpu_read_u32(address)); break;
             default: writef("  Invalid size: %d\n", size); return false;
         }
 
@@ -187,9 +187,9 @@ final class GDBStub {
         auto value = parts[3].parse!u32(16);
 
         switch (size) {
-            case 1: mem.write_be_u8(address, cast(u8)value); break;
-            case 2: mem.write_be_u16(address, cast(u16)value); break;
-            case 4: mem.write_be_u32(address, cast(u32)value); break;
+            case 1: mem.cpu_write_u8(address, cast(u8)value); break;
+            case 2: mem.cpu_write_u16(address, cast(u16)value); break;
+            case 4: mem.cpu_write_u32(address, cast(u32)value); break;
             default: writef("  Invalid size: %d\n", size); return false;
         }
 
@@ -218,7 +218,7 @@ final class GDBStub {
         auto stack = cpu.state.gprs[1];
         writef("Stack:\n");
         for (int i = 0; i < 100; i++) {
-            writef("  %08x: %08x\n", stack + i * 4, mem.read_be_u32(stack + i * 4));
+            writef("  %08x: %08x\n", stack + i * 4, mem.cpu_read_u32(stack + i * 4));
         }
         return false;
     }

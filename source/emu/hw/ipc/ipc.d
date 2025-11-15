@@ -52,7 +52,7 @@ final class IPC {
                 if (printme) {
                     log_ipc("printme2! %x %x", paddr, return_value);
                 }
-                log_ipc("IPC: Finalizing new resopnse %x", mem.paddr_read_u32(paddr));
+                log_ipc("IPC: Finalizing new resopnse %x", mem.physical_read_u32(paddr));
                 log_ipc("state -> WillSendCpuResponseInSomeTime");
                 state = State.WillSendCpuResponseInSomeTime;
                 ipc.finalize_command(paddr, return_value);
@@ -64,7 +64,7 @@ final class IPC {
             log_ipc("OUTSTANDING: %x", num_outstanding_responses);
             
             if (state == State.Idle && !responses.empty) {
-                log_ipc("IPC: Finalizing new response %x", mem.paddr_read_u32(responses.front.paddr));
+                log_ipc("IPC: Finalizing new response %x", mem.physical_read_u32(responses.front.paddr));
                 IPCResponse response = responses.front;
                 if (response.printme) {
                     log_ipc("printme1! %x %x", response.paddr, response.return_value);
@@ -185,7 +185,7 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
             log_ipc("Sending command");
 
             auto paddr = hw_ipc_ppcmsg;
-            u32 command = mem.paddr_read_u32(paddr + 0);
+            u32 command = mem.physical_read_u32(paddr + 0);
 
             process_command_event_id = scheduler.add_event_relative_to_clock(() => process_command(command, paddr), 10000);
         }
@@ -238,29 +238,29 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
             case 6: ios_ioctl(paddr);  return;
             case 7: ios_ioctlv(paddr); return;
 
-            default: error_ipc("unimplemented command %x for fd %x", command, mem.paddr_read_u32(paddr + 8));
+            default: error_ipc("unimplemented command %x for fd %x", command, mem.physical_read_u32(paddr + 8));
         }
     }
 
     void ios_seek(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 where = mem.paddr_read_u32(paddr + 0xC);
-        u32 whence = mem.paddr_read_u32(paddr + 0x10);
+        u32 fd = mem.physical_read_u32(paddr + 8);
+        u32 where = mem.physical_read_u32(paddr + 0xC);
+        u32 whence = mem.physical_read_u32(paddr + 0x10);
         log_ipc("IOS::Seek paddr: %x, fd: %d, where: %d, whence: %d", paddr, fd, where, whence);
 
         file_manager.seek(paddr, fd, where, whence);
     }
 
     void ios_open(u32 paddr) {
-        u32 path_paddr = mem.paddr_read_u32(paddr + 0xC);
-        u32 mode = mem.paddr_read_u32(paddr + 0x10);
-        u32 uid = mem.paddr_read_u32(paddr + 0x14);
-        u32 gid = mem.paddr_read_u32(paddr + 0x18);
+        u32 path_paddr = mem.physical_read_u32(paddr + 0xC);
+        u32 mode = mem.physical_read_u32(paddr + 0x10);
+        u32 uid = mem.physical_read_u32(paddr + 0x14);
+        u32 gid = mem.physical_read_u32(paddr + 0x18);
 
         string path;
         log_ipc("Reading path from %x", path_paddr);
         for (int i = 0; i < 0x100; i++) {
-            u8 c = mem.paddr_read_u8(path_paddr + i);
+            u8 c = mem.physical_read_u8(path_paddr + i);
             if (c == 0) break;
             path ~= cast(char) c;
         }
@@ -268,19 +268,19 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void ios_close(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
+        u32 fd = mem.physical_read_u32(paddr + 8);
         file_manager.close(paddr, fd);
 
         log_ipc("IOS::Close paddr: %x, fd: %d", paddr, fd);
     }
 
     void ios_ioctl(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 ioctl = mem.paddr_read_u32(paddr + 0xC);
-        u32 input_buffer = mem.paddr_read_u32(paddr + 0x10);
-        u32 input_buffer_length = mem.paddr_read_u32(paddr + 0x14);
-        u32 output_buffer = mem.paddr_read_u32(paddr + 0x18);
-        u32 output_buffer_length = mem.paddr_read_u32(paddr + 0x1C);
+        u32 fd = mem.physical_read_u32(paddr + 8);
+        u32 ioctl = mem.physical_read_u32(paddr + 0xC);
+        u32 input_buffer = mem.physical_read_u32(paddr + 0x10);
+        u32 input_buffer_length = mem.physical_read_u32(paddr + 0x14);
+        u32 output_buffer = mem.physical_read_u32(paddr + 0x18);
+        u32 output_buffer_length = mem.physical_read_u32(paddr + 0x1C);
         log_ipc("IOS::Ioctl paddr: %x, fd: %d, ioctl: %d, input_buffer: %x, input_buffer_length: %d, output_buffer: %x, output_buffer_length: %d", paddr, fd, ioctl, input_buffer, input_buffer_length, output_buffer, output_buffer_length);
 
         // wtf?
@@ -289,9 +289,9 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void ios_read(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 buffer_paddr = mem.paddr_read_u32(paddr + 0xC);
-        u32 size = mem.paddr_read_u32(paddr + 0x10);
+        u32 fd = mem.physical_read_u32(paddr + 8);
+        u32 buffer_paddr = mem.physical_read_u32(paddr + 0xC);
+        u32 size = mem.physical_read_u32(paddr + 0x10);
         log_ipc("IOS::Read paddr: %x, fd: %d, buffer_paddr: %x, size: %d", paddr, fd, buffer_paddr, size);
 
         u8[] buffer = new u8[size];
@@ -299,14 +299,14 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void ios_write(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 buffer_paddr = mem.paddr_read_u32(paddr + 0xC);
-        u32 size = mem.paddr_read_u32(paddr + 0x10);
+        u32 fd = mem.physical_read_u32(paddr + 8);
+        u32 buffer_paddr = mem.physical_read_u32(paddr + 0xC);
+        u32 size = mem.physical_read_u32(paddr + 0x10);
         log_ipc("IOS::Write paddr: %x, fd: %d, buffer_paddr: %x, size: %d", paddr, fd, buffer_paddr, size);
 
         u8[] buffer = new u8[size];
         for (int i = 0; i < size; i++) {
-            buffer[i] = mem.paddr_read_u8(buffer_paddr + i);
+            buffer[i] = mem.physical_read_u8(buffer_paddr + i);
             if (fd == 4) {
                 log_ipc("    IOS::Write[%d]: %x", i, buffer[i]);
             }
@@ -316,11 +316,11 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
     }
 
     void ios_ioctlv(u32 paddr) {
-        u32 fd = mem.paddr_read_u32(paddr + 8);
-        u32 ioctl = mem.paddr_read_u32(paddr + 0xC);
-        u32 argcin = mem.paddr_read_u32(paddr + 0x10);
-        u32 argcio = mem.paddr_read_u32(paddr + 0x14);
-        u32 ioctlv_struct = mem.paddr_read_u32(paddr + 0x18);
+        u32 fd = mem.physical_read_u32(paddr + 8);
+        u32 ioctl = mem.physical_read_u32(paddr + 0xC);
+        u32 argcin = mem.physical_read_u32(paddr + 0x10);
+        u32 argcio = mem.physical_read_u32(paddr + 0x14);
+        u32 ioctlv_struct = mem.physical_read_u32(paddr + 0x18);
         log_ipc("IOS::Ioctlv paddr: %x, fd: %d, ioctl: %d, argcin: %d, argcio: %d, ioctlv_struct: %x", paddr, fd, ioctl, argcin, argcio, ioctlv_struct);
         file_manager.ioctlv(paddr, fd, ioctl, argcin, argcio, ioctlv_struct);
     }
@@ -335,12 +335,12 @@ if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
                 log_ipc("state -> WaitingForCpuToGetResponse");
 
         state = State.WaitingForCpuToGetResponse;
-        mem.paddr_write_u32(paddr + 4, *(cast(u32*) &return_value));
+        mem.physical_write_u32(paddr + 4, *(cast(u32*) &return_value));
         for (int i = 0; i < 0x1c; i += 4) {
-            log_ipc("COMMAND[%d]: %08x", i, mem.paddr_read_u32(paddr + i));
+            log_ipc("COMMAND[%d]: %08x", i, mem.physical_read_u32(paddr + i));
         }
 
-        mem.paddr_write_u32(paddr + 8, mem.paddr_read_u32(paddr));
+        mem.physical_write_u32(paddr + 8, mem.physical_read_u32(paddr));
 
         log_ipc("Finalizing command %x with return value %x", paddr, return_value);
         hw_ipc_ppcctrl |= 1 << 2;

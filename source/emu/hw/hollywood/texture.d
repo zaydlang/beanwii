@@ -134,7 +134,7 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
-                auto value = mem.paddr_read_u16(cast(u32) current_address);
+                auto value = mem.physical_read_u16(cast(u32) current_address);
                 current_address += 2;
 
                 texture[x * height + y] = Color(
@@ -169,7 +169,7 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
-                auto value = mem.paddr_read_u16(cast(u32) current_address);
+                auto value = mem.physical_read_u16(cast(u32) current_address);
                 current_address += 2;
 
                 if (value & 0x8000) {
@@ -221,7 +221,7 @@ final class TextureManager {
                     continue;
                 }
 
-                auto value = mem.paddr_read_u8(cast(u32) current_address);
+                auto value = mem.physical_read_u8(cast(u32) current_address);
 
                 if (x % 2 == 0) {
                     texture[x * height + y] = Color(
@@ -270,7 +270,7 @@ final class TextureManager {
                     continue;
                 }
 
-                auto value = mem.paddr_read_u8(cast(u32) current_address);
+                auto value = mem.physical_read_u8(cast(u32) current_address);
 
                 texture[x * height + y] = Color(value, value, value, 0xFF);
 
@@ -302,7 +302,7 @@ final class TextureManager {
                 auto x = tile_x * 8 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
-                auto value = mem.paddr_read_u8(cast(u32) current_address);
+                auto value = mem.physical_read_u8(cast(u32) current_address);
                 current_address += 1;
 
                 if (x >= width || y >= height) {
@@ -338,7 +338,7 @@ final class TextureManager {
         for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
             for (int fine_y = 0; fine_y < 4; fine_y++) {
             for (int fine_x = 0; fine_x < 4; fine_x++) {
-                auto value = mem.paddr_read_u16(current_address);
+                auto value = mem.physical_read_u16(current_address);
                 current_address += 2;
 
                 u8 intensity = cast(u8) value.bits(0, 7);
@@ -392,12 +392,12 @@ final class TextureManager {
             for (int texel_number = 0; texel_number < 4; texel_number++) {
                 int texel_address = tile_address + texel_number * 8;
 
-                u32 rgb1 = mem.paddr_read_u8(texel_address);
-                u32 rgb2 = mem.paddr_read_u8(texel_address + 1);
+                u32 rgb1 = mem.physical_read_u8(texel_address);
+                u32 rgb2 = mem.physical_read_u8(texel_address + 1);
                 int[4] color1 = [(rgb1 & 0xf8) >> 3, ((rgb1 & 0x07) << 3) | ((rgb2 & 0xe0) >> 5), (rgb2 & 0x1f) >> 0, 255];
             
-                u32 rgb3 = mem.paddr_read_u8(texel_address + 2);
-                u32 rgb4 = mem.paddr_read_u8(texel_address + 3);
+                u32 rgb3 = mem.physical_read_u8(texel_address + 2);
+                u32 rgb4 = mem.physical_read_u8(texel_address + 3);
                 int[4] color2 = [(rgb3 & 0xf8) >> 3, ((rgb3 & 0x07) << 3) | ((rgb4 & 0xe0) >> 5), (rgb4 & 0x1f) >> 0, 255];
 
                 color1 = [color1[0] * 8, color1[1] * 4, color1[2] * 8, 255];
@@ -406,7 +406,7 @@ final class TextureManager {
                 int x = tile_x * 8 + texel_number % 2 * 4;
                 int y = tile_y * 8 + texel_number / 2 * 4;
 
-                bool has_transparency = mem.paddr_read_u16(texel_address) <= mem.paddr_read_u16(texel_address + 2);
+                bool has_transparency = mem.physical_read_u16(texel_address) <= mem.physical_read_u16(texel_address + 2);
                 int[4][4] colors = has_transparency ? 
                 [
                     color1,
@@ -423,10 +423,10 @@ final class TextureManager {
                 ];
 
                 int[4] texels = [
-                    mem.paddr_read_u8(texel_address + 4),
-                    mem.paddr_read_u8(texel_address + 5),
-                    mem.paddr_read_u8(texel_address + 6),
-                    mem.paddr_read_u8(texel_address + 7)
+                    mem.physical_read_u8(texel_address + 4),
+                    mem.physical_read_u8(texel_address + 5),
+                    mem.physical_read_u8(texel_address + 6),
+                    mem.physical_read_u8(texel_address + 7)
                 ];
 
                 int[16] bits = [
@@ -494,10 +494,10 @@ final class TextureManager {
                 auto y = tile_y * 4 + fine_y;
 
                 texture[x * height + y] = Color(
-                    mem.paddr_read_u8(ra_address + 1),
-                    mem.paddr_read_u8(gb_address + 0),
-                    mem.paddr_read_u8(gb_address + 1),
-                    mem.paddr_read_u8(ra_address + 0)
+                    mem.physical_read_u8(ra_address + 1),
+                    mem.physical_read_u8(gb_address + 0),
+                    mem.physical_read_u8(gb_address + 1),
+                    mem.physical_read_u8(ra_address + 0)
                 );
 
                 ra_address += 2;

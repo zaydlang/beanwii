@@ -111,8 +111,8 @@ final class FileManager {
             
             if (ioctl == 0xb) {
                 // get file stats
-                mem.paddr_write_u32(output_buffer + 0, cast(u32) file.size());
-                mem.paddr_write_u32(output_buffer + 4, cast(u32) file.tell());
+                mem.physical_write_u32(output_buffer + 0, cast(u32) file.size());
+                mem.physical_write_u32(output_buffer + 4, cast(u32) file.tell());
                 return 0;
             }
 
@@ -182,14 +182,14 @@ final class FileManager {
                 ];
 
                 for (int i = 0; i < 16; i++) {
-                    mem.paddr_write_u8(output_buffer + i, data[i]);
+                    mem.physical_write_u8(output_buffer + i, data[i]);
                 }
 
                 this.current_error_code = ErrorCode.StatusOk;
                 return 1;
             } else if (ioctl == 0x71) {
-                u32 size   = mem.paddr_read_u32(input_buffer + 4);
-                u64 offset = (cast(u64) mem.paddr_read_u32(input_buffer + 8)) << 2;
+                u32 size   = mem.physical_read_u32(input_buffer + 4);
+                u64 offset = (cast(u64) mem.physical_read_u32(input_buffer + 8)) << 2;
                 log_disk("Read %x bytes from disk at offset %x to %x (%x)", size, offset, output_buffer, output_buffer_length);
 
                 if (output_buffer_length < size) {
@@ -208,8 +208,8 @@ final class FileManager {
                 this.current_error_code = ErrorCode.StatusOk;
                 return 1;
             } else if (ioctl == 0x8d) {
-                u32 size   = mem.paddr_read_u32(input_buffer + 4);
-                u64 offset = (cast(u64) mem.paddr_read_u32(input_buffer + 8)) << 2;
+                u32 size   = mem.physical_read_u32(input_buffer + 4);
+                u64 offset = (cast(u64) mem.physical_read_u32(input_buffer + 8)) << 2;
                 log_disk("Read %x unencrypted bytes from disk at offset %x to %x (%x)", size, offset, output_buffer, output_buffer_length);
 
                 if (output_buffer_length < size) {
@@ -259,7 +259,7 @@ final class FileManager {
             } else if (ioctl == 0xe0) {
                 // all good!! :)
                 log_disk("output buffer: %x", (this.current_drive_status << 24) | this.current_error_code);
-                mem.paddr_write_u32(output_buffer, (this.current_drive_status << 24) | this.current_error_code);
+                mem.physical_write_u32(output_buffer, (this.current_drive_status << 24) | this.current_error_code);
                 return 1;
             } else if (ioctl == 0xa4) {
                 this.current_error_code = ErrorCode.StatusInvalidCommandOperationCode;
@@ -338,7 +338,7 @@ final class FileManager {
             log_ipc("DevNetKdTime::ioctl(%d, %d, %d, %d)", ioctl, input_buffer, input_buffer_length, output_buffer);
             
             if (ioctl == 0x17) {
-                mem.paddr_write_u32(output_buffer, 0);
+                mem.physical_write_u32(output_buffer, 0);
             } else {
                 error_ipc("Unknown ioctl %d", ioctl);
             }
@@ -363,38 +363,38 @@ final class FileManager {
 
             if (ioctl == 0x20) {
                 // GetTitleID
-                u32 addr = mem.paddr_read_u32(data_paddr);
-                mem.paddr_write_u64(addr, title_id);
-                mem.paddr_write_u32(data_paddr + 4, 8);
+                u32 addr = mem.physical_read_u32(data_paddr);
+                mem.physical_write_u64(addr, title_id);
+                mem.physical_write_u32(data_paddr + 4, 8);
                 log_ipc("DevES::GetTitleID(%x)", title_id);
             } else if (ioctl == 0x1d) {
-                u32 addr = mem.paddr_read_u32(data_paddr);
-                auto requested_title_id = mem.paddr_read_u64(addr);
+                u32 addr = mem.physical_read_u32(data_paddr);
+                auto requested_title_id = mem.physical_read_u64(addr);
                 string title_dir = "/title/%08x/%08x/data".format(cast(u32) (title_id >> 32), cast(u32) title_id);
-                addr = mem.paddr_read_u32(data_paddr + 8);
+                addr = mem.physical_read_u32(data_paddr + 8);
                 log_ipc("DevES::GetTitleDirectory(%x) -> %s", requested_title_id, title_dir);
 
                 for (int i = 0; i < title_dir.length; i++) {
-                    mem.paddr_write_u8(addr + i, cast(u8) title_dir[i]);
+                    mem.physical_write_u8(addr + i, cast(u8) title_dir[i]);
                 }
-                mem.paddr_write_u8(addr + cast(int) title_dir.length, 0);
-                mem.paddr_write_u32(data_paddr + 0xC, cast(u32) title_dir.length);
+                mem.physical_write_u8(addr + cast(int) title_dir.length, 0);
+                mem.physical_write_u32(data_paddr + 0xC, cast(u32) title_dir.length);
             } else if (ioctl == 0x1b) {
                 log_ipc("%x %x %x %x", 
-                    mem.paddr_read_u32(data_paddr),
-                    mem.paddr_read_u32(data_paddr + 4),
-                    mem.paddr_read_u32(data_paddr + 8),
-                    mem.paddr_read_u32(data_paddr + 0xC));
+                    mem.physical_read_u32(data_paddr),
+                    mem.physical_read_u32(data_paddr + 4),
+                    mem.physical_read_u32(data_paddr + 8),
+                    mem.physical_read_u32(data_paddr + 0xC));
                 log_ipc("ES_DiGetTicketView %x %x %x %x", request_paddr, ioctl, argcin, argcio);
             } else if (ioctl == 0x16) {
                 // ES_GetConsumption
             } else if (ioctl == 0x12) {
                 // ES_GetNumTicketViews
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 8), 1);
+                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 8), 1);
             } else if (ioctl == 0x14) {
                 // ES_GetTMDViewSize
                 u32 tmd_size = file_reader.get_tmd_size();
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 8), tmd_size);
+                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 8), tmd_size);
             } else {
                 error_ipc("Unknown ioctlv %x", ioctl);
             }
@@ -558,13 +558,13 @@ final class FileManager {
             log_ipc("DevFS::ioctl(%d)", ioctl);
             if (ioctl == 0x3) {
                 // CreateDir
-                // u32 addr = mem.paddr_read_u32(input_buffer);
-                auto owner_id = mem.paddr_read_u32(input_buffer + 0);
-                auto group_id = mem.paddr_read_u16(input_buffer + 4);
+                // u32 addr = mem.physical_read_u32(input_buffer);
+                auto owner_id = mem.physical_read_u32(input_buffer + 0);
+                auto group_id = mem.physical_read_u16(input_buffer + 4);
                 
                 string filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + 6 + i);
+                    auto c = mem.physical_read_u8(input_buffer + 6 + i);
                     if (c == 0) {
                         break;
                     }
@@ -581,12 +581,12 @@ final class FileManager {
                 try { std.file.mkdir("~/.beanwii/fs".expandTilde ~ filename); } catch (Exception e) {}
             } else if (ioctl == 0x9) {
                 // CreateFile
-                auto owner_id = mem.paddr_read_u32(input_buffer + 0);
-                auto group_id = mem.paddr_read_u16(input_buffer + 4);
+                auto owner_id = mem.physical_read_u32(input_buffer + 0);
+                auto group_id = mem.physical_read_u16(input_buffer + 4);
 
                 string filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + 6 + i);
+                    auto c = mem.physical_read_u8(input_buffer + 6 + i);
                     if (c == 0) {
                         break;
                     }
@@ -600,26 +600,26 @@ final class FileManager {
                 log_ipc("Who knows");
             } else if (ioctl == 0x6) {
                 u32 output = output_buffer;
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
 
                 string filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    auto c = mem.physical_read_u8(input_buffer + i);
                     if (c == 0) {
                         for (int j = i; j < 0x40; j++) {
-                            mem.paddr_write_u8(output++, 0);
+                            mem.physical_write_u8(output++, 0);
                         }
                         break;
                     }
                 
                     filename ~= cast(char) c;
 
-                    mem.paddr_write_u8(output++, c);
+                    mem.physical_write_u8(output++, c);
                 }
 
                 log_ipc("DevFS::Dipshit(%s)", filename);
@@ -629,17 +629,17 @@ final class FileManager {
                 }
 
 
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
-                mem.paddr_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
+                mem.physical_write_u8(output++, 0);
 
                 return 0;
             } else if (ioctl == 0x7) {
                 // delete
                 string filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    auto c = mem.physical_read_u8(input_buffer + i);
                     if (c == 0) {
                         break;
                     }
@@ -663,7 +663,7 @@ final class FileManager {
                 // rename
                 string old_filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + i);
+                    auto c = mem.physical_read_u8(input_buffer + i);
                     if (c == 0) {
                         break;
                     }
@@ -673,7 +673,7 @@ final class FileManager {
 
                 string new_filename = "";
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(input_buffer + 0x40 + i);
+                    auto c = mem.physical_read_u8(input_buffer + 0x40 + i);
                     if (c == 0) {
                         break;
                     }
@@ -717,12 +717,12 @@ final class FileManager {
                 }
 
                 // ReadDir
-                u32 file_addr = mem.paddr_read_u32(data_paddr);
+                u32 file_addr = mem.physical_read_u32(data_paddr);
                 u32 count = 0;
 
                 string filename;
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(file_addr + i);
+                    auto c = mem.physical_read_u8(file_addr + i);
                     if (c == 0) {
                         break;
                     }
@@ -731,7 +731,7 @@ final class FileManager {
                 }
 
                 for (int i = 0; i < 8; i++) {
-                    log_ipc("%x : %x", i, mem.paddr_read_u32(data_paddr + i * 4));
+                    log_ipc("%x : %x", i, mem.physical_read_u32(data_paddr + i * 4));
                 }
 
                 log_ipc("DevFS::ReadDir(%s, %d)", filename, count);
@@ -757,13 +757,13 @@ final class FileManager {
                     }
                 }
 
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), count);
+                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 0x8), count);
             } else if (ioctl == 0xc) {
-                u32 file_addr = mem.paddr_read_u32(data_paddr);
+                u32 file_addr = mem.physical_read_u32(data_paddr);
 
                 string filename;
                 for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.paddr_read_u8(file_addr + i);
+                    auto c = mem.physical_read_u8(file_addr + i);
                     if (c == 0) {
                         break;
                     }
@@ -773,8 +773,8 @@ final class FileManager {
 
                 log_ipc("DevFS::DipshitGetUsage(%s)", filename);
 
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x8), 1);
-                mem.paddr_write_u32(mem.paddr_read_u32(data_paddr + 0x10), 1);
+                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 0x8), 1);
+                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 0x10), 1);
             } else {
                 error_ipc("Unknown ioctlv %d", ioctl);
             }
@@ -887,7 +887,7 @@ final class FileManager {
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
             if (ioctl == 0x5001) {
-                log_ipc("Set brightness to %d", mem.paddr_read_u32(input_buffer));
+                log_ipc("Set brightness to %d", mem.physical_read_u32(input_buffer));
             } else if (ioctl == 0x6002) {
                 log_ipc("nobody knows, nobody cares");
             } else {
@@ -921,17 +921,17 @@ final class FileManager {
             switch (ioctl) {
             case 0: {
                 // control
-                u8 bm_request_type = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
-                u8 b_request = mem.paddr_read_u8(mem.paddr_read_u32(addr + 8));
+                u8 bm_request_type = mem.physical_read_u8(mem.physical_read_u32(addr + 0));
+                u8 b_request = mem.physical_read_u8(mem.physical_read_u32(addr + 8));
 
                 // todo: make LE accessors
-                u16 w_value = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 16)));
-                u16 w_index = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 24)));
-                u16 w_length = bswap(mem.paddr_read_u16(mem.paddr_read_u32(addr + 32)));
+                u16 w_value = bswap(mem.physical_read_u16(mem.physical_read_u32(addr + 16)));
+                u16 w_index = bswap(mem.physical_read_u16(mem.physical_read_u32(addr + 24)));
+                u16 w_length = bswap(mem.physical_read_u16(mem.physical_read_u32(addr + 32)));
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
-                    data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 48) + i);
+                    data ~= mem.physical_read_u8(mem.physical_read_u32(addr + 48) + i);
                 }
 
                 u8[] response = usb_manager.control_request(request_paddr, bm_request_type, b_request, w_value, w_index, w_length, data);
@@ -940,34 +940,34 @@ final class FileManager {
             }
             case 1: {
                 // bulk
-                u8 endpoint = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
-                u16 w_length = mem.paddr_read_u16(mem.paddr_read_u32(addr + 8)); 
+                u8 endpoint = mem.physical_read_u8(mem.physical_read_u32(addr + 0));
+                u16 w_length = mem.physical_read_u16(mem.physical_read_u32(addr + 8)); 
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
-                    data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 16) + i);
+                    data ~= mem.physical_read_u8(mem.physical_read_u32(addr + 16) + i);
                 }
 
                 u8[] response = usb_manager.bulk_request(request_paddr, endpoint, data);
                 // for (int i = 0; i < response.length; i++) {
-                //     mem.paddr_write_u8(mem.paddr_read_u32(addr + 16) + i, response[i]);
+                //     mem.physical_write_u8(mem.physical_read_u32(addr + 16) + i, response[i]);
                 // }
 
                 break;
             }
             case 2: {
                 // interrupt
-                u8 endpoint = mem.paddr_read_u8(mem.paddr_read_u32(addr + 0));
-                u16 w_length = mem.paddr_read_u16(mem.paddr_read_u32(addr + 8));     
+                u8 endpoint = mem.physical_read_u8(mem.physical_read_u32(addr + 0));
+                u16 w_length = mem.physical_read_u16(mem.physical_read_u32(addr + 8));     
 
                 u8[] data;
                 for (int i = 0; i < w_length; i++) {
-                    data ~= mem.paddr_read_u8(mem.paddr_read_u32(addr + 16) + i);
+                    data ~= mem.physical_read_u8(mem.physical_read_u32(addr + 16) + i);
                 }
 
                 u8[] response = usb_manager.interrupt_request(request_paddr, endpoint, data);
                 // for (int i = 0; i < response.length; i++) {
-                    // mem.paddr_write_u8(mem.paddr_read_u32(addr + 16) + i, response[i]);
+                    // mem.physical_write_u8(mem.physical_read_u32(addr + 16) + i, response[i]);
                 // }
 
                 break;
@@ -986,10 +986,10 @@ final class FileManager {
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
             if (ioctl == 0) {
-                mem.paddr_write_u32(output_buffer, 0x50001);
+                mem.physical_write_u32(output_buffer, 0x50001);
             } else if (ioctl == 1) {
                 num_device_change_callbacks++;
-                mem.paddr_write_u32(output_buffer, num_device_change_callbacks);
+                mem.physical_write_u32(output_buffer, num_device_change_callbacks);
             } else if (ioctl == 6) {
                 // yolo 
             } else {
@@ -1006,11 +1006,11 @@ final class FileManager {
 
         override int ioctl(int ioctl, int input_buffer, int input_buffer_length, int output_buffer, int output_buffer_length) {
             if (ioctl == 0) {
-                mem.paddr_write_u32(output_buffer, 0x50001);
+                mem.physical_write_u32(output_buffer, 0x50001);
             } else if (ioctl == 1) {
                 // yolo
             } else if (ioctl == 6) {
-                mem.paddr_write_u32(output_buffer, 0x40001);
+                mem.physical_write_u32(output_buffer, 0x40001);
             } else {
                 error_ipc("Unknown hid ioctl %d", ioctl);
             }
@@ -1135,13 +1135,13 @@ final class FileManager {
             result = IPCError.ENOENT;
         }
 
-        u32 buffer_paddr = mem.paddr_read_u32(paddr + 0xC);
+        u32 buffer_paddr = mem.physical_read_u32(paddr + 0xC);
         if (result > 0) {
             for (int i = 0; i < size; i++) {
                 if (fd == 4) {
                     log_ipc("    IOS::Read[%d]: %x", i, buffer[i]);
                 }
-                mem.paddr_write_u8(buffer_paddr + i, buffer[i]);
+                mem.physical_write_u8(buffer_paddr + i, buffer[i]);
             }
         }
 

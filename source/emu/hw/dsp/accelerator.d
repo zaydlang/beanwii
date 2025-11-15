@@ -171,7 +171,7 @@ final class DSPAccelerator {
         auto file = File(filename, "wb");
         
         for (u32 addr = dump_current_addr; addr <= dump_end_addr; addr++) {
-            u8 byte_val = mem.paddr_read_u8(addr);
+            u8 byte_val = mem.physical_read_u8(addr);
             file.rawWrite([byte_val]);
         }
         
@@ -200,7 +200,7 @@ final class DSPAccelerator {
         s16 coef2 = cast(s16) adpcm_coefficients[coef_idx * 2 + 1];
         
         u32 byte_addr = current_addr >> 1;
-        u8 memory_byte = mem.paddr_read_u8(byte_addr);
+        u8 memory_byte = mem.physical_read_u8(byte_addr);
         s8 temp;
         
         if (current_addr & 1) {
@@ -221,7 +221,7 @@ final class DSPAccelerator {
         current_addr++;
         
         if ((current_addr & 15) == 0) {
-            pred_scale_register = mem.paddr_read_u8(current_addr >> 1);
+            pred_scale_register = mem.physical_read_u8(current_addr >> 1);
             current_addr += 2;
         }
         

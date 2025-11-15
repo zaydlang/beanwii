@@ -82,15 +82,15 @@ final class BluetoothPassthrough {
 
         // is this correct? legitimately what the fuck is going on anymore
         if (hci_paddr != 0) {
-            u32 hci_ioctl_vector = mem.paddr_read_u32(hci_paddr + 0x18);
-            copy_to_user_buf(mem.paddr_read_u32(hci_ioctl_vector + 16), hci_buffer,
-                mem.paddr_read_u32(hci_ioctl_vector + 20));
+            u32 hci_ioctl_vector = mem.physical_read_u32(hci_paddr + 0x18);
+            copy_to_user_buf(mem.physical_read_u32(hci_ioctl_vector + 16), hci_buffer,
+                mem.physical_read_u32(hci_ioctl_vector + 20));
             ipc_response_queue.push_later(hci_paddr, cast(int) hci_buffer.length, 40_000);
             hci_buffer = [];
         }
 
-        u32 ioctl_vector = mem.paddr_read_u32(paddr + 0x18);
-        ipc_response_queue.push_later(paddr, cast(int)  mem.paddr_read_u32(ioctl_vector + 52), 40_000);
+        u32 ioctl_vector = mem.physical_read_u32(paddr + 0x18);
+        ipc_response_queue.push_later(paddr, cast(int)  mem.physical_read_u32(ioctl_vector + 52), 40_000);
 
         return [];
     }
@@ -99,7 +99,7 @@ final class BluetoothPassthrough {
         if (data.length > user_buf_len) error_bluetooth("fuck");
 
         for (int i = 0; i < data.length; i++) {
-            mem.paddr_write_u8(user_buf_addr + i, data[i]);
+            mem.physical_write_u8(user_buf_addr + i, data[i]);
         }
     }
 
