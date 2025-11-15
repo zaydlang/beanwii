@@ -6,6 +6,7 @@ import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.guest_reg;
 import emu.hw.broadway.jit.emission.helpers;
+import emu.hw.memory.strategy.slowmem.jit_memory_access;
 import gallinule.x86;
 import util.bitop;
 import util.log;
@@ -71,24 +72,7 @@ EmissionAction emit_lfd(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_fpr;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, imm);
-    } else {
-        code.add(ra, imm);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.set_fpr(guest_rd, rax);
+    emit_load_fpr_displacement(code, guest_rd, guest_ra, imm, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -100,22 +84,8 @@ EmissionAction emit_lfdu(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_fpr;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    code.add(ra, imm);
-    code.set_reg(guest_ra, ra);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.set_fpr(guest_rd, rax);
-
+    emit_load_fpr_displacement(code, guest_rd, guest_ra, imm, Update.Yes);
+    
     return EmissionAction.Continue;
 }
 
@@ -126,22 +96,7 @@ EmissionAction emit_lfdux(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rd = opcode.bits(21, 25).to_fpr;
 
-    auto ra = code.get_reg(guest_ra);
-    auto rb = code.get_reg(guest_rb);
-    code.add(ra, rb);
-    code.set_reg(guest_ra, ra);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.set_fpr(guest_rd, rax);
+    emit_load_fpr_indexed(code, guest_rd, guest_ra, guest_rb, Update.Yes);
 
     return EmissionAction.Continue;
 }
@@ -153,26 +108,7 @@ EmissionAction emit_stfdx(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
 
-    auto ra = code.get_reg(guest_ra);
-    auto rs = code.get_fpr(guest_rs);
-    auto rb = code.get_reg(guest_rb);
-
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, rb);
-    } else {
-        code.add(ra, rb);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-        code.mov(rdx, rs);
-
-        code.mov(rax, cast(u64) code.config.write_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
+    emit_store_fpr_indexed(code, guest_rs, guest_ra, guest_rb, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -182,26 +118,7 @@ EmissionAction emit_stfiwx(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
 
-    auto ra = code.get_reg(guest_ra);
-    auto rs = code.get_fpr(guest_rs);
-    auto rb = code.get_reg(guest_rb);
-
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, rb);
-    } else {
-        code.add(ra, rb);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-        code.mov(edx, rs.cvt32());
-
-        code.mov(rax, cast(u64) code.config.write_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
+    emit_store_fpr_as_integer_indexed(code, guest_rs, guest_ra, guest_rb);
 
     return EmissionAction.Continue;
 }
@@ -213,25 +130,7 @@ EmissionAction emit_stfd(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    auto rs = code.get_fpr(guest_rs);
-
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, imm);
-    } else {
-        code.add(ra, imm);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-        code.mov(rdx, rs);
-
-        code.mov(rax, cast(u64) code.config.write_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
+    emit_store_fpr_displacement(code, guest_rs, guest_ra, imm, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -243,22 +142,7 @@ EmissionAction emit_stfdu(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    auto rs = code.get_fpr(guest_rs);
-
-    code.add(ra, imm);
-    code.set_reg(guest_ra, ra);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-        code.mov(rdx, rs);
-
-        code.mov(rax, cast(u64) code.config.write_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
+    emit_store_fpr_displacement(code, guest_rs, guest_ra, imm, Update.Yes);
 
     return EmissionAction.Continue;
 }
@@ -271,27 +155,7 @@ EmissionAction emit_stfsx(Code code, u32 opcode) {
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     assert(opcode.bit(0) == 0);
 
-    auto ra = code.get_reg(guest_ra);
-    auto rb = code.get_reg(guest_rb);
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, rb);
-    } else {
-        code.add(ra, rb);
-    }
-
-    code.get_ps(guest_rs, xmm0);
-    code.cvtsd2ss(xmm0, xmm0);
-    code.movd(edx, xmm0);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.write_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
+    emit_store_ps_indexed(code, guest_rs, guest_ra, guest_rb, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -303,33 +167,7 @@ EmissionAction emit_lfsux(Code code, u32 opcode) {
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     auto guest_rd = opcode.bits(21, 25).to_ps;
 
-    auto ra = code.get_reg(guest_ra);
-    code.add(ra, code.get_reg(guest_rb));
-    code.set_reg(guest_ra, ra);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.movq(xmm0, rax);
-    code.cvtss2sd(xmm0, xmm0);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
+    emit_load_ps_indexed(code, guest_rd, guest_ra, guest_rb, Update.Yes);
 
     return EmissionAction.Continue;
 }
@@ -357,33 +195,7 @@ EmissionAction emit_lfsu(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_ps;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    code.add(ra, imm);
-    code.set_reg(guest_ra, ra);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.movq(xmm0, rax);
-    code.cvtss2sd(xmm0, xmm0);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
+    emit_load_ps_displacement(code, guest_rd, guest_ra, imm, Update.Yes);
 
     return EmissionAction.Continue;
 }
@@ -395,36 +207,7 @@ EmissionAction emit_lfs(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_ps;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    auto ra = code.get_reg(guest_ra);
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, imm);
-    } else {
-        code.add(ra, imm);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.movq(xmm0, rax);
-    code.cvtss2sd(xmm0, xmm0);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
+    emit_load_ps_displacement(code, guest_rd, guest_ra, imm, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -436,29 +219,8 @@ EmissionAction emit_stfs(Code code, u32 opcode) {
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int imm = sext_32(opcode.bits(0, 15), 16);
 
-    R32 ra;
-    if (guest_ra == GuestReg.R0) {
-        ra = code.allocate_register();
-        code.mov(ra, imm);
-    } else {
-        ra = code.get_reg(guest_ra);
-        code.add(ra, imm);
-    }
+    emit_store_ps_displacement(code, guest_rs, guest_ra, imm, Update.No);
 
-    code.get_ps(guest_rs, xmm0);
-    code.cvtsd2ss(xmm0, xmm0);
-    code.movd(edx, xmm0);
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.write_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-    
     return EmissionAction.Continue;
 }
 
@@ -684,37 +446,7 @@ EmissionAction emit_lfsx(Code code, u32 opcode) {
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     assert(opcode.bit(0) == 0);
 
-    auto ra = code.get_reg(guest_ra);
-    auto rb = code.get_reg(guest_rb);
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, rb);
-    } else {
-        code.add(ra, rb);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.movq(xmm0, rax);
-    code.cvtss2sd(xmm0, xmm0);
-
-    auto end = code.fresh_label();
-
-    auto hid2 = code.get_reg(GuestReg.HID2);
-    code.test(hid2, 1 << 29);
-    code.jz(end);
-
-    code.vpbroadcastq(xmm0, xmm0);
-
-code.label(end);
-    code.set_ps(guest_rd, xmm0);
+    emit_load_ps_indexed(code, guest_rd, guest_ra, guest_rb, Update.No);
 
     return EmissionAction.Continue;
 }
@@ -749,25 +481,7 @@ EmissionAction emit_lfdx(Code code, u32 opcode) {
     auto guest_rb = opcode.bits(11, 15).to_gpr;
     assert(opcode.bit(0) == 0);
 
-    auto ra = code.get_reg(guest_ra);
-    auto rb = code.get_reg(guest_rb);
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, rb);
-    } else {
-        code.add(ra, rb);
-    }
-
-    code.push(rdi);
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, ra);
-
-        code.mov(rax, cast(u64) code.config.read_handler64);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop(rdi);
-
-    code.set_fpr(guest_rd, rax);
+    emit_load_fpr_indexed(code, guest_rd, guest_ra, guest_rb, Update.No);
 
     return EmissionAction.Continue;
 }

@@ -6,6 +6,7 @@ import emu.hw.broadway.jit.emission.emit;
 import emu.hw.broadway.jit.emission.flags;
 import emu.hw.broadway.jit.emission.helpers;
 import emu.hw.broadway.jit.emission.guest_reg;
+import emu.hw.memory.strategy.slowmem.jit_memory_access;
 import gallinule.x86;
 import util.bitop;
 import util.log;
@@ -43,15 +44,9 @@ EmissionAction emit_psq_st(Code code, u32 opcode) {
     int i = opcode.bits(12, 14);
     int d = sext_32(opcode.bits(0, 11), 12);
 
-    auto ra = code.get_reg(guest_ra);
+    auto address = calculate_effective_address_displacement(code, guest_ra, d);
 
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, d);
-    } else {
-        code.add(ra, d);
-    }
-
-    return emit_psq_st_generic(code, ra, guest_rs, i, w);
+    return emit_psq_st_generic(code, address, guest_rs, i, w);
 }
 
 EmissionAction emit_psq_stx(Code code, u32 opcode) {
@@ -870,93 +865,27 @@ code.label(end);
 }
 
 void store_32(Code code, R32 address, R32 value) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-        code.mov(edx, value);
-
-        code.mov(rax, cast(u64) code.config.write_handler32);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
-    code.pop(rdi);
+    raw_write32(code, address, value);
 }
 
 void store_16(Code code, R32 address, R32 value) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-        code.mov(edx, value);
-
-        code.mov(rax, cast(u64) code.config.write_handler16);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
-    code.pop(rdi);
+    raw_write16(code, address, value);
 }
 
 void store_8(Code code, R32 address, R32 value) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-        code.mov(edx, value);
-
-        code.mov(rax, cast(u64) code.config.write_handler8);
-        code.call(rax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers();
-    code.pop(rdi);
+    raw_write8(code, address, value);
 }
 
 void load_32(Code code, R32 address, R32 dest) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-
-        code.mov(rax, cast(u64) code.config.read_handler32);
-        code.call(rax);
-        code.mov(dest, eax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers_except(dest.cvt64());
-    code.pop(rdi);
+    raw_read32(code, address, dest);
 }
 
 void load_16(Code code, R32 address, R32 dest) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-
-        code.mov(rax, cast(u64) code.config.read_handler16);
-        code.call(rax);
-        code.mov(dest, eax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers_except(dest.cvt64());
-    code.pop(rdi);
+    raw_read16(code, address, dest);
 }
 
 void load_8(Code code, R32 address, R32 dest) {
-    code.push(rdi);
-    code.push_caller_saved_registers();
-    code.enter_stack_alignment_context();
-        code.mov(rdi, cast(u64) code.config.mem_handler_context);
-        code.mov(esi, address);
-
-        code.mov(rax, cast(u64) code.config.read_handler8);
-        code.call(rax);
-        code.mov(dest, eax);
-    code.exit_stack_alignment_context();
-    code.pop_caller_saved_registers_except(dest.cvt64());
-    code.pop(rdi);
+    raw_read8(code, address, dest);
 }
 
 void abort_if_no_pse_or_lsqe(Code code) {
