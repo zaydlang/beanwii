@@ -1,9 +1,9 @@
-module emu.hw.memory.strategy.slowmem.mmio_spec;
+module emu.hw.memory.strategy.fastmem.mmio_spec;
 
 import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
-import emu.hw.memory.strategy.slowmem.mmio_gen;
-import emu.hw.memory.strategy.slowmem.slowmem;
+import emu.hw.memory.strategy.fastmem.mmio_gen;
+import emu.hw.memory.strategy.fastmem.fastmem;
 import emu.hw.ai.ai;
 import emu.hw.di.di;
 import emu.hw.dsp.dsp;
@@ -29,7 +29,7 @@ final class Mmio {
     public InterruptController interrupt_controller;
     public IPC                 ipc;
     public Hollywood           hollywood;
-    public SlowMem             memory;
+    public FastMem             memory;
 
     static const mmio_spec = [
         MmioRegister("command_processor",    "CP_FIFO_STATUS",        0xCC00_0000, 2, READ_WRITE),
@@ -185,7 +185,7 @@ final class Mmio {
         this.ipc = ipc;
     }
 
-    public void connect_memory(SlowMem memory) {
+    public void connect_memory(FastMem memory) {
         this.memory = memory;
     }
 
