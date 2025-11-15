@@ -17,7 +17,9 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     }
     
     T* allocate() {
+        log_hollywood("Allocating 1 element  %x ", cast(void*) &this);
         if (used >= capacity) {
+            log_hollywood("Growing allocator %x  because used: %s, capacity: %s", cast(void*) &this, used, capacity);
             grow();
         }
 
@@ -74,6 +76,6 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
         
         memory = cast(T*) new_memory;
         capacity = new_capacity;
+        log_hollywood("Grew allocator %x to new capacity: %s", cast(void*) &this, capacity);
     }
-
 }
