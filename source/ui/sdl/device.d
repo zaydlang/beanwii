@@ -112,6 +112,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
     bool paused;
     bool running;
+    bool wireframe_mode;
 
     int hovered_shape = -1;
 
@@ -136,41 +137,38 @@ class SdlDevice : MultiMediaDevice, Window {
         
         loadSDL();
 
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
             error_frontend("SDL_Init returned an error: %s\n", SDL_GetError());
         }
 
+        log_frontend("Setting OpenGL attributes...");
+        log_frontend("SDL_GL_CONTEXT_PROFILE_CORE = %d", SDL_GL_CONTEXT_PROFILE_CORE);
+        
+        // Try setting profile multiple times and different ways
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, 1); // Force core profile
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        
+        // Verify what we actually set
+        int check_profile;
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &check_profile);
+        log_frontend("Profile check after setting: %d", check_profile);
+
         if (start_debugger) {
             window = SDL_CreateWindow("beanwii", 
                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
-                DEBUGGER_SCREEN_WIDTH, DEBUGGER_SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+                DEBUGGER_SCREEN_WIDTH, DEBUGGER_SCREEN_HEIGHT, SDL_WINDOW_OPENGL);
         } else {
             window = SDL_CreateWindow("beanwii", 
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
-            WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+            WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT, SDL_WINDOW_OPENGL);
         }
     
         if (!window) {
             error_frontend("SDL_CreateWindow returned an error: %s\n", SDL_GetError());
         }
-        
-        renderer = SDL_CreateRenderer(window, -1, 0);
-
-        if (!renderer) {
-            error_frontend("SDL_CreateRenderer returned an error: %s\n", SDL_GetError());
-        }
-
-        SDL_Surface* screen = SDL_GetWindowSurface(window);
-        
-        if (!screen) {
-            error_frontend("SDL_GetWindoaSurface returned an error: %s\n", SDL_GetError());
-        }
-
-        frame_buffer = cast(SDL_Color*) screen.pixels;
 
         gl_context = SDL_GL_CreateContext(window);
         
@@ -181,7 +179,22 @@ class SdlDevice : MultiMediaDevice, Window {
         // SDL_GL_SetSwapInterval(1);
         // SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
 
-        loadOpenGL();
+        log_frontend("loadOpenGL: %s", loadOpenGL());
+        
+        import std.string : fromStringz;
+        const char* gl_version = glGetString(GL_VERSION);
+        const char* gl_vendor = glGetString(GL_VENDOR);
+        const char* gl_renderer = glGetString(GL_RENDERER);
+        log_frontend("OpenGL Version: %s", fromStringz(gl_version));
+        log_frontend("OpenGL Vendor: %s", fromStringz(gl_vendor));
+        log_frontend("OpenGL Renderer: %s", fromStringz(gl_renderer));
+        
+        int gl_major, gl_minor, gl_profile, gl_flags;
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &gl_major);
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &gl_minor);
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &gl_profile);
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &gl_flags);
+        log_frontend("SDL Context: %d.%d, Profile: %d, Flags: %d", gl_major, gl_minor, gl_profile, gl_flags);
 
         int num_audio_drivers = SDL_GetNumAudioDrivers();
         log_frontend("Available audio drivers: %d", num_audio_drivers);
@@ -268,7 +281,10 @@ class SdlDevice : MultiMediaDevice, Window {
             auto reload = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 60, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Reload Shaders", widget_shader,
                 (void* _) { hollywood.debug_reload_shaders(); }, (void* _) {}, (void* _) {}, null);
             widgets ~= reload;
-            auto dump_memory = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 120, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Dump Memory", widget_shader,
+            auto dump_textures = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 120, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Dump Textures", widget_shader,
+                (void* _) { dump_unique_textures(); }, (void* _) {}, (void* _) {}, null);
+            widgets ~= dump_textures;
+            auto dump_memory = new SdlButton(WII_SCREEN_WIDTH + SCREEN_BORDER_WIDTH * 2, 180, DEBUGGER_PANEL_WIDTH, 50, from_hex(0xCAF0F8), from_hex(0x444444), font_spm_medium, "Dump Memory", widget_shader,
                 (void* _) { wii.debug_dump_memory(); }, (void* _) {}, (void* _) {}, null);
             widgets ~= dump_memory;
 
@@ -407,12 +423,20 @@ class SdlDevice : MultiMediaDevice, Window {
                 glScissor(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH, WII_SCREEN_WIDTH, WII_SCREEN_HEIGHT);
                 
                 if (paused) {
+                    if (wireframe_mode) {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    }
+
                     hollywood.debug_redraw(drawn_shape_groups);
 
                     if (hovered_shape != -1) {
                         log_frontend("hovered_shape: %d", hovered_shape);
                         glUseProgram(debug_tri_shader);
                         hollywood.debug_draw_shape_group(drawn_shape_groups[hovered_shape]);
+                    }
+
+                    if (wireframe_mode) {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                     }
                 }
 
@@ -511,6 +535,24 @@ class SdlDevice : MultiMediaDevice, Window {
             }
             audio_test_key_pressed = audio_test_key_current;
 
+            static bool wireframe_key_pressed = false;
+            bool wireframe_key_current = keyboard_state[SDL_SCANCODE_W] != 0;
+            if (wireframe_key_current && !wireframe_key_pressed) {
+                wireframe_mode = !wireframe_mode;
+                log_frontend("Wireframe mode %s", wireframe_mode ? "enabled" : "disabled");
+            }
+            wireframe_key_pressed = wireframe_key_current;
+
+            static bool logging_toggle_key_pressed = false;
+            bool ctrl_pressed = keyboard_state[SDL_SCANCODE_LCTRL] != 0 || keyboard_state[SDL_SCANCODE_RCTRL] != 0;
+            bool l_pressed = keyboard_state[SDL_SCANCODE_L] != 0;
+            bool logging_toggle_key_current = ctrl_pressed && l_pressed;
+            if (logging_toggle_key_current && !logging_toggle_key_pressed) {
+                toggle_logging();
+                log_frontend("Logging %s", logging_paused ? "paused" : "resumed");
+            }
+            logging_toggle_key_pressed = logging_toggle_key_current;
+
             foreach (wiimote_key, host_key; KeyMapping) {
                 wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
             }
@@ -527,6 +569,44 @@ class SdlDevice : MultiMediaDevice, Window {
         bool is_running() {
             return !paused;
         }
+    }
+
+    void dump_unique_textures() {
+        if (!std.file.exists("texture_dumps")) {
+            std.file.mkdirRecurse("texture_dumps");
+        }
+        
+        uint[uint] seen_texture_ids;
+        int dump_count = 0;
+        
+        foreach (shape_group; drawn_shape_groups) {
+            for (int i = 0; i < 8; i++) {
+                uint texture_id = shape_group.texture[i].texture_id;
+                if (texture_id != 0 && texture_id !in seen_texture_ids) {
+                    seen_texture_ids[texture_id] = 1;
+                    dump_texture_to_file(shape_group.texture[i], dump_count);
+                    dump_count++;
+                }
+            }
+        }
+        
+        log_frontend("Dumped %d unique textures to texture_dumps/", dump_count);
+    }
+    
+    void dump_texture_to_file(Texture texture, int index) {
+        if (texture.texture_id == 0 || texture.width == 0 || texture.height == 0) {
+            return;
+        }
+        
+        glBindTexture(GL_TEXTURE_2D, texture.texture_id);
+        
+        ubyte[] pixels = new ubyte[texture.width * texture.height * 4];
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixels.ptr);
+        
+        string filename = format("texture_dumps/texture_%03d_%dx%d.rgba", index, texture.width, texture.height);
+        std.file.write(filename, pixels);
+        
+        log_frontend("Dumped texture %d (%dx%d) to %s", texture.texture_id, texture.width, texture.height, filename);
     }
 
     void on_window_close(DebugTriWindow window) {
@@ -571,18 +651,6 @@ final class DebugTriWindow : Window {
     
         if (!window) {
             error_frontend("SDL_CreateWindow returned an error: %s\n", SDL_GetError());
-        }
-        
-        renderer = SDL_CreateRenderer(window, -1, 0);
-
-        if (!renderer) {
-            error_frontend("SDL_CreateRenderer returned an error: %s\n", SDL_GetError());
-        }
-
-        SDL_Surface* screen = SDL_GetWindowSurface(window);
-        
-        if (!screen) {
-            error_frontend("SDL_GetWindowSurface returned an error: %s\n", SDL_GetError());
         }
 
         gl_context = SDL_GL_CreateContext(window);

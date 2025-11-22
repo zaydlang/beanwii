@@ -1,4 +1,4 @@
-module emu.hw.memory.strategy.slowmem.slowmem;
+module emu.hw.memory.strategy.software_mem.software_mem;
 
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
@@ -9,7 +9,7 @@ import emu.hw.disk.dol;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
-import emu.hw.memory.strategy.slowmem.mmio_spec;
+import emu.hw.memory.strategy.software_mem.mmio_spec;
 import emu.hw.ai.ai;
 import emu.hw.di.di;
 import emu.hw.exi.exi;
@@ -22,7 +22,7 @@ import util.bitop;
 import util.log;
 import util.number;
 
-final class SlowMem  {
+final class SoftwareMem  {
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
     enum MemoryRegion {
@@ -73,7 +73,7 @@ final class SlowMem  {
         } else if (0xFFF00100 <= address && address <= 0xFFF0013F) {
             return MemoryAccess(MemoryRegion.EXI_BOOT_CODE, address & 0x3F);
         } else {
-            error_slowmem("Invalid address 0x%08x", address);
+            error_memory("Invalid address 0x%08x", address);
             assert(0);
         }
     }
@@ -99,7 +99,7 @@ final class SlowMem  {
             } else if (0x20000000 <= address && address <= 0x2FFFFFFF) {
                 return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address - 0x20000000);
             } else {
-                error_slowmem("Invalid address 0x%08x", address);
+                error_memory("Invalid address 0x%08x", address);
                 assert(0);
             }
         } else {
@@ -133,7 +133,7 @@ final class SlowMem  {
                 break;
 
             case MemoryRegion.EXI_BOOT_CODE:
-                error_slowmem("Read from EXI boot code at 0x%08x", original_address);
+                error_memory("Read from EXI boot code at 0x%08x", original_address);
                 break;
             
             case MemoryRegion.LOCKED_L2_CACHE:
@@ -179,7 +179,7 @@ final class SlowMem  {
                 break;
 
             case MemoryRegion.EXI_BOOT_CODE:
-                error_slowmem("Write to EXI boot code at 0x%08x", original_address);
+                error_memory("Write to EXI boot code at 0x%08x", original_address);
                 break;
 
             case MemoryRegion.LOCKED_L2_CACHE:
@@ -379,5 +379,25 @@ final class SlowMem  {
     u32[] logged_writes = [];
     void log_memory_write(u32 address) {
         logged_writes ~= address;
+    }
+
+    public u8* translate_address(u32 address) {
+        MemoryAccess access = resolve_physical_address(address);
+        
+        final switch (access.region) {
+            case MemoryRegion.MEM1:
+                return &mem1[access.offset];
+            case MemoryRegion.MEM2:
+                return &mem2[access.offset];
+            case MemoryRegion.HLE_TRAMPOLINE:
+                return &hle_trampoline[access.offset];
+            case MemoryRegion.LOCKED_L2_CACHE:
+                return &locked_l2_cache[access.offset];
+            case MemoryRegion.HOLLYWOOD_MMIO:
+            case MemoryRegion.BROADWAY_MMIO:
+            case MemoryRegion.EXI_BOOT_CODE:
+                error_memory("Cannot translate MMIO/special address %08x to host pointer", address);
+                return null;
+        }
     }
 }

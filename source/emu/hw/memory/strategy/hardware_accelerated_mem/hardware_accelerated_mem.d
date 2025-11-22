@@ -1,4 +1,4 @@
-module emu.hw.memory.strategy.fastmem.fastmem;
+module emu.hw.memory.strategy.hardware_accelerated_mem.hardware_accelerated_mem;
 
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
@@ -9,7 +9,8 @@ import emu.hw.disk.dol;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
-import emu.hw.memory.strategy.fastmem.mmio_spec;
+import emu.hw.memory.strategy.hardware_accelerated_mem.mmio_spec;
+import emu.hw.memory.strategy.hardware_accelerated_mem.virtualmemory;
 import emu.hw.ai.ai;
 import emu.hw.di.di;
 import emu.hw.exi.exi;
@@ -22,29 +23,21 @@ import util.bitop;
 import util.log;
 import util.number;
 
-final class FastMem {
+final class HardwareAcceleratedMem {
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
 
-    enum MemoryRegion {
-        MEM1,
-        MEM2,
-        HLE_TRAMPOLINE,
-        HOLLYWOOD_MMIO,
-        BROADWAY_MMIO,
-        EXI_BOOT_CODE,
-        LOCKED_L2_CACHE,
-    }
-
-    struct MemoryAccess {
-        MemoryRegion region;
-        u32 offset;
-    }
-
-    // TODO: temporary public
     public u8[] mem1;
     public u8[] mem2;
     public u8[] hle_trampoline;
     public u8[] locked_l2_cache;
+
+    private VirtualMemoryManager virtual_memory_manager;
+    private VirtualMemorySpace* physical_memory_space;
+    private VirtualMemorySpace* virtual_memory_space;
+    private VirtualMemoryRegion* mem1_region;
+    private VirtualMemoryRegion* mem2_region;
+    private VirtualMemoryRegion* hle_trampoline_region;
+    private VirtualMemoryRegion* locked_l2_cache_region;
 
     public Mmio mmio;
     public Broadway cpu;
@@ -56,153 +49,77 @@ final class FastMem {
         this.locked_l2_cache = new u8[0x40000];
         this.mmio = new Mmio();
 
+        this.virtual_memory_manager = new VirtualMemoryManager();
+        this.physical_memory_space = virtual_memory_manager.create_memory_space("physical_memory", 0x100000000UL);
+        this.virtual_memory_space = virtual_memory_manager.create_memory_space("virtual_memory", 0x100000000UL);
+
+        this.mem1_region = virtual_memory_manager.create_memory_region("mem1", MEM1_SIZE);
+        this.mem2_region = virtual_memory_manager.create_memory_region("mem2", MEM2_SIZE);
+        this.hle_trampoline_region = virtual_memory_manager.create_memory_region("hle_trampoline", HLE_TRAMPOLINE_SIZE);
+        this.locked_l2_cache_region = virtual_memory_manager.create_memory_region("locked_l2_cache", 0x40000);
+
+        virtual_memory_manager.map(physical_memory_space, mem1_region, 0x00000000);
+        virtual_memory_manager.map(physical_memory_space, mem2_region, 0x10000000);
+        virtual_memory_manager.map(physical_memory_space, hle_trampoline_region, 0x20000000);
+        virtual_memory_manager.map(physical_memory_space, locked_l2_cache_region, 0xE0000000);
+
+        virtual_memory_manager.map(virtual_memory_space, mem1_region, 0x80000000);
+        virtual_memory_manager.map(virtual_memory_space, mem2_region, 0x90000000);
+        virtual_memory_manager.map(virtual_memory_space, hle_trampoline_region, 0x20000000);
+        virtual_memory_manager.map(virtual_memory_space, mem1_region, 0xC0000000);
+        virtual_memory_manager.map(virtual_memory_space, mem2_region, 0xD0000000);
+        virtual_memory_manager.map(virtual_memory_space, locked_l2_cache_region, 0xE0000000);
+
         this.mmio.connect_memory(this);
     }
 
-    private MemoryAccess resolve_physical_address(u32 address) {
-        if        (0x00000000 <= address && address <= 0x017FFFFF) {
-            return MemoryAccess(MemoryRegion.MEM1, address);
-        } else if (0x10000000 <= address && address <= 0x13FFFFFF) {
-            return MemoryAccess(MemoryRegion.MEM2, address - 0x10000000);
-        } else if (0x0D000000 <= address && address <= 0x0D008000) {
-            return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
-        } else if (0x0C000000 <= address && address <= 0x0C008003) {
-            return MemoryAccess(MemoryRegion.BROADWAY_MMIO, address & 0x7FFF);
-        } else if (0xE0000000 <= address && address <= 0xE0040000) {
-            return MemoryAccess(MemoryRegion.LOCKED_L2_CACHE, address & 0x3FFFF);
-        } else if (0xFFF00100 <= address && address <= 0xFFF0013F) {
-            return MemoryAccess(MemoryRegion.EXI_BOOT_CODE, address & 0x3F);
-        } else {
-            error_slowmem("Invalid address 0x%08x", address);
-            assert(0);
-        }
-    }
-
-    private MemoryAccess resolve_cpu_address(u32 address) {
-        bool real_mode = this.cpu.state.msr.bits(4, 5) != 0b11;
-
-        if (!real_mode) {
-            // See: wii.setup_global_memory_value(u8[] wii_disk_data);
-
-            if        (0x80000000 <= address && address <= 0x817FFFFF) {
-                return MemoryAccess(MemoryRegion.MEM1, address - 0x80000000);
-            } else if (0x90000000 <= address && address <= 0x93FFFFFF) {
-                return MemoryAccess(MemoryRegion.MEM2, address - 0x90000000);
-            } else if (0xC0000000 <= address && address <= 0xC17FFFFF) {
-                return MemoryAccess(MemoryRegion.MEM1, address - 0xC0000000);
-            } else if (0xD0000000 <= address && address <= 0xD3FFFFFF) {
-                return MemoryAccess(MemoryRegion.MEM2, address - 0xD0000000);
-            } else if (0xCC000000 <= address && address <= 0xCDFFFFFF) {
-                return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
-            } else if (0xE0000000 <= address && address <= 0xE0040000) {
-                return MemoryAccess(MemoryRegion.LOCKED_L2_CACHE, address & 0x3FFFF);
-            } else if (0x20000000 <= address && address <= 0x2FFFFFFF) {
-                return MemoryAccess(MemoryRegion.HLE_TRAMPOLINE, address - 0x20000000);
-            } else {
-                error_slowmem("Invalid address 0x%08x", address);
-                assert(0);
-            }
-        } else {
-            return resolve_physical_address(address);
-        }
-    }
-
-    private T read_memory(T)(MemoryAccess memory_access, u32 original_address) {
-        auto region = memory_access.region;
-        T result;
-
-        final switch (region) {
-            case MemoryRegion.MEM1:
-                result = this.mem1.read_be!(T)(memory_access.offset);
-                break;
-            
-            case MemoryRegion.MEM2:
-                result = this.mem2.read_be!(T)(memory_access.offset);
-                break;
-            
-            case MemoryRegion.HLE_TRAMPOLINE:
-                result = this.hle_trampoline.read_be!(T)(memory_access.offset);
-                break;
-            
-            case MemoryRegion.HOLLYWOOD_MMIO:
-                result = this.mmio.read!T(original_address);
-                break;
-
-            case MemoryRegion.BROADWAY_MMIO:
-                result = this.mmio.read!T(original_address);
-                break;
-
-            case MemoryRegion.EXI_BOOT_CODE:
-                error_slowmem("Read from EXI boot code at 0x%08x", original_address);
-                break;
-            
-            case MemoryRegion.LOCKED_L2_CACHE:
-                result = this.locked_l2_cache.read_be!(T)(memory_access.offset);
-                break;
-        }
-
-        return result;
+    private bool is_mmio(u32 address) {
+        return (address & 0x0E000000) == 0x0C000000;
     }
 
     private T cpu_read(T)(u32 address) {
-        auto memory_access = resolve_cpu_address(address);
-        return read_memory!T(memory_access, address);
+        bool real_mode = this.cpu.state.msr.bits(4, 5) != 0b11;
+        
+        if (is_mmio(address)) {
+            return this.mmio.read!T(address);
+        }
+        
+        if (!real_mode) {
+            return virtual_memory_manager.read_be!T(virtual_memory_space, address);
+        } else {
+            return virtual_memory_manager.read_be!T(physical_memory_space, address);
+        }
     }
 
     private T physical_read(T)(u32 address) {
-        auto memory_access = resolve_physical_address(address);
-        return read_memory!T(memory_access, address);
-    }
-
-    private void write_memory(T)(MemoryAccess memory_access, u32 original_address, T value) {
-        auto region = memory_access.region;
-
-        final switch (region) {
-            case MemoryRegion.MEM1:
-                this.mem1.write_be!(T)(memory_access.offset, value);
-                break;
-            
-            case MemoryRegion.MEM2:
-                this.mem2.write_be!(T)(memory_access.offset, value);
-                break;
-            
-            case MemoryRegion.HLE_TRAMPOLINE:
-                this.hle_trampoline.write_be!(T)(memory_access.offset, value);
-                break;
-            
-            case MemoryRegion.HOLLYWOOD_MMIO:
-                this.mmio.write!T(original_address, value);
-                break;
-
-            case MemoryRegion.BROADWAY_MMIO:
-                this.mmio.write!T(original_address, value);
-                break;
-
-            case MemoryRegion.EXI_BOOT_CODE:
-                error_slowmem("Write to EXI boot code at 0x%08x", original_address);
-                break;
-
-            case MemoryRegion.LOCKED_L2_CACHE:
-                this.locked_l2_cache.write_be!(T)(memory_access.offset, value);
-                break;
+        if (is_mmio(address)) {
+            return this.mmio.read!T(address);
         }
+
+        return virtual_memory_manager.read_be!T(physical_memory_space, address);
     }
 
     private void cpu_write(T)(u32 address, T value) {
-        foreach (logged_write; logged_writes) {
-            if (address == logged_write) {
-                import std.stdio;
-                writefln("  Write to 0x%08x = 0x%08x (pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
-            }
+        bool real_mode = this.cpu.state.msr.bits(4, 5) != 0b11;
+        
+        if (is_mmio(address)) {
+            this.mmio.write!T(address, value);
+            return;
         }
-
-        auto memory_access = resolve_cpu_address(address);
-        write_memory!T(memory_access, address, value);
+        
+        if (!real_mode) {
+            virtual_memory_manager.write_be!T(virtual_memory_space, address, value);
+        } else {
+            virtual_memory_manager.write_be!T(physical_memory_space, address, value);
+        }
     }
 
     private void physical_write(T)(u32 address, T value) {
-        auto memory_access = resolve_physical_address(address);
-        write_memory!T(memory_access, address, value);
+        if (is_mmio(address)) {
+            this.mmio.write!T(address, value);
+            return;
+        }
+        virtual_memory_manager.write_be!T(physical_memory_space, address, value);
     }
 
     pragma(inline, true) public u64 cpu_read_u64(u32 address) { return cpu_read!u64(address); }
@@ -379,5 +296,13 @@ final class FastMem {
     u32[] logged_writes = [];
     void log_memory_write(u32 address) {
         logged_writes ~= address;
+    }
+
+    public u8* translate_address(u32 address) {
+        if (is_mmio(address)) {
+            error_memory("Cannot translate MMIO address %08x to host pointer", address);
+        }
+        
+        return cast(u8*) virtual_memory_manager.to_host_address(physical_memory_space, address);
     }
 }

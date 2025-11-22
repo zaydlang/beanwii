@@ -183,7 +183,8 @@ final class Wiimote {
             case OutputReportId.ReadMemoryAndRegisters:   handle_read_memory_and_registers (output_report.read_memory_and_registers);  break;
             case OutputReportId.WriteMemoryAndRegisters:  handle_write_memory_and_registers(output_report.write_memory_and_registers); break;
             case OutputReportId.IRCameraEnable2:          handle_ir_camera_enable2         (output_report.ir_camera_enable2);          break; 
-            
+            case OutputReportId.RumbleReport:             handle_rumble                    (output_report.rumble_report);              break;
+        
             default: error_wiimote("Output report not implemented: %s", output_report.report_id); break;
         }
     }
@@ -201,7 +202,7 @@ final class Wiimote {
         
         log_wiimote("Read memory and registers: %x", address);
 
-        final switch (report.address_space) {
+        final switch (report.address_space & 4) {
             case AddressSpace.Memory:     return handle_read_memory   (address, cast(u16) report.size);
             case AddressSpace.Registers1: 
             case AddressSpace.Registers2: return handle_read_registers(address, cast(u16) report.size);
@@ -255,7 +256,7 @@ final class Wiimote {
 
         log_wiimote("Write memory and registers: %x", address);
 
-        final switch (report.address_space) {
+        final switch (report.address_space & 4) {
             case AddressSpace.Memory:     return handle_write_memory   (address, cast(u16) report.size, report.data);
             case AddressSpace.Registers1: 
             case AddressSpace.Registers2: return handle_write_registers(address, cast(u16) report.size, report.data);
@@ -350,6 +351,12 @@ final class Wiimote {
         camera_enable_pin2 = report.ir_camera_state == IRCameraState.On;
 
         trivial_success(OutputReportId.IRCameraEnable2);
+    }
+
+    void handle_rumble(RumbleReport report) {
+        log_wiimote("RumbleReport: %s", report.rumble ? "On" : "Off");
+
+        trivial_success(OutputReportId.RumbleReport);
     }
 
     // TODO: make this less bad

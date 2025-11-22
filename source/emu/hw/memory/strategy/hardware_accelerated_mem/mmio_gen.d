@@ -1,4 +1,4 @@
-module emu.hw.memory.strategy.fastmem.mmio_gen;
+module emu.hw.memory.strategy.hardware_accelerated_mem.mmio_gen;
 
 import util.bitop;
 import util.number;
@@ -124,7 +124,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     T read(T)(u32 address) {
         import std.format;
 
-        // log_slowmem("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
+        // log_memory("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
         T value = T(0);
 
         static foreach (MmioRegister mr; mmio_registers) {
@@ -135,7 +135,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                         this.log_read!T(address, value);
                         return value;
                     } else {
-                        log_slowmem("Unimplemented read: %s (size = %d)", mr.name, T.sizeof);
+                        log_memory("Unimplemented read: %s (size = %d)", mr.name, T.sizeof);
                         return T(0);
                     }
                 }
@@ -169,11 +169,28 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     }
 
     private u8 read_byte(u32 address) {
-        import std.format;
+        switch (address & 0xff00f000) {
+            case 0xcc000000: return read_byte_block!(0xcc000000)(address);
+            case 0xcc001000: return read_byte_block!(0xcc001000)(address);
+            case 0xcc002000: return read_byte_block!(0xcc002000)(address);
+            case 0xcc003000: return read_byte_block!(0xcc003000)(address);
+            case 0xcc004000: return read_byte_block!(0xcc004000)(address);
+            case 0xcc005000: return read_byte_block!(0xcc005000)(address);
+            case 0xcc008000: return read_byte_block!(0xcc008000)(address);
+            case 0xcd000000: return read_byte_block!(0xcd000000)(address);
+            case 0xcd006000: return read_byte_block!(0xcd006000)(address);
+            default: error_memory("Unimplemented read: [%x]", address);
+        }
 
+        return u8(0);
+    }
+
+    private u8 read_byte_block(u32 block_mask)(u32 address) {
+        import std.format;
+        
         mmio_switch: switch (address) {
             static foreach (MmioRegister mr; mmio_registers) {
-                static if (mr.readable) {
+                static if (mr.readable && (mr.address & 0xff00f000) == block_mask) {
                     static if (mr.stride == -1) {
                         static foreach(int offset; 0..mr.size) {
                             static if (!mr.filter_enabled || mr.f(offset)) {
@@ -201,16 +218,14 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                     }
                 }
             }
-
-            default: error_slowmem("Unimplemented read: [%x]", address);
+            default: error_memory("Unimplemented read: [%x]", address);
         }
-
         return u8(0);
     }
 
     void write(T)(u32 address, T value) {
         this.log_write!T(address, value);
-        // log_slowmem("VERBOSE MMIO: Writing %x to %x (size = %d) (%X %X)", value, address, T.sizeof,  arm9.regs[pc], arm7.regs[pc]);
+        // log_memory("VERBOSE MMIO: Writing %x to %x (size = %d) (%X %X)", value, address, T.sizeof,  arm9.regs[pc], arm7.regs[pc]);
 
         import std.format;
         static foreach (MmioRegister mr; mmio_registers) {
@@ -218,8 +233,9 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 if (address + T.sizeof > mr.address && address < mr.address + mr.size) {
                     static if (mr.implemented) {
                         mixin("context.%s.write_%s!T(cast(T) (value >> (8 * (address - mr.address))), address %% %d);".format(mr.component, mr.name, mr.size));
+                        return;
                     } else {
-                        log_slowmem("Unimplemented write: [%s] = %08x (size = %d)", mr.name, value, T.sizeof);
+                        log_memory("Unimplemented write: [%s] = %08x (size = %d)", mr.name, value, T.sizeof);
                         return;
                     }
                 }
@@ -246,11 +262,26 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     }
 
     private void write_byte(u32 address, u8 value) {
+        switch (address & 0xff00f000) {
+            case 0xcc000000: write_byte_block!(0xcc000000)(address, value); break;
+            case 0xcc001000: write_byte_block!(0xcc001000)(address, value); break;
+            case 0xcc002000: write_byte_block!(0xcc002000)(address, value); break;
+            case 0xcc003000: write_byte_block!(0xcc003000)(address, value); break;
+            case 0xcc004000: write_byte_block!(0xcc004000)(address, value); break;
+            case 0xcc005000: write_byte_block!(0xcc005000)(address, value); break;
+            case 0xcc008000: write_byte_block!(0xcc008000)(address, value); break;
+            case 0xcd000000: write_byte_block!(0xcd000000)(address, value); break;
+            case 0xcd006000: write_byte_block!(0xcd006000)(address, value); break;
+            default: error_memory("Unimplemented write: [%x] = %x", address, value);
+        }
+    }
+
+    private void write_byte_block(u32 block_mask)(u32 address, u8 value) {
         import std.format;
 
         mmio_switch: switch (address) {
             static foreach (MmioRegister mr; mmio_registers) {
-                static if (mr.writeable) {
+                static if (mr.writeable && (mr.address & 0xff00f000) == block_mask) {
                     static if (mr.stride == -1) {
                         static foreach(int offset; 0..mr.size) {
                             static if (!mr.filter_enabled || mr.f(offset)) {
@@ -278,8 +309,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                     }
                 }
             }
-
-            default: error_slowmem("Unimplemented write: [%x] = %x", address, value);
+            default: error_memory("Unimplemented write: [%x] = %x", address, value);
         }
     }
 }

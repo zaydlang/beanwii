@@ -178,6 +178,7 @@ version (release) {
             }
 }
 
+
             if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
                 raise_exception(ExceptionType.FloatingPointUnavailable);
             } else if (jit_return_value.block_return_value.value == BlockReturnValue.IdleLoopDetected &&

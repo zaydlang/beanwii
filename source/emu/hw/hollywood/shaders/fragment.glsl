@@ -152,6 +152,10 @@ void main(void) {
 
 	// last_alfa_dest = 1;
 	out_Color = vec4(last_color_dest, last_alfa_dest);
+
+	if (last_alfa_dest == 0) {
+		discard;
+	}
 	// out_Color = vec4(UV[0],UV[1],0,1);
 
 	// if (stages[0].in_alfa_a == 7 && stages[0].in_alfa_b == 7 && stages[0].in_alfa_c == 7 && stages[0].in_alfa_d == 6) {

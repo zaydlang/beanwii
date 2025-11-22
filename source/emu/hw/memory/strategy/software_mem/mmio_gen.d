@@ -1,4 +1,4 @@
-module emu.hw.memory.strategy.slowmem.mmio_gen;
+module emu.hw.memory.strategy.software_mem.mmio_gen;
 
 import util.bitop;
 import util.number;
@@ -124,7 +124,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
     T read(T)(u32 address) {
         import std.format;
 
-        // log_slowmem("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
+        // log_memory("VERBOSE MMIO: Reading from %x (size = %d) (%X %X)", address, T.sizeof, arm9.regs[pc], arm7.regs[pc]);
         T value = T(0);
 
         static foreach (MmioRegister mr; mmio_registers) {
@@ -135,7 +135,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                         this.log_read!T(address, value);
                         return value;
                     } else {
-                        log_slowmem("Unimplemented read: %s (size = %d)", mr.name, T.sizeof);
+                        log_memory("Unimplemented read: %s (size = %d)", mr.name, T.sizeof);
                         return T(0);
                     }
                 }
@@ -202,7 +202,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 }
             }
 
-            default: error_slowmem("Unimplemented read: [%x]", address);
+            default: error_memory("Unimplemented read: [%x]", address);
         }
 
         return u8(0);
@@ -210,7 +210,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
 
     void write(T)(u32 address, T value) {
         this.log_write!T(address, value);
-        // log_slowmem("VERBOSE MMIO: Writing %x to %x (size = %d) (%X %X)", value, address, T.sizeof,  arm9.regs[pc], arm7.regs[pc]);
+        // log_memory("VERBOSE MMIO: Writing %x to %x (size = %d) (%X %X)", value, address, T.sizeof,  arm9.regs[pc], arm7.regs[pc]);
 
         import std.format;
         static foreach (MmioRegister mr; mmio_registers) {
@@ -219,7 +219,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                     static if (mr.implemented) {
                         mixin("context.%s.write_%s!T(cast(T) (value >> (8 * (address - mr.address))), address %% %d);".format(mr.component, mr.name, mr.size));
                     } else {
-                        log_slowmem("Unimplemented write: [%s] = %08x (size = %d)", mr.name, value, T.sizeof);
+                        log_memory("Unimplemented write: [%s] = %08x (size = %d)", mr.name, value, T.sizeof);
                         return;
                     }
                 }
@@ -279,7 +279,7 @@ final class MmioGen(MmioRegister[] mmio_registers, T) {
                 }
             }
 
-            default: error_slowmem("Unimplemented write: [%x] = %x", address, value);
+            default: error_memory("Unimplemented write: [%x] = %x", address, value);
         }
     }
 }

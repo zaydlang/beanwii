@@ -1,4 +1,4 @@
-module emu.hw.memory.strategy.fastmem.jit_memory_access;
+module emu.hw.memory.strategy.hardware_accelerated_mem.jit_memory_access;
 
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.guest_reg;
