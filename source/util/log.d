@@ -6,6 +6,7 @@ import std.conv;
 import std.traits;
 
 __gshared Scheduler* g_logger_scheduler;
+__gshared bool logging_paused = false;
 
 enum LogColor : string {
     RED     = "\033[31m",
@@ -35,6 +36,7 @@ enum Whitelist = [
     // LogSource.IPC,
     // LogSource.JIT,
     // LogSource.MMIO,
+    // LogSource.OPENGL,
     // LogSource.OS_REPORT,
     // LogSource.PE,
     // LogSource.SLOWMEM,
@@ -54,7 +56,7 @@ enum LogSource {
     ENCRYPTION,
     VMEM,
     BROADWAY,
-    SLOWMEM,
+    MEMORY,
     IR,
     JIT,
     XBYAK,
@@ -83,6 +85,7 @@ enum LogSource {
     UTIL,
     GALLINULE,
     TEXTURE,
+    OPENGL,
 
     NONE // dummy
 }
@@ -123,6 +126,10 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
     version (silent) {
         return;
     } else {
+        if (logging_paused && !fatal) {
+            return;
+        }
+        
         version (quiet) {
             if (!fatal) {
                 return;
@@ -164,6 +171,18 @@ __gshared OnErrorCallback g_on_error_callback;
 
 public void set_logger_on_error_callback(OnErrorCallback on_error_callback) {
     g_on_error_callback = on_error_callback;
+}
+
+public void pause_logging() {
+    logging_paused = true;
+}
+
+public void resume_logging() {
+    logging_paused = false;
+}
+
+public void toggle_logging() {
+    logging_paused = !logging_paused;
 }
 
 static string pad_string_right(string s, ulong pad)() {

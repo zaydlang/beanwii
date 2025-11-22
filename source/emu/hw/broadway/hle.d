@@ -46,7 +46,6 @@ final class HleContext {
         // patch the code to add an HLE opcode in memory
         mem.cpu_write_u32(hle_func_address, generate_hle_opcode(hle_function_id));
         log_apploader("%x %x", cast(u64) mem, mem.cpu_read_u32(hle_func_address));
-                log_slowmem("verify: 0x%08x", mem.hle_trampoline.read_be!u32(0));
 
         this.num_hle_functions++;
         return hle_func_address;

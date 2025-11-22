@@ -76,6 +76,7 @@ struct OutputReport {
         ReadMemoryAndRegistersReport   read_memory_and_registers;
         WriteMemoryAndRegistersReport  write_memory_and_registers;
         IRCameraEnable2                ir_camera_enable2;
+        RumbleReport                   rumble_report;
     }
 }
 
@@ -103,7 +104,7 @@ enum InputReportId : u8 {
 }
 
 enum OutputReportId : u8 {
-    Rumble                   = 0x10,
+    RumbleReport             = 0x10,
     PlayerLEDs               = 0x11,
     DataReportingMode        = 0x12,
     IRCameraEnable           = 0x13,
@@ -226,6 +227,14 @@ enum IRCameraState : u8 {
 }
 
 alias IRCameraEnable2 = IRCameraEnable;
+
+struct RumbleReport {
+    align(1):
+
+    u8 rumble;
+}
+
+static assert(RumbleReport.sizeof == 1);
 
 struct StatusInformationReport {
     align(1):

@@ -61,6 +61,7 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     private void grow() {
         size_t new_capacity = capacity == 0 ? page_size : capacity * 2;
         size_t new_bytes = new_capacity * T.sizeof;
+        log_hollywood("Growing allocator %x to new byte size: %s. T sizeof: %s", cast(void*) &this, new_bytes, T.sizeof);
         
         void* new_memory = mmap(null, new_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         

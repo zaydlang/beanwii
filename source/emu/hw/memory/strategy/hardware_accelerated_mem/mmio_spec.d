@@ -1,9 +1,9 @@
-module emu.hw.memory.strategy.fastmem.mmio_spec;
+module emu.hw.memory.strategy.hardware_accelerated_mem.mmio_spec;
 
 import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
-import emu.hw.memory.strategy.fastmem.mmio_gen;
-import emu.hw.memory.strategy.fastmem.fastmem;
+import emu.hw.memory.strategy.hardware_accelerated_mem.mmio_gen;
+import emu.hw.memory.strategy.hardware_accelerated_mem.hardware_accelerated_mem;
 import emu.hw.ai.ai;
 import emu.hw.di.di;
 import emu.hw.dsp.dsp;
@@ -29,7 +29,7 @@ final class Mmio {
     public InterruptController interrupt_controller;
     public IPC                 ipc;
     public Hollywood           hollywood;
-    public FastMem             memory;
+    public HardwareAcceleratedMem memory;
 
     static const mmio_spec = [
         MmioRegister("command_processor",    "CP_FIFO_STATUS",        0xCC00_0000, 2, READ_WRITE),
@@ -56,6 +56,10 @@ final class Mmio {
         MmioRegister("pixel_engine",         "ALPHA_READ",            0xCC00_1008, 2, READ_WRITE),
         MmioRegister("pixel_engine",         "PE_IRQ",                0xCC00_100A, 2, READ_WRITE),
         MmioRegister("pixel_engine",         "PE_TOKEN",              0xCC00_100E, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "BBOX_LEFT",             0xCC00_1010, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "BBOX_RIGHT",            0xCC00_1012, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "BBOX_TOP",              0xCC00_1014, 2, READ_WRITE),
+        MmioRegister("pixel_engine",         "BBOX_BOTTOM",           0xCC00_1016, 2, READ_WRITE),
         MmioRegister("video_interface",      "VTR",                   0xCC00_2000, 2, READ_WRITE),
         MmioRegister("video_interface",      "DCR",                   0xCC00_2002, 2, READ_WRITE),
         MmioRegister("video_interface",      "HTR0",                  0xCC00_2004, 4, READ_WRITE),
@@ -185,7 +189,7 @@ final class Mmio {
         this.ipc = ipc;
     }
 
-    public void connect_memory(FastMem memory) {
+    public void connect_memory(HardwareAcceleratedMem memory) {
         this.memory = memory;
     }
 

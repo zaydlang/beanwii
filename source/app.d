@@ -24,9 +24,11 @@ void logger_on_error_callback(){
 
 version (unittest) {} else {
 	void main(string[] args) {
-		GC.disable();
-		
 		CliArgs cli_args = parse_cli_args(args);
+
+		if (!cli_args.start_debugger) {
+			GC.disable();
+		}
 		
 		wii = new Wii(cli_args.ringbuffer_size);
 		auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio);

@@ -29,33 +29,6 @@ final class PixelEngine {
 
     u32 z_config;
     void write_Z_CONFIG(int target_byte, u8 value) {
-        log_pe("Z_CONFIG: %d %d", target_byte, value);
-        z_config = z_config.set_byte(target_byte, value);
-
-        if (target_byte == 0) {
-            if (z_config.bit(0)) {
-                glEnable(GL_DEPTH_TEST);
-            } else {
-                glDisable(GL_DEPTH_TEST);
-            }
-
-            if (z_config.bit(4)) {
-                glDepthMask(GL_TRUE);
-            } else {
-                glDepthMask(GL_FALSE);
-            }
-
-            final switch (z_config.bits(1, 3)) {
-                case 0: glDepthFunc(GL_NEVER); break;
-                case 1: glDepthFunc(GL_LESS); break;
-                case 2: glDepthFunc(GL_LEQUAL); break;
-                case 3: glDepthFunc(GL_EQUAL); break;
-                case 4: glDepthFunc(GL_NOTEQUAL); break;
-                case 5: glDepthFunc(GL_GEQUAL); break;
-                case 6: glDepthFunc(GL_GREATER); break;
-                case 7: glDepthFunc(GL_ALWAYS); break;
-            }
-        }
 
     }
 
@@ -64,9 +37,30 @@ final class PixelEngine {
     }
 
     u32 alpha_config;
+    
+    bool boolean_blending_enable;
+    bool arithmetic_blending_enable;
+    bool dither_enable;
+    bool color_update_enable;
+    bool alpha_update_enable;
+    int blend_destination;
+    int blend_source;
+    bool subtractive_additive_toggle;
+    int blend_operator;
+    
     void write_ALPHA_CONFIG(int target_byte, u8 value) {
         log_pe("ALPHA_CONFIG: %d %x", target_byte, value);
         alpha_config = alpha_config.set_byte(target_byte, value);
+        
+        boolean_blending_enable       = alpha_config.bit(0);
+        arithmetic_blending_enable    = alpha_config.bit(1);
+        dither_enable                 = alpha_config.bit(2);
+        color_update_enable           = alpha_config.bit(3);
+        alpha_update_enable           = alpha_config.bit(4);
+        blend_destination             = alpha_config.bits(5, 7);
+        blend_source                  = alpha_config.bits(8, 10);
+        subtractive_additive_toggle   = alpha_config.bit(11);
+        blend_operator                = alpha_config.bits(12, 15);
     }
 
     u8 read_ALPHA_CONFIG(int target_byte) {
@@ -137,5 +131,41 @@ final class PixelEngine {
             log_pe("PE token interrupt: %04x", token);
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.PeToken);
         }
+    }
+
+    u16 bbox_left;
+    void write_BBOX_LEFT(int target_byte, u8 value) {
+        bbox_left = cast(u16) bbox_left.set_byte(target_byte, value);
+    }
+
+    u8 read_BBOX_LEFT(int target_byte) {
+        return bbox_left.get_byte(target_byte);
+    }
+
+    u16 bbox_right;
+    void write_BBOX_RIGHT(int target_byte, u8 value) {
+        bbox_right = cast(u16) bbox_right.set_byte(target_byte, value);
+    }
+
+    u8 read_BBOX_RIGHT(int target_byte) {
+        return bbox_right.get_byte(target_byte);
+    }
+
+    u16 bbox_top;
+    void write_BBOX_TOP(int target_byte, u8 value) {
+        bbox_top = cast(u16) bbox_top.set_byte(target_byte, value);
+    }
+
+    u8 read_BBOX_TOP(int target_byte) {
+        return bbox_top.get_byte(target_byte);
+    }
+
+    u16 bbox_bottom;
+    void write_BBOX_BOTTOM(int target_byte, u8 value) {
+        bbox_bottom = cast(u16) bbox_bottom.set_byte(target_byte, value);
+    }
+
+    u8 read_BBOX_BOTTOM(int target_byte) {
+        return bbox_bottom.get_byte(target_byte);
     }
 }

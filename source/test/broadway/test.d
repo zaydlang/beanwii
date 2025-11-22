@@ -3,7 +3,7 @@ module test.broadway.state.test;
 import consolecolors;
 import emu.hw.broadway.state;
 import emu.hw.disk.readers.filereader;
-import emu.hw.memory.strategy.slowmem.slowmem;
+import emu.hw.memory.strategy.software_mem.software_mem;
 import emu.hw.wii;
 import std.algorithm;
 import std.array;
