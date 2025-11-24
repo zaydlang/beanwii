@@ -7,7 +7,13 @@ version (linux) {
 
 import core.sys.posix.signal;
 import core.sys.posix.sys.mman;
+import core.sys.posix.ucontext;
 import core.sys.posix.unistd;
+import emu.hw.broadway.jit.emission.code;
+import emu.hw.broadway.jit.emission.opcode;
+import emu.hw.broadway.jit.emission.return_value;
+import emu.hw.broadway.jit.jit;
+import emu.hw.broadway.state;
 import std.stdio;
 import util.array;
 import util.log;
@@ -114,6 +120,10 @@ final class VirtualMemoryManager {
         return address >= space.base_address && address < space.base_address + space.size;
     }
 
+    void* get_host_pointer(VirtualMemorySpace* space, u64 address) {
+        return this.to_host_address(space, address);
+    }
+
     private void map_generic(VirtualMemorySpace* space, VirtualMemoryRegion* memory_region, u64 address, u64 size) {
         void* host_address = this.to_host_address(space, address);
 
@@ -134,18 +144,101 @@ final class VirtualMemoryManager {
 
 __gshared VirtualMemoryManager _virtual_memory_manager;
 
+extern(C)
+BlockReturnValue fastmem_mmio_fallback(BroadwayState* state) {
+    g_jit.invalidate_no_clear_slowmem(state.pc_at_beginning_of_block);
+    g_jit.code.mark_slow_access(state.pc);
+    
+    return BlockReturnValue.GuestBlockEnd;
+}
+
+private bool is_guest_mmio_address(u64 guest_addr) {
+    return (guest_addr & 0x0E000000) == 0x0C000000;
+}
+
+MemoryInstructionType get_memory_instruction_type(u32 opcode) {
+    int primary_opcode = opcode >> 26;
+
+    switch (primary_opcode) {
+        case PrimaryOpcode.LMW:
+        case PrimaryOpcode.STMW:
+            return MemoryInstructionType.LoadStoreMultiple;
+            
+        case PrimaryOpcode.PSQ_L:
+        case PrimaryOpcode.PSQ_LU:
+        case PrimaryOpcode.PSQ_ST:
+        case PrimaryOpcode.PSQ_STU:
+            return MemoryInstructionType.PairedSingle;
+            
+        case PrimaryOpcode.OP_1F:
+            int extended_opcode = (opcode >> 1) & 0x3ff;
+            if (extended_opcode == 1014) {
+                return MemoryInstructionType.DataCacheBlockZero;
+            }
+
+            return MemoryInstructionType.Simple;
+        default:
+            return MemoryInstructionType.Simple;
+    }
+}
+
+enum MemoryInstructionType {
+    Simple,
+    PairedSingle,
+    LoadStoreMultiple,
+    DataCacheBlockZero
+}
+
+int stack_offset_from_instruction_type(MemoryInstructionType instr_type) {
+    final switch (instr_type) {
+        case MemoryInstructionType.LoadStoreMultiple:
+            error_memory("LoadStoreMultiple should not reach here");
+            return 0;
+        case MemoryInstructionType.PairedSingle:
+            return 8 * 9;
+        case MemoryInstructionType.DataCacheBlockZero:
+            error_memory("DataCacheBlockZero should not reach here");
+            return 0;
+        case MemoryInstructionType.Simple:
+            return 0;
+    }
+}
+
 extern(C) 
 private void virtual_memory_segfault_handler(int signum, siginfo_t* info, void* context) {
     void* fault_addr = info.si_addr;
+    ucontext_t* uctx = cast(ucontext_t*) context;
     
     for (size_t i = 0; i < _virtual_memory_manager.memory_spaces.length; i++) {
         VirtualMemorySpace* space = &_virtual_memory_manager.memory_spaces[i];
         if (_virtual_memory_manager.in_range(space, fault_addr)) {
             u64 guest_addr = _virtual_memory_manager.to_guest_address(space, fault_addr);
-            error_memory("Invalid memory access at guest 0x%08X", guest_addr);
+            
+            if (is_guest_mmio_address(guest_addr)) {
+                BroadwayState* state = cast(BroadwayState*) uctx.uc_mcontext.gregs[REG_RDI];
+                u32 opcode = g_jit.mem.cpu_read_u32(state.pc);
+                MemoryInstructionType instr_type = get_memory_instruction_type(opcode);
+                int stack_offset = stack_offset_from_instruction_type(instr_type);
+
+                u64* rsp = cast(u64*) uctx.uc_mcontext.gregs[REG_RSP];
+                rsp += stack_offset / 8;
+                
+                uctx.uc_mcontext.gregs[REG_R15] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_R14] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_R13] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_R12] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_RBX] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_RBP] = *rsp++;
+                uctx.uc_mcontext.gregs[REG_RSP] = cast(long) rsp;
+                
+                uctx.uc_mcontext.gregs[REG_RIP] = cast(u64) &fastmem_mmio_fallback;
+            } else {
+                error_memory("Invalid memory access at guest 0x%08X", guest_addr);
+            }
+
             return;
         }
     }
     
-    error_memory("Invalid memory access at host 0x%08X", cast(u64) fault_addr);
+    error_memory("Invalid memory access at host 0x%08X at pc 0x%08X", cast(u64) fault_addr, uctx.uc_mcontext.gregs[REG_RIP]);
 }

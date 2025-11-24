@@ -4,6 +4,7 @@ import bindbc.opengl;
 import emu.hw.cp.cp;
 import emu.hw.hollywood.blitting_processor;
 import emu.hw.hollywood.gl_objects;
+import emu.hw.hollywood.gxfifo_ringbuffer;
 import emu.hw.hollywood.texture;
 import emu.hw.pe.pe;
 import emu.hw.memory.strategy.memstrategy;
@@ -26,10 +27,16 @@ final class Hollywood {
         CommandProcessor  = 0x08,
         TransformUnit     = 0x10,
 
+        LoadMtxIdxA       = 0x20,
+        LoadMtxIdxB       = 0x28,
+        LoadMtxIdxC       = 0x30,
+        LoadMtxIdxD       = 0x38,
+
         VSInvalidate      = 0x48,
         NoOp              = 0x00,
 
         DrawQuads         = 0x80,
+        DrawTriangles     = 0x90,
         DrawTriangleFan   = 0xA0,
         DrawTriangleStrip = 0x98,
         DrawLines         = 0xA8,
@@ -44,6 +51,7 @@ final class Hollywood {
         WaitingForCPData,
         WaitingForTransformUnitDescriptor,
         WaitingForTransformUnitData,
+        WaitingForLoadMtxIdxData,
         WaitingForNumberOfVertices,
         WaitingForVertexData,
         WaitingForDisplayListAddress,
@@ -313,6 +321,9 @@ final class Hollywood {
     private float[256] general_matrix_ram;
     private float[256] dt_texture_matrix_ram;
 
+    private u32[4] load_mtx_idx_values;
+    private int current_load_mtx_idx;
+
     private float[4][2] color_global;
 
     private GLuint gl_program;
@@ -322,6 +333,17 @@ final class Hollywood {
     
     private u32 display_list_address;
     private u32 display_list_size;
+    
+    private uint total_display_lists = 0;
+    private uint draw_only_display_lists = 0;
+    private bool current_display_list_is_draw_only = true;
+    private uint[u64] display_list_vertices;
+    private u64 current_display_list_hash = 0;
+    private uint consecutive_display_lists = 0;
+    private uint max_consecutive_display_lists = 0;
+    private bool last_command_was_display_list = false;
+    private bool debug_next_commands = false;
+    private uint debug_commands_left = 0;
 
     u32[16] array_bases;
     u32[16] array_strides;
@@ -390,10 +412,10 @@ final class Hollywood {
     }
 
     RingBuffer!FifoDebugValue fifo_debug_history;
-    RingBuffer!u8 pending_fifo_data;
+    GXFifoRingBuffer pending_fifo_data;
 
     this() {
-        pending_fifo_data = new RingBuffer!u8(0x100000);
+        pending_fifo_data = new GXFifoRingBuffer(256);
         fifo_debug_history = new RingBuffer!FifoDebugValue(100);
         shape_groups = PageAllocator!ShapeGroup(0);
         vertex_allocator = PageAllocator!Vertex(0);
@@ -408,37 +430,35 @@ final class Hollywood {
         state = State.WaitingForCommand;
 
         glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniform_buffer_alignment);
-        log_opengl("Uniform buffer alignment: %d bytes", uniform_buffer_alignment);
 
         glGenBuffers(1, &persistent_vertex_buffer);
         glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
         glBufferStorage(GL_ARRAY_BUFFER, MAX_VERTICES * Vertex.sizeof, null, 
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         persistent_vertex_ptr = cast(Vertex*) glMapBufferRange(GL_ARRAY_BUFFER, 0, MAX_VERTICES * Vertex.sizeof,
-                                                              GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                                                              GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         
         size_t tev_aligned_size = (TevConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
         size_t tev_buffer_size = MAX_TEV_CONFIGS * tev_aligned_size;
         glGenBuffers(1, &persistent_tev_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
         glBufferStorage(GL_UNIFORM_BUFFER, tev_buffer_size, null,
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         persistent_tev_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, tev_buffer_size,
-                                             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                                             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         
         size_t vertex_config_aligned_size = (VertexConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
         size_t vertex_config_buffer_size = MAX_VERTEX_CONFIGS * vertex_config_aligned_size;
         glGenBuffers(1, &persistent_vertex_config_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);
         glBufferStorage(GL_UNIFORM_BUFFER, vertex_config_buffer_size, null,
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         persistent_vertex_config_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, vertex_config_buffer_size,
-                                                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+                                                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         
         current_vertex_offset = 0;
         current_tev_byte_offset = 0;
         current_vertex_config_byte_offset = 0;
-        log_opengl("Persistent buffers initialized: vertices=%p, tev=%p, vertex_config=%p", persistent_vertex_ptr, persistent_tev_ptr, persistent_vertex_config_ptr);
 
         load_shaders();
 
@@ -494,6 +514,16 @@ final class Hollywood {
     Scheduler scheduler;
     void connect_scheduler(Scheduler scheduler) {
         this.scheduler = scheduler;
+        schedule_fifo_processing();
+    }
+    
+    void schedule_fifo_processing() {
+        scheduler.add_event_relative_to_clock(&fifo_processing_event, 10_000);
+    }
+    
+    void fifo_processing_event() {
+        process_pending_fifo();
+        schedule_fifo_processing();
     }
 
     void write_GX_FIFO(T)(T value, int offset) {
@@ -526,49 +556,61 @@ final class Hollywood {
         }
     }
 
-    T read_from_pending_fifo_data(T)() {
-        if (T.sizeof > pending_fifo_data.get_size()) {
-            error_hollywood("Pending FIFO data does not have enough data. %x requested, %x available", T.sizeof, pending_fifo_data.get_size());
-        }
-
+    T read_from_fifo_data(T)(ubyte* data, ref size_t offset) {
         T value;
-        static foreach(i; 0 .. T.sizeof) {
-            value = cast(T) value.set_byte(T.sizeof - i - 1, pending_fifo_data.remove());
+        
+        static if (T.sizeof == 1) {
+            value = data[offset];
+        } else static if (T.sizeof == 2) {
+            ushort raw_value = *cast(ushort*)(data + offset);
+            value = cast(T) bswap(raw_value);
+        } else static if (T.sizeof == 4) {
+            uint raw_value = *cast(uint*)(data + offset);
+            value = cast(T) bswap(raw_value);
+        } else static if (T.sizeof == 8) {
+            ulong raw_value = *cast(ulong*)(data + offset);
+            value = cast(T) bswap(raw_value);
+        } else {
+            static assert(false, "Unsupported type size");
         }
+        
+        offset += T.sizeof;
 
-        log_hollywood("read_from_pending_fifo_data: %x %x", value, pending_fifo_data.get_size());
+        log_hollywood("read_from_fifo_data: %x", value);
 
         return value;
     }
 
     void process_fifo_write(T)(T value, int offset) {
-        // fifo_debug_history.add_overwrite(FifoDebugValue(value, state));
+        static foreach(i; 0 .. T.sizeof) {{
+            bool watermark_hit = pending_fifo_data.add(value.get_byte(T.sizeof - i - 1));
+            
+            if (watermark_hit) {
+                process_pending_fifo();
+            }
+        }}
+    }
 
-        static foreach(i; 0 .. T.sizeof) {
-            pending_fifo_data.add(value.get_byte(T.sizeof - i - 1));
-        }
-
-        size_t available = pending_fifo_data.get_size();
-        if (available < cached_bytes_needed) {
-            return;
-        }
+    size_t process_fifo(ubyte* data, size_t length) {
+        size_t offset = 0;
+        log_hollywood("Processing GX FIFO data. Length: %d, state: %s", length, state);
 
         bool handled = false;
-        do {
+        while (offset < length && cached_bytes_needed <= length - offset) {
+            log_hollywood("Check passed: %d < %d && %d <= %d", offset, length, cached_bytes_needed, length - offset);
             handled = false;
             final switch (state) {
                 case State.WaitingForCommand:
-                    if (pending_fifo_data.get_size() >= 1) {
-                        handle_new_command(read_from_pending_fifo_data!u8);
-                        cached_bytes_needed = 1;
+                    if (offset + 1 <= length) {
+                        handle_new_command(read_from_fifo_data!u8(data, offset));
                         handled = true;
                     }
 
                     break;
 
                 case State.WaitingForBPWrite:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        handle_new_bp_write(read_from_pending_fifo_data!u32);
+                    if (offset + 4 <= length) {
+                        handle_new_bp_write(read_from_fifo_data!u32(data, offset));
                         state = State.WaitingForCommand;
                         cached_bytes_needed = 1;
                         handled = true;
@@ -577,8 +619,8 @@ final class Hollywood {
                     break;
                 
                 case State.WaitingForCPReg:
-                    if (pending_fifo_data.get_size() >= 1) {
-                        cp_register = read_from_pending_fifo_data!u8;
+                    if (offset + 1 <= length) {
+                        cp_register = read_from_fifo_data!u8(data, offset);
                         state = State.WaitingForCPData;
                         cached_bytes_needed = 4;
                         handled = true;
@@ -587,8 +629,8 @@ final class Hollywood {
                     break;
                 
                 case State.WaitingForCPData:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        handle_new_cp_write(cp_register, read_from_pending_fifo_data!u32);
+                    if (offset + 4 <= length) {
+                        handle_new_cp_write(cp_register, read_from_fifo_data!u32(data, offset));
                         state = State.WaitingForCommand;
                         cached_bytes_needed = 1;
                         handled = true;
@@ -597,10 +639,10 @@ final class Hollywood {
                     break;
 
                 case State.WaitingForTransformUnitDescriptor:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        u32 data         = read_from_pending_fifo_data!u32;
-                        xf_register       = cast(u16)  data.bits(0, 15);
-                        xf_data_remaining = cast(u16) (data.bits(16, 31) + 1);
+                    if (offset + 4 <= length) {
+                        u32 data_value   = read_from_fifo_data!u32(data, offset);
+                        xf_register       = cast(u16)  data_value.bits(0, 15);
+                        xf_data_remaining = cast(u16) (data_value.bits(16, 31) + 1);
 
                         state = State.WaitingForTransformUnitData;
                         cached_bytes_needed = 4;
@@ -610,8 +652,8 @@ final class Hollywood {
                     break;
                 
                 case State.WaitingForTransformUnitData:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        handle_new_transform_unit_write(xf_register, read_from_pending_fifo_data!u32);
+                    if (offset + 4 <= length) {
+                        handle_new_transform_unit_write(xf_register, read_from_fifo_data!u32(data, offset));
 
                         xf_data_remaining -= 1;
                         xf_register += 1;
@@ -627,11 +669,23 @@ final class Hollywood {
                     }
 
                     break;
+
+                case State.WaitingForLoadMtxIdxData:
+                    if (offset + 4 <= length) {
+                        load_mtx_idx_values[current_load_mtx_idx] = read_from_fifo_data!u32(data, offset);
+                        log_hollywood("LoadMtxIdx[%d]: %08x", current_load_mtx_idx, load_mtx_idx_values[current_load_mtx_idx]);
+                        
+                        state = State.WaitingForCommand;
+                        cached_bytes_needed = 1;
+                        handled = true;
+                    }
+
+                    break;
                 
                 case State.WaitingForNumberOfVertices:
-                    if (pending_fifo_data.get_size() >= 2) {
-                        u16 data = read_from_pending_fifo_data!u16;
-                        number_of_expected_vertices = data;
+                    if (offset + 2 <= length) {
+                        u16 data_value = read_from_fifo_data!u16(data, offset);
+                        number_of_expected_vertices = data_value;
                         number_of_expected_bytes_for_shape = size_of_incoming_vertex(current_vat) * number_of_expected_vertices;
                         state = State.WaitingForVertexData;
                         cached_bytes_needed = number_of_expected_bytes_for_shape;
@@ -645,24 +699,24 @@ final class Hollywood {
                     break;
                 
                 case State.WaitingForVertexData:
-                    log_hollywood("%d += %d", number_of_received_bytes_for_shape, T.sizeof);
-                    number_of_received_bytes_for_shape = cast(int) cached_bytes_needed;
+                    size_t remaining_data = length - offset;
 
-                    if (number_of_received_bytes_for_shape >= number_of_expected_bytes_for_shape) {
-                        process_new_shape();
+                    if (remaining_data >= number_of_expected_bytes_for_shape) {
+                        process_new_shape_from_data(data + offset, number_of_expected_bytes_for_shape);
+                        offset += number_of_expected_bytes_for_shape;
                         state = State.WaitingForCommand;
                         cached_bytes_needed = 1;
                         number_of_received_bytes_for_shape = 0;
                         handled = true;
-                    } else if (number_of_received_bytes_for_shape > number_of_expected_bytes_for_shape) {
+                    } else if (remaining_data > number_of_expected_bytes_for_shape) {
                         error_hollywood("Received too many bytes for shape");
                     }
 
                     break;
                 
                 case State.WaitingForDisplayListAddress:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        u32 address = read_from_pending_fifo_data!u32;
+                    if (offset + 4 <= length) {
+                        u32 address = read_from_fifo_data!u32(data, offset);
                         log_hollywood("Display list address: %08x", address);
                         this.display_list_address = address;
                         state = State.WaitingForDisplayListSize;
@@ -675,8 +729,8 @@ final class Hollywood {
                     break;
                 
                 case State.WaitingForDisplayListSize:
-                    if (pending_fifo_data.get_size() >= 4) {
-                        u32 size = read_from_pending_fifo_data!u32;
+                    if (offset + 4 <= length) {
+                        u32 size = read_from_fifo_data!u32(data, offset);
                         log_hollywood("Display list size: %08x", size);
                         this.display_list_size = size;
                         state = State.WaitingForCommand;
@@ -689,7 +743,27 @@ final class Hollywood {
 
                     break;
             }
-        } while (pending_fifo_data.get_size() > 0 && handled);
+
+            if (!handled) break;
+        }
+
+        if (offset < length) {
+            log_hollywood("Unprocessed data remains: %d bytes", length - offset);
+        }
+
+        return offset;
+    }
+
+    void process_pending_fifo() {
+        size_t available = pending_fifo_data.get_size();
+        if (available < cached_bytes_needed) return;
+        
+        ubyte* data = pending_fifo_data.buffer + pending_fifo_data.read_ptr;
+        size_t initial_read_ptr = pending_fifo_data.read_ptr;
+        
+        size_t processed = process_fifo(data, available);
+        pending_fifo_data.read_ptr = initial_read_ptr + processed;
+        pending_fifo_data.wrap_pointers();
     }
 
     private size_t next_expected_size() {
@@ -706,6 +780,8 @@ final class Hollywood {
                 return 4;
             case State.WaitingForTransformUnitData:
                 return 4;
+            case State.WaitingForLoadMtxIdxData:
+                return 4;
             case State.WaitingForNumberOfVertices:
                 return 2;
             case State.WaitingForVertexData:
@@ -720,15 +796,50 @@ final class Hollywood {
     private void handle_new_command(T)(T value) {
         // assert(value.sizeof == 1);
         auto command = cast(GXFifoCommand) value.bits(0, 7);
+        
+        if (debug_next_commands && debug_commands_left > 0) {
+            log_opengl("POST-DISPLAY-LIST: Command %02x", cast(int) command);
+            debug_commands_left--;
+            if (debug_commands_left == 0) {
+                debug_next_commands = false;
+            }
+        }
 
         switch (cast(int) command) {
-            case GXFifoCommand.BlittingProcessor: state = State.WaitingForBPWrite; cached_bytes_needed = 4; break;
-            case GXFifoCommand.CommandProcessor:  state = State.WaitingForCPReg; cached_bytes_needed = 1; break;
-            case GXFifoCommand.TransformUnit:     state = State.WaitingForTransformUnitDescriptor; cached_bytes_needed = 4; break;
-            case GXFifoCommand.VSInvalidate:      log_hollywood("Unimplemented: VS invalidate"); break;
-            case GXFifoCommand.NoOp:              break;
+            case GXFifoCommand.BlittingProcessor: 
+                current_display_list_is_draw_only = false;
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                state = State.WaitingForBPWrite; cached_bytes_needed = 4; break;
+            case GXFifoCommand.CommandProcessor:  
+                current_display_list_is_draw_only = false;
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                state = State.WaitingForCPReg; cached_bytes_needed = 1; break;
+            case GXFifoCommand.TransformUnit:     
+                current_display_list_is_draw_only = false;
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                state = State.WaitingForTransformUnitDescriptor; cached_bytes_needed = 4; break;
+            case GXFifoCommand.LoadMtxIdxA: .. case GXFifoCommand.LoadMtxIdxD:
+                current_display_list_is_draw_only = false;
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                current_load_mtx_idx = (cast(int) command).bits(3, 4);
+                state = State.WaitingForLoadMtxIdxData; 
+                cached_bytes_needed = 4; 
+                break;
+            case GXFifoCommand.VSInvalidate:      
+                current_display_list_is_draw_only = false;
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                log_hollywood("Unimplemented: VS invalidate"); break;
+            case GXFifoCommand.NoOp:              
+                break;
             
             case GXFifoCommand.DrawQuads | 0: .. case GXFifoCommand.DrawQuads | 7:         
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
                 current_draw_command = GXFifoCommand.DrawQuads;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
@@ -738,7 +849,21 @@ final class Hollywood {
                 cached_bytes_needed = 2;
                 break;
             
+            case GXFifoCommand.DrawTriangles | 0: .. case GXFifoCommand.DrawTriangles | 7:
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
+                current_draw_command = GXFifoCommand.DrawTriangles;
+                current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vats[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+
+                state = State.WaitingForNumberOfVertices;
+                cached_bytes_needed = 2;
+                break;
+            
             case GXFifoCommand.DrawTriangleFan | 0: .. case GXFifoCommand.DrawTriangleFan | 7:
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
                 current_draw_command = GXFifoCommand.DrawTriangleFan;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
@@ -749,6 +874,8 @@ final class Hollywood {
                 break;
             
             case GXFifoCommand.DrawTriangleStrip | 0: .. case GXFifoCommand.DrawTriangleStrip | 7:
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
                 current_draw_command = GXFifoCommand.DrawTriangleStrip;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
@@ -759,6 +886,8 @@ final class Hollywood {
                 break;
             
             case GXFifoCommand.DrawLines | 0: .. case GXFifoCommand.DrawLines | 7:
+                consecutive_display_lists = 0;
+                last_command_was_display_list = false;
                 current_draw_command = GXFifoCommand.DrawLines;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
@@ -769,6 +898,15 @@ final class Hollywood {
                 break;
             
             case GXFifoCommand.DisplayList:
+                current_display_list_is_draw_only = false;
+                if (last_command_was_display_list) {
+                    consecutive_display_lists++;
+                } else {
+                    consecutive_display_lists = 1;
+                }
+                if (consecutive_display_lists > max_consecutive_display_lists) {
+                    max_consecutive_display_lists = consecutive_display_lists;
+                }
                 state = State.WaitingForDisplayListAddress;
                 cached_bytes_needed = 4;
                 break;
@@ -783,46 +921,44 @@ final class Hollywood {
         address &= 0x1FFF_FFFF;
         log_hollywood("Display list: %08x %08x", address, size);
 
-        u8* ptr = mem.translate_address(address);
-        u32 offset = 0;
+        total_display_lists++;
+        current_display_list_is_draw_only = true;
 
-        while (size > 0) {
-            size_t size_to_read = next_expected_size();
-
-            log_hollywood("expected size to read: %d. address: %x", size_to_read, address + offset);
-
-            if (size_to_read > size) {
-                error_hollywood("Display list too small");
+        ubyte* ptr = mem.translate_address(address);
+        
+        u64 hash = 0;
+        for (uint i = 0; i < size; i += 8) {
+            u64 chunk = 0;
+            for (uint j = 0; j < 8 && i + j < size; j++) {
+                chunk |= (cast(u64) ptr[i + j]) << (j * 8);
             }
-
-            u32 value;
-            switch (size_to_read) {
-                case 1:
-                    value = ptr[offset];
-                    log_hollywood("Display list byte: %08x %02x", address + offset, value);
-                    process_fifo_write!(u8)(cast(u8) value, 0);
-                    break;
-                case 2:
-                    value = (ptr[offset] << 8) | ptr[offset + 1];
-                    log_hollywood("Display list u16: %08x %04x", address + offset, value);
-                    process_fifo_write!(u16)(cast(u16) value, 0);
-                    break;
-                case 4:
-                    value = (ptr[offset] << 24) | (ptr[offset + 1] << 16) | (ptr[offset + 2] << 8) | ptr[offset + 3];
-                    log_hollywood("Display list u32: %08x %08x", address + offset, value);
-                    process_fifo_write!(u32)(value, 0);
-                    break;
-                default:
-                    error_hollywood("Invalid size to read: %d", size_to_read);
-            }
-
-            offset += size_to_read;
-            size -= size_to_read;
+            hash ^= chunk;
         }
+        
+        ulong vertices_before = current_vertex_offset;
+        process_fifo(ptr, size);
+        last_command_was_display_list = true;
+        ulong vertices_after = current_vertex_offset;
+        
+        display_list_vertices[hash] = cast(uint) (vertices_after - vertices_before);
+        
+        if (current_display_list_is_draw_only) {
+            draw_only_display_lists++;
+            log_hollywood("Draw-only display list! (%d/%d are draw-only)", draw_only_display_lists, total_display_lists);
+        }
+        
+        debug_next_commands = true;
+        debug_commands_left = 100;
     }
-
-    private void handle_draw_quads() {
-
+    
+    void print_display_list_stats() {
+        if (total_display_lists > 0) {
+            float percentage = (cast(float) draw_only_display_lists / cast(float)total_display_lists) * 100.0f;
+            log_hollywood("=== DISPLAY LIST ANALYSIS ===");
+            log_hollywood("Total display lists: %d", total_display_lists);
+            log_hollywood("Draw-only display lists: %d (%.1f%%)", draw_only_display_lists, percentage);
+            log_hollywood("Mixed display lists: %d", total_display_lists - draw_only_display_lists);
+        }
     }
 
     void handle_new_bp_write(u32 value) {
@@ -1114,12 +1250,12 @@ final class Hollywood {
             
             case 0x45:
                 log_hollywood("PE interrupt: %08x", bp_data);
-                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_finish_interrupt(); }, 100_000);
+                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_finish_interrupt(); }, 1_000_000);
                 break;
 
             case 0x47:
                 log_hollywood("tokenize interrupt: %08x", bp_data);
-                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_token_interrupt(cast(u16) bp_data.bits(0, 15)); }, 100_000);
+                scheduler.add_event_relative_to_clock(() { pixel_engine.raise_token_interrupt(cast(u16) bp_data.bits(0, 15)); }, 1_000_000);
                 break;
             
             case 0xf6:
@@ -1473,10 +1609,7 @@ final class Hollywood {
                 return (cast(float) (sext_32((cast(s16) value), 16))) / (cast(float) (1 << shift));
             
             case CoordFormat.F32:
-                if (shift != 0) {
-                    error_hollywood("Unexpected shift for F32 format: %d", shift);
-                }
-                return force_cast!float(value);
+                return force_cast!float(value) / (cast(float) (1 << shift));
         }
     }
 
@@ -1561,35 +1694,35 @@ final class Hollywood {
         }
     }
 
-    private u32 get_vertex_attribute(VertexAttributeLocation location, size_t offset, size_t size, int arr_idx) {
-        u32 data = 0;
+    private u32 get_vertex_attribute_from_data(VertexAttributeLocation location, ubyte* data, size_t offset, size_t size, int arr_idx) {
+        u32 result = 0;
 
         switch (location) {
             case VertexAttributeLocation.Indexed8Bit:
-                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 1), size);
+                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer_direct(data, offset, 1), size);
                 break;
             case VertexAttributeLocation.Indexed16Bit:
-                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer(offset, 2), size);
+                // data = read_from_indexed_array(arr_idx, read_from_shape_data_buffer_direct(data, offset, 2), size);
                 break;
             case VertexAttributeLocation.Direct:
-                data = read_from_shape_data_buffer(offset, size);
+                result = read_from_shape_data_buffer_direct(data, offset, size);
                 break;
             default:
                 error_hollywood("Unimplemented vertex attribute location");
         }
 
-        return data;
+        return result;
     }
 
-    private u32 read_from_shape_data_buffer(size_t offset, size_t size) {
-        u32 data = 0;
+    private u32 read_from_shape_data_buffer_direct(ubyte* data, size_t offset, size_t size) {
+        u32 result = 0;
         for (int i = 0; i < size; i++) {
-            data <<= 8;
-            data |= pending_fifo_data.remove();
+            result <<= 8;
+            result |= data[offset + i];
         }
 
-        log_hollywood("read_from_shape_data_buffer: %x", data);
-        return data;
+        log_hollywood("read_from_shape_data_buffer_direct: %x %x", result, size);
+        return result;
     }
 
     private u32 read_from_indexed_array(int array_num, int idx, int offset, size_t size) {
@@ -1613,33 +1746,31 @@ final class Hollywood {
         }
     }
 
-    private void process_new_shape() {
-        log_hollywood("process_new_shape %d %s %s", shape_groups.length, vats[current_vat], vertex_descriptors[current_vat]);
-        glUseProgram(gl_program);
+    private void process_new_shape_from_data(ubyte* data, size_t data_length) {
+        log_hollywood("process_new_shape_from_data %d %s %s %x %x", shape_groups.length, vats[current_vat], vertex_descriptors[current_vat], data_length, number_of_expected_bytes_for_shape);
 
         ShapeGroup* shape_group = shape_groups.allocate();
         shape_group.shared_vertex_start = current_vertex_offset;
-        log_opengl("NEW SHAPE GROUP: starting at vertex index %d", shape_group.shared_vertex_start);
 
         shape_group.textured = false;
-        shape_group.position_matrix = general_matrix_ram[0 .. 12]; // ????
+        shape_group.position_matrix = general_matrix_ram[0 .. 12];
         shape_group.projection_matrix = projection_matrix;
 
         shape_group.depth_test_enabled = current_depth_test_enabled;
         shape_group.depth_write_enabled = current_depth_write_enabled;
         shape_group.depth_func = current_depth_func;
 
-        shape_group.cull_mode                     = current_cull_mode;
+        shape_group.cull_mode = current_cull_mode;
 
-        shape_group.alpha_update_enable           = pixel_engine.alpha_update_enable;
-        shape_group.color_update_enable           = pixel_engine.color_update_enable;
-        shape_group.dither_enable                 = pixel_engine.dither_enable;
-        shape_group.arithmetic_blending_enable    = pixel_engine.arithmetic_blending_enable;
-        shape_group.boolean_blending_enable       = pixel_engine.boolean_blending_enable;
-        shape_group.blend_source                  = pixel_engine.blend_source;
-        shape_group.blend_destination             = pixel_engine.blend_destination;
-        shape_group.subtractive_additive_toggle   = pixel_engine.subtractive_additive_toggle;
-        shape_group.blend_operator                = pixel_engine.blend_operator;
+        shape_group.alpha_update_enable = pixel_engine.alpha_update_enable;
+        shape_group.color_update_enable = pixel_engine.color_update_enable;
+        shape_group.dither_enable = pixel_engine.dither_enable;
+        shape_group.arithmetic_blending_enable = pixel_engine.arithmetic_blending_enable;
+        shape_group.boolean_blending_enable = pixel_engine.boolean_blending_enable;
+        shape_group.blend_source = pixel_engine.blend_source;
+        shape_group.blend_destination = pixel_engine.blend_destination;
+        shape_group.subtractive_additive_toggle = pixel_engine.subtractive_additive_toggle;
+        shape_group.blend_operator = pixel_engine.blend_operator;
 
         int enabled_textures_bitmap;
         for (int i = 0; i < 8; i++) {
@@ -1666,14 +1797,12 @@ final class Hollywood {
 
         int offset = 0;
         vertex_allocator.reset();
-            auto vcd = &vertex_descriptors[current_vat];
-            auto vat = &vats[current_vat];
+        auto vcd = &vertex_descriptors[current_vat];
+        auto vat = &vats[current_vat];
+        
         for (int i = 0; i < number_of_expected_vertices; i++) {
             Vertex* v = vertex_allocator.allocate();
             
-            // auto vcd = &vertex_descriptors[current_vat];
-            // auto vat = &vats[current_vat];
-
             if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
                 error_hollywood("Matrix location not implemented");
             }
@@ -1688,54 +1817,53 @@ final class Hollywood {
             case VertexAttributeLocation.Direct:
                 for (int j = 0; j < vat.position_count; j++) {
                     v.position[j] = dequantize_coord(
-                        read_from_shape_data_buffer(offset, calculate_expected_size_of_coord(vat.position_format)),
+                        read_from_shape_data_buffer_direct(data, offset, calculate_expected_size_of_coord(vat.position_format)),
                         vat.position_format, vat.position_shift);
                     offset += calculate_expected_size_of_coord(vat.position_format);
                 }
                 break;
             case VertexAttributeLocation.Indexed8Bit:
-                auto array_offset = read_from_shape_data_buffer(offset, 1);
+                auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
                 for (int j = 0; j < vat.position_count; j++) {
                     size_t size = calculate_expected_size_of_coord(vat.position_format);
                     log_hollywood("processing position with size %d", size);
-                    u32 data = read_from_indexed_array(0, array_offset, j, size);
-                    v.position[j] = dequantize_coord(data, vat.position_format, vat.position_shift);
+                    u32 vertex_data = read_from_indexed_array(0, array_offset, j, size);
+                    v.position[j] = dequantize_coord(vertex_data, vat.position_format, vat.position_shift);
                 }
                 offset += 1;
                 break;
             case VertexAttributeLocation.Indexed16Bit:
-                auto array_offset = read_from_shape_data_buffer(offset, 2);
+                auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
                 for (int j = 0; j < vat.position_count; j++) {
                     size_t size = calculate_expected_size_of_coord(vat.position_format);
                     log_hollywood("processing position with size %d", size);
-                    u32 data = read_from_indexed_array(0, array_offset, j, size);
-                    v.position[j] = dequantize_coord(data, vat.position_format, vat.position_shift);
+                    u32 vertex_data = read_from_indexed_array(0, array_offset, j, size);
+                    v.position[j] = dequantize_coord(vertex_data, vat.position_format, vat.position_shift);
                 }
                 offset += 2;
                 break;
             case VertexAttributeLocation.NotPresent:
                 break;
-                // error_hollywood("Position location not present");
             }
 
             if (vat.position_count == 2) {
-                v.position[2] = 0.0; // z coordinate is always 0 for 2D shapes
+                v.position[2] = 0.0;
             }            
 
             final switch (vcd.normal_location) {
             case VertexAttributeLocation.Direct:
                 size_t size = calculate_expected_size_of_normal(vat.normal_format);
                 for (int j = 0; j < vat.normal_count; j++) {
-                    read_from_shape_data_buffer(offset, size);
+                    read_from_shape_data_buffer_direct(data, offset, size);
                     offset += size;
                 }
                 break;
             case VertexAttributeLocation.Indexed8Bit:
-                read_from_shape_data_buffer(offset, 1);
+                read_from_shape_data_buffer_direct(data, offset, 1);
                 offset += 1;
                 break;
             case VertexAttributeLocation.Indexed16Bit:
-                read_from_shape_data_buffer(offset, 2);
+                read_from_shape_data_buffer_direct(data, offset, 2);
                 offset += 2;
                 break;
             case VertexAttributeLocation.NotPresent:
@@ -1749,7 +1877,7 @@ final class Hollywood {
                 case VertexAttributeLocation.Direct:
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                     log_hollywood("processing color with size %d", size);
-                    u32 color_data = get_vertex_attribute(vcd.color_location[j], offset, size, j + 2);
+                    u32 color_data = get_vertex_attribute_from_data(vcd.color_location[j], data, offset, size, j + 2);
                     color = dequantize_color(color_data, vat.color_format[j], j);
 
                     if (vat.color_count[j] == 3) {
@@ -1760,31 +1888,37 @@ final class Hollywood {
                     break;
                 
                 case VertexAttributeLocation.Indexed8Bit:
-                    auto array_offset = read_from_shape_data_buffer(offset, 1);
+                    auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
-                    log_hollywood("processing indexed color with size %d", size);
+                    log_hollywood("processing color with size %d", size);
+
                     u32 color_data = read_from_indexed_array(j + 2, array_offset, 0, size);
                     color = dequantize_color(color_data, vat.color_format[j], j);
-                    
+
                     if (vat.color_count[j] == 3) {
                         color[3] = 1.0;
                     }
+
                     offset += 1;
                     break;
                 
-                case VertexAttributeLocation.Indexed16Bit:  
-                    auto array_offset = read_from_shape_data_buffer(offset, 2);
+                case VertexAttributeLocation.Indexed16Bit:
+                    auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
                     size_t size = calculate_expected_size_of_color(vat.color_format[j]);
-                    log_hollywood("processing indexed color with size %d", size);
+                    log_hollywood("processing color with size %d", size);
+
                     u32 color_data = read_from_indexed_array(j + 2, array_offset, 0, size);
                     color = dequantize_color(color_data, vat.color_format[j], j);
-                    
+
                     if (vat.color_count[j] == 3) {
                         color[3] = 1.0;
                     }
+
                     offset += 2;
                     break;
+                
                 case VertexAttributeLocation.NotPresent:
+                    color = [1.0, 1.0, 1.0, 1.0];
                     break;
                 }
 
@@ -1798,20 +1932,20 @@ final class Hollywood {
                 }
             }
 
-            // for (int j = 0; j < 8; j++) {
-            for (int j = 0; j < 8; j++) { 
+            for (int j = 0; j < 8; j++) {
                 final switch (vcd.texcoord_location[j]) {
                 case VertexAttributeLocation.Direct:
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        u32 texcoord = get_vertex_attribute(vcd.texcoord_location[j], offset, size, j + 4);
+                        u32 texcoord = get_vertex_attribute_from_data(vcd.texcoord_location[j], data, offset, size, j + 4);
                         v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
                         offset += get_size_of_vertex_attribute_in_stream(vcd.texcoord_location[j], size);
                     }
                     break;
+                
                 case VertexAttributeLocation.Indexed8Bit:
-                    auto array_offset = read_from_shape_data_buffer(offset, 1);
+                    auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
@@ -1820,8 +1954,9 @@ final class Hollywood {
                     }
                     offset += 1;
                     break;
+
                 case VertexAttributeLocation.Indexed16Bit:
-                    auto array_offset = read_from_shape_data_buffer(offset, 2);
+                    auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
                     log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
                     for (int k = 0; k < vat.texcoord_count[j]; k++) {
                         size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
@@ -1830,6 +1965,7 @@ final class Hollywood {
                     }
                     offset += 2;
                     break;
+
                 case VertexAttributeLocation.NotPresent:
                     break;
                 }
@@ -1837,58 +1973,13 @@ final class Hollywood {
 
         }
 
-        for (int i = 0; i < 8; i++) {
-            shape_group.vertex_config.tex_configs[i].tex_matrix = shape_group.texture[i].tex_matrix;
-            shape_group.vertex_config.tex_configs[i].dualtex_matrix = shape_group.texture[i].dualtex_matrix; 
-            shape_group.vertex_config.tex_configs[i].normalize_before_dualtex = shape_group.texture[i].normalize_before_dualtex;
-            shape_group.vertex_config.tex_configs[i].texcoord_source = cast(u32) texture_descriptors[i].texcoord_source;
-        }
-
-        shape_group.enabled_textures_bitmap = enabled_textures_bitmap;
-
-        shape_group.tev_config_offset = next_tev_config_offset();
-        *cast(TevConfig*)(cast(ubyte*)persistent_tev_ptr + shape_group.tev_config_offset) = tev_config;
-        
-        shape_group.vertex_config_offset = next_vertex_config_offset();
-        *cast(VertexConfig*)(cast(ubyte*)persistent_vertex_config_ptr + shape_group.vertex_config_offset) = shape_group.vertex_config;
-
-        for (int i = 0; i < 16; i++) {
-            // if (shape_groups.length == 132) {
-            //     log_hollywood("ras_color[%d]: %s", i, ras_color[i]);
-            // }
-            // switch (ras_color[i]) {
-            //     case RasChannelId.Color0: 
-            //         shape_group.tev_config.ras[i][0] = shape_group.color[0][0];
-            //         shape_group.tev_config.ras[i][1] = shape_group.color[0][1];
-            //         shape_group.tev_config.ras[i][2] = shape_group.color[0][2];
-            //         shape_group.tev_config.ras[i][3] = shape_group.color[0][3];
-            //         break;
-            //     case RasChannelId.Color1:
-            //         shape_group.tev_config.ras[i][0] = shape_group.color[1][0];
-            //         shape_group.tev_config.ras[i][1] = shape_group.color[1][1];
-            //         shape_group.tev_config.ras[i][2] = shape_group.color[1][2];
-            //         shape_group.tev_config.ras[i][3] = shape_group.color[1][3];
-            //         break;
-            //     default: log_hollywood("unimpelmented ras: %x", ras_color[i]); break;
-            // }
-            if (ras_color[i] != 0 && ras_color[i] != 0x1 && ras_color[i] != 0x7) {
-                error_hollywood("Unimplemented ras color: %x", ras_color[i]);
-            }
-            tev_config.stages[i].ras_channel_id = cast(RasChannelId) ras_color[i];
-        }
-
-        // shape_group.tev_config.konst_a[0] = 1.0f;
-        // shape_group.tev_config.konst_a[1] = 1.0f;
-        // shape_group.tev_config.konst_a[2] = 0.0f;
-        // shape_group.tev_config.konst_a[3] = 1.0f;
-
-        log_opengl("vertex_allocator.length = %d", vertex_allocator.length);
-        log_opengl("current_draw_command = %d", current_draw_command);
+        log_hollywood("vertex_allocator.length = %d", vertex_allocator.length);
+        log_hollywood("current_draw_command = %d", current_draw_command);
         
         switch (current_draw_command) {
             case GXFifoCommand.DrawQuads:
-                log_opengl("DrawQuads: %d vertices", vertex_allocator.length);
                 for (int i = 0; i < vertex_allocator.length; i += 4) {
+                    log_hollywood("quad %d: %s %s %s %s", i / 4, vertex_allocator[i], vertex_allocator[i + 1], vertex_allocator[i + 2], vertex_allocator[i + 3]);
                     *next_vertex() = vertex_allocator[i];
                     *next_vertex() = vertex_allocator[i + 1];
                     *next_vertex() = vertex_allocator[i + 2];
@@ -1898,6 +1989,14 @@ final class Hollywood {
                     *next_vertex() = vertex_allocator[i + 0];
                     *next_vertex() = vertex_allocator[i + 2];
                     *next_vertex() = vertex_allocator[i + 3];
+                }
+                break;
+            
+            case GXFifoCommand.DrawTriangles:
+                for (int i = 0; i < vertex_allocator.length; i += 3) {
+                    *next_vertex() = vertex_allocator[i];
+                    *next_vertex() = vertex_allocator[i + 1];
+                    *next_vertex() = vertex_allocator[i + 2];
                 }
                 break;
             
@@ -1925,20 +2024,46 @@ final class Hollywood {
         }
 
         shape_group.shared_vertex_count = current_vertex_offset - shape_group.shared_vertex_start;
-        log_opengl("SHAPE GROUP FINALIZED: vertex range %d-%d (count=%d)", 
-                   shape_group.shared_vertex_start, 
-                   current_vertex_offset - 1, 
-                   shape_group.shared_vertex_count);
 
-        if (shape_groups.length == 17) {
-            log_hollywood("awni: %s", texture_descriptors[0]);
+        for (int i = 0; i < 8; i++) {
+            shape_group.vertex_config.tex_configs[i].tex_matrix = shape_group.texture[i].tex_matrix;
+            shape_group.vertex_config.tex_configs[i].dualtex_matrix = shape_group.texture[i].dualtex_matrix; 
+            shape_group.vertex_config.tex_configs[i].normalize_before_dualtex = shape_group.texture[i].normalize_before_dualtex;
+            shape_group.vertex_config.tex_configs[i].texcoord_source = cast(u32) texture_descriptors[i].texcoord_source;
         }
+
+        shape_group.enabled_textures_bitmap = enabled_textures_bitmap;
+
+        shape_group.tev_config_offset = next_tev_config_offset();
+        *cast(TevConfig*) (cast(ubyte*) persistent_tev_ptr + shape_group.tev_config_offset) = tev_config;
+        
+        shape_group.vertex_config_offset = next_vertex_config_offset();
+        *cast(VertexConfig*) (cast(ubyte*) persistent_vertex_config_ptr + shape_group.vertex_config_offset) = shape_group.vertex_config;
     }
 
     bool shit = false;
 
     public void draw() {
+        if (total_display_lists > 0) {
+            log_opengl("Display lists: %d total, %d draw-only, %d unique, max consecutive: %d", total_display_lists, draw_only_display_lists, display_list_vertices.length, max_consecutive_display_lists);
+            foreach (hash, vertices; display_list_vertices) {
+                // log_opengl("  Hash %016x: %d vertices", hash, vertices);
+            }
+        }
+
+        total_display_lists = 0;
+        draw_only_display_lists = 0;
+        display_list_vertices.clear();
+        max_consecutive_display_lists = 0;
+        consecutive_display_lists = 0;
+        last_command_was_display_list = false;
+        debug_next_commands = false;
+        debug_commands_left = 0;
+        
+        glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
+        glFlushMappedBufferRange(GL_ARRAY_BUFFER, 0, current_vertex_offset * Vertex.sizeof);
         draw_shape_groups(shape_groups.all()[0 .. shape_groups.length]);
+        this.shape_groups.reset();
     }
 
     private bool shapegroups_coalescable(const ref ShapeGroup a, const ref ShapeGroup b) {
@@ -2005,9 +2130,6 @@ final class Hollywood {
             return;
         }
 
-        log_opengl("=== BATCHED RENDERING START ===");
-        log_opengl("Drawing %d shape groups with batching", shape_groups.length);
-
         glUseProgram(gl_program);
         glClearColor(0, 0, 0, 1); 
         glEnable(GL_DEPTH_TEST);
@@ -2023,12 +2145,6 @@ final class Hollywood {
         glBindVertexArray(vertex_array_object);
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
 
-        log_opengl("Uploading %d vertices (%d bytes) to GPU", 
-                   0, 
-                   0);
-
-        log_opengl("Setting up vertex attributes (locations: pos=%d, norm=%d, tex=%d, col=%d)", 
-                   position_attr_location, normal_attr_location, texcoord_attr_location, color_attr_location);
         glEnableVertexAttribArray(position_attr_location);
         glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) 0);
         glEnableVertexAttribArray(normal_attr_location);
@@ -2038,17 +2154,10 @@ final class Hollywood {
         glEnableVertexAttribArray(color_attr_location);
         glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (22 * float.sizeof));
 
-        log_opengl("Drawing %d individual shape groups...", shape_groups.length);
         foreach (i, shape_group; shape_groups) {
-            log_opengl("Drawing shape group %d: vertices %d-%d (count=%d)", 
-                       i, shape_group.shared_vertex_start, 
-                       shape_group.shared_vertex_start + shape_group.shared_vertex_count - 1,
-                       shape_group.shared_vertex_count);
             draw_shape_group_batched_single(shape_group);
         }
 
-        log_opengl("=== BATCHED RENDERING COMPLETE ===");
-        
         this.shape_groups.reset();
         foreach (shape_group; shape_groups) {
             shape_group.shared_vertex_start = 0;
@@ -2057,59 +2166,51 @@ final class Hollywood {
     }
 
     void draw_shape_group_batched_single(ShapeGroup shape_group) {
-        log_opengl("  Setting uniforms and state for shape group");
-        
         if (shape_group.textured) {
-            log_opengl("  Shape group is textured (bitmap=0x%x)", shape_group.enabled_textures_bitmap);
             int enabled_textures_bitmap = shape_group.enabled_textures_bitmap;
-            while (enabled_textures_bitmap != 0) {
-                int i = cast(int) enabled_textures_bitmap.bfs;
-                enabled_textures_bitmap &= ~(1 << i);
+            // while (enabled_textures_bitmap != 0) {
+            //     int i = cast(int) enabled_textures_bitmap.bfs;
+            //     enabled_textures_bitmap &= ~(1 << i);
 
-                log_opengl("  Binding texture %d (id=%d)", i, shape_group.texture[i].texture_id);
-                glActiveTexture(GL_TEXTURE0 + i);
-                glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
+            //     log_opengl("  Binding texture %d (id=%d)", i, shape_group.texture[i].texture_id);
+            //     glActiveTexture(GL_TEXTURE0 + i);
+            //     glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            //     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            //     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-                final switch (shape_group.texture[i].wrap_s) {
-                    case TextureWrap.Clamp:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                        break;
-                    case TextureWrap.Repeat:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                        break;
-                    case TextureWrap.Mirror:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                        break;
-                }
+            //     final switch (shape_group.texture[i].wrap_s) {
+            //         case TextureWrap.Clamp:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            //             break;
+            //         case TextureWrap.Repeat:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            //             break;
+            //         case TextureWrap.Mirror:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+            //             break;
+            //     }
 
-                final switch (shape_group.texture[i].wrap_t) {
-                    case TextureWrap.Clamp:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                        break;
-                    case TextureWrap.Repeat:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                        break;
-                    case TextureWrap.Mirror:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-                        break;
-                }
+            //     final switch (shape_group.texture[i].wrap_t) {
+            //         case TextureWrap.Clamp:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            //             break;
+            //         case TextureWrap.Repeat:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            //             break;
+            //         case TextureWrap.Mirror:
+            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+            //             break;
+            //     }
 
-                glUniform1i(texture_uniform_locations[i], i);
-            }
-        } else {
-            log_opengl("  Shape group is not textured");
+            //     glUniform1i(texture_uniform_locations[i], i);
+            // }
         }
 
-        log_opengl("  Setting matrices (pos_loc=%d, tex_loc=%d, mvp_loc=%d)", 
-                   position_matrix_uniform_location, texture_matrix_uniform_location, mvp_uniform_location);
         glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, shape_group.position_matrix.ptr);
         glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, shape_group.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, shape_group.projection_matrix.ptr);
 
-        log_opengl("  Setting up UBOs (tev_idx=%d, vertex_idx=%d)", tev_config_block_index, vertex_config_block_index);
         glUniformBlockBinding(gl_program, tev_config_block_index, 0);
         glBindBufferRange(GL_UNIFORM_BUFFER, 0, persistent_tev_buffer, 
                          shape_group.tev_config_offset, TevConfig.sizeof);
@@ -2119,18 +2220,14 @@ final class Hollywood {
                          shape_group.vertex_config_offset, VertexConfig.sizeof);
 
         if (shape_group.depth_test_enabled) {
-            log_opengl("  Enabling depth test (func=0x%x, write=%s)", shape_group.depth_func, shape_group.depth_write_enabled ? "true" : "false");
             glEnable(GL_DEPTH_TEST);
             glDepthMask(shape_group.depth_write_enabled ? GL_TRUE : GL_FALSE);
             glDepthFunc(shape_group.depth_func);
         } else {
-            log_opengl("  Disabling depth test");
             glDisable(GL_DEPTH_TEST);
         }
 
-        log_opengl("  Drawing triangles: first=%d, count=%d", shape_group.shared_vertex_start, shape_group.shared_vertex_count);
         glDrawArrays(GL_TRIANGLES, cast(int) shape_group.shared_vertex_start, cast(int) shape_group.shared_vertex_count);
-        log_opengl("  Draw complete");
     }
 
     void draw_shape_group(ShapeGroup shape_group) {

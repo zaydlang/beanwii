@@ -68,16 +68,16 @@ void emit_memory_read(Code code, R32 result_reg, R32 address_reg, MemorySize siz
         
         final switch (size) {
             case MemorySize.Byte:
-                code.mov(rax, cast(u64) code.config.read_handler8);
+                code.mov(rax, cast(u64) code.config.virtual_read_handler8);
                 break;
             case MemorySize.HalfWord:
-                code.mov(rax, cast(u64) code.config.read_handler16);
+                code.mov(rax, cast(u64) code.config.virtual_read_handler16);
                 break;
             case MemorySize.Word:
-                code.mov(rax, cast(u64) code.config.read_handler32);
+                code.mov(rax, cast(u64) code.config.virtual_read_handler32);
                 break;
             case MemorySize.DoubleWord:
-                code.mov(rax, cast(u64) code.config.read_handler64);
+                code.mov(rax, cast(u64) code.config.virtual_read_handler64);
                 break;
         }
         
@@ -179,16 +179,16 @@ void emit_memory_write(Code code, R32 address_reg, R64 value_reg, MemorySize siz
         
         final switch (size) {
             case MemorySize.Byte:
-                code.mov(rax, cast(u64) code.config.write_handler8);
+                code.mov(rax, cast(u64) code.config.virtual_write_handler8);
                 break;
             case MemorySize.HalfWord:
-                code.mov(rax, cast(u64) code.config.write_handler16);
+                code.mov(rax, cast(u64) code.config.virtual_write_handler16);
                 break;
             case MemorySize.Word:
-                code.mov(rax, cast(u64) code.config.write_handler32);
+                code.mov(rax, cast(u64) code.config.virtual_write_handler32);
                 break;
             case MemorySize.DoubleWord:
-                code.mov(rax, cast(u64) code.config.write_handler64);
+                code.mov(rax, cast(u64) code.config.virtual_write_handler64);
                 break;
         }
         
@@ -196,8 +196,6 @@ void emit_memory_write(Code code, R32 address_reg, R64 value_reg, MemorySize siz
     code.exit_stack_alignment_context();
     code.pop(rdi);
 }
-
-
 
 void emit_load_displacement(Code code, GuestReg dest, GuestReg base, int displacement, MemorySize size, Extension extension, Update update, ByteOrder byte_order) {
     code.reserve_register(esi);
@@ -512,7 +510,7 @@ void data_cache_block_zero(Code code, GuestReg base, GuestReg index) {
             code.mov(rdi, cast(u64) code.config.mem_handler_context);
             code.mov(esi, r12d);
             code.mov(edx, 0);
-            code.mov(rax, cast(u64) code.config.write_handler32);
+            code.mov(rax, cast(u64) code.config.virtual_write_handler32);
             code.call(rax);
             code.add(r12d, 4);
         }
@@ -540,7 +538,7 @@ void load_multiple_words(Code code, GuestReg start_reg, GuestReg base, int displ
 
             code.enter_stack_alignment_context();
             code.mov(rdi, cast(u64) code.config.mem_handler_context);
-            code.mov(rax, cast(u64) code.config.read_handler32);
+            code.mov(rax, cast(u64) code.config.virtual_read_handler32);
             code.call(rax);
             code.exit_stack_alignment_context();
 
@@ -579,7 +577,7 @@ void store_multiple_words(Code code, GuestReg start_reg, GuestReg base, int offs
             code.add(esi, offset + loop_ofs);
             code.mov(edx, rs);
             code.mov(rdi, cast(u64) code.config.mem_handler_context);
-            code.mov(rax, cast(u64) code.config.write_handler32);
+            code.mov(rax, cast(u64) code.config.virtual_write_handler32);
             code.call(rax);
 
         code.exit_stack_alignment_context();

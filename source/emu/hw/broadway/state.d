@@ -48,6 +48,7 @@ struct BroadwayState {
 
     u32     lr;
     u32     pc;
+    u32     pc_at_beginning_of_block;
     
     bool    halted;
     bool    icache_flushed;

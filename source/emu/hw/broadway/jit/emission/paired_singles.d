@@ -12,8 +12,9 @@ import util.bitop;
 import util.log;
 import util.number;
 
-
 EmissionAction emit_psq_st_generic(Code code, R32 address, GuestReg guest_rs, int i, bool w) {
+    code.reserve_register(eax);
+
     code.get_ps(guest_rs, xmm0);
 
     auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
@@ -98,7 +99,10 @@ EmissionAction emit_psq_stu(Code code, u32 opcode) {
 }
 
 EmissionAction emit_psq_l_generic(Code code, R64 dest, GuestReg guest_rd, R32 address, int i, bool w) {
+    code.reserve_register(eax);
+
     auto gqr = code.get_reg(cast(GuestReg) (GuestReg.GQR0 + i));
+    
     if (w) {
         dequantize(code, xmm0, address, gqr, code.allocate_register(), code.allocate_register(), xmm1, false);
         code.cvtss2sd(xmm0, xmm0);

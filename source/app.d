@@ -13,8 +13,11 @@ import ui.sdl.device;
 import ui.runner;
 import util.file;
 import util.log;
+import util.number;
 import util.signal;
 
+__gshared u32 g_fastmem_start_addr = 0x80000000;
+__gshared u32 g_fastmem_end_addr = 0x80200000;
 
 // TODO: i really hate this construct. how to make this cleaner?
 __gshared Wii wii;
@@ -25,6 +28,9 @@ void logger_on_error_callback(){
 version (unittest) {} else {
 	void main(string[] args) {
 		CliArgs cli_args = parse_cli_args(args);
+
+		g_fastmem_start_addr = cli_args.fastmem_start_addr;
+		g_fastmem_end_addr = cli_args.fastmem_end_addr;
 
 		if (!cli_args.start_debugger) {
 			GC.disable();

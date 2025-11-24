@@ -150,6 +150,14 @@ final class GDBStub {
                 cpu.state.gprs[i * 8 + 0], cpu.state.gprs[i * 8 + 1], cpu.state.gprs[i * 8 + 2], cpu.state.gprs[i * 8 + 3],
                 cpu.state.gprs[i * 8 + 4], cpu.state.gprs[i * 8 + 5], cpu.state.gprs[i * 8 + 6], cpu.state.gprs[i * 8 + 7]);
         }
+
+        writef("  gqrs:\n");
+        for (int i = 0; i < 2; i++) {
+            writef("  gq%02d-%02d: %016x %016x %016x %016x\n", i * 4, i * 4 + 3,
+                cpu.state.gqrs[i * 4 + 0], cpu.state.gqrs[i * 4 + 1],
+                cpu.state.gqrs[i * 4 + 2], cpu.state.gqrs[i * 4 + 3]);
+        }
+
         writef("  pc: %08x\n", cpu.state.pc);
         writef("  lr: %08x\n", cpu.state.lr);
         return false;

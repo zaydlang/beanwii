@@ -84,7 +84,6 @@ public void hle_os_report(void* context, BroadwayState* state) {
     string output = "";
     char next_char;
 
-
     // gprs[3] is the string pointer
     // gprs[4..] are the arguments
     int current_gpr_arg = 4; 
@@ -124,7 +123,6 @@ public void hle_os_report(void* context, BroadwayState* state) {
 
     return;
 }
-
 
 public void hle_os_report2(void* context, BroadwayState* state) {
     import std.conv;

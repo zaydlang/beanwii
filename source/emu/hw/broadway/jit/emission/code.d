@@ -19,12 +19,60 @@ final class Code {
     static const CPU_BASE_REG = rdi;
 
     JitConfig config;
+    private bool mmu_enabled;
+    
+    u8[] slow_access_bitmap = new u8[1 << 24];
     
     this(JitConfig config) {
         this.config = config;
         block = Block!true();
 
         free_all_registers();
+    }
+
+    public void set_mmu_enabled(bool enabled) {
+        this.mmu_enabled = enabled;
+    }
+
+    public bool get_mmu_enabled() {
+        return this.mmu_enabled;
+    }
+
+    public bool force_slow_access(u32 pc) {
+        import app : g_fastmem_start_addr, g_fastmem_end_addr;
+        
+        if (pc > g_fastmem_start_addr && pc <= g_fastmem_end_addr) return true;
+
+        pc &= 0x1fff_ffff;
+
+        u32 bit_index = pc >> 2;
+        u32 byte_index = bit_index >> 3;
+        u32 bit_offset = bit_index & 7;
+
+        log_memory("Checking slow access for PC %08x: byte_index=%d, bit_offset=%d, value=%d", pc, byte_index, bit_offset, (slow_access_bitmap[byte_index] >> bit_offset) & 1);
+        return (slow_access_bitmap[byte_index] >> bit_offset) & 1;
+    }
+    
+    public void mark_slow_access(u32 pc) {
+        log_memory("Marking slow access for PC %08x", pc);
+        pc &= 0x1fff_ffff;
+
+        u32 bit_index = pc >> 2;
+        u32 byte_index = bit_index >> 3;
+        u32 bit_offset = bit_index & 7;
+
+        slow_access_bitmap[byte_index] |= 1 << bit_offset;
+    }
+    
+    public void clear_slow_access(u32 pc) {
+        log_memory("Clearing slow access for PC %08x", pc);
+        pc &= 0x1fff_ffff;
+
+        u32 bit_index = pc >> 2;
+        u32 byte_index = bit_index >> 3;
+        u32 bit_offset = bit_index & 7;
+
+        slow_access_bitmap[byte_index] &= ~(1 << bit_offset);
     }
 
     u8* code_ptr;

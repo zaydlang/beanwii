@@ -23,7 +23,6 @@ struct DspEmissionResult {
     u32 instruction_count;
 }
 
-
 private bool ends_block(DspJitResultType result_type) {
     final switch (result_type) {
         case DspJitResultType.DspHalted:
@@ -2982,7 +2981,6 @@ DspJitResult emit_subax(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp3 = code.allocate_register();
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
-
 
     code.mov(tmp1, code.ac_full_address(instruction.subax.d));
     code.mov(tmp2.cvt32(), code.ax_full_address(instruction.subax.s));

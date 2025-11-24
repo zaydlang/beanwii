@@ -190,7 +190,6 @@ final class Wii {
         log_apploader("Apploader main  ptr = %08x", main_ptr);
         log_apploader("Apploader close ptr = %08x", close_ptr);
 
-
         import util.dump;
 
         this.broadway.set_pc(init_ptr);

@@ -9,6 +9,7 @@ import emu.hw.disk.dol;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
+import emu.hw.memory.strategy.hardware_accelerated_mem.jit_memory_access;
 import emu.hw.memory.strategy.hardware_accelerated_mem.mmio_spec;
 import emu.hw.memory.strategy.hardware_accelerated_mem.virtualmemory;
 import emu.hw.ai.ai;
@@ -71,10 +72,21 @@ final class HardwareAcceleratedMem {
         virtual_memory_manager.map(virtual_memory_space, locked_l2_cache_region, 0xE0000000);
 
         this.mmio.connect_memory(this);
+        
+        set_physical_memory_base(get_physical_memory_base());
+        set_virtual_memory_base(get_virtual_memory_base());
     }
 
     private bool is_mmio(u32 address) {
         return (address & 0x0E000000) == 0x0C000000;
+    }
+
+    public void* get_physical_memory_base() {
+        return virtual_memory_manager.get_host_pointer(physical_memory_space, 0);
+    }
+
+    public void* get_virtual_memory_base() {
+        return virtual_memory_manager.get_host_pointer(virtual_memory_space, 0);
     }
 
     private T cpu_read(T)(u32 address) {
@@ -99,6 +111,103 @@ final class HardwareAcceleratedMem {
         return virtual_memory_manager.read_be!T(physical_memory_space, address);
     }
 
+    public u32 cpu_read_physical_u8(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical read called with MMU enabled");
+        return physical_read!u8(address);
+    }
+
+    public u32 cpu_read_physical_u16(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical read called with MMU enabled");
+        return physical_read!u16(address);
+    }
+
+    public u32 cpu_read_physical_u32(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical read called with MMU enabled");
+        return physical_read!u32(address);
+    }
+
+    public u64 cpu_read_physical_u64(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical read called with MMU enabled");
+        return physical_read!u64(address);
+    }
+
+    public void cpu_write_physical_u8(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical write called with MMU enabled");
+        physical_write!u8(address, cast(u8) value);
+    }
+
+    public void cpu_write_physical_u16(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical write called with MMU enabled");
+        physical_write!u16(address, cast(u16) value);
+    }
+
+    public void cpu_write_physical_u32(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical write called with MMU enabled");
+        physical_write!u32(address, value);
+    }
+
+    public void cpu_write_physical_u64(u32 address, u64 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) != 0b11), "Physical write called with MMU enabled");
+        physical_write!u64(address, cast(u64) value);
+    }
+
+    private T virtual_read(T)(u32 address) {
+        if (is_mmio(address)) {
+            return this.mmio.read!T(address);
+        }
+        
+        return virtual_memory_manager.read_be!T(virtual_memory_space, address);
+    }
+
+    private void virtual_write(T)(u32 address, T value) {
+        if (is_mmio(address)) {
+            this.mmio.write!T(address, value);
+            return;
+        }
+        
+        virtual_memory_manager.write_be!T(virtual_memory_space, address, value);
+    }
+
+    public u32 cpu_read_virtual_u8(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual read called with MMU disabled");
+        return virtual_read!u8(address);
+    }
+
+    public u32 cpu_read_virtual_u16(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual read called with MMU disabled");
+        return virtual_read!u16(address);
+    }
+
+    public u32 cpu_read_virtual_u32(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual read called with MMU disabled");
+        return virtual_read!u32(address);
+    }
+
+    public u64 cpu_read_virtual_u64(u32 address) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual read called with MMU disabled");
+        return virtual_read!u64(address);
+    }
+
+    public void cpu_write_virtual_u8(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual write called with MMU disabled");
+        virtual_write!u8(address, cast(u8) value);
+    }
+
+    public void cpu_write_virtual_u16(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual write called with MMU disabled");
+        virtual_write!u16(address, cast(u16) value);
+    }
+
+    public void cpu_write_virtual_u32(u32 address, u32 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual write called with MMU disabled");
+        virtual_write!u32(address, value);
+    }
+
+    public void cpu_write_virtual_u64(u32 address, u64 value) {
+        assert_memory((cpu.state.msr.bits(4, 5) == 0b11), "Virtual write called with MMU disabled");
+        virtual_write!u64(address, cast(u64) value);
+    }
+
     private void cpu_write(T)(u32 address, T value) {
         bool real_mode = this.cpu.state.msr.bits(4, 5) != 0b11;
         
@@ -119,6 +228,7 @@ final class HardwareAcceleratedMem {
             this.mmio.write!T(address, value);
             return;
         }
+
         virtual_memory_manager.write_be!T(physical_memory_space, address, value);
     }
 

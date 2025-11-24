@@ -35,6 +35,7 @@ enum Whitelist = [
     // LogSource.HOLLYWOOD,
     // LogSource.IPC,
     // LogSource.JIT,
+    // LogSource.MEMORY,
     // LogSource.MMIO,
     // LogSource.OPENGL,
     // LogSource.OS_REPORT,

@@ -326,7 +326,6 @@ void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 
     code.or(tmp1.cvt8(), src2.cvt8());
     code.mov(FlagState.flag_c_addr(code), tmp1.cvt8());
 
-
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
