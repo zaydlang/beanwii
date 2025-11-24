@@ -628,7 +628,6 @@ final class FileManager {
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-
                 mem.physical_write_u8(output++, 0);
                 mem.physical_write_u8(output++, 0);
                 mem.physical_write_u8(output++, 0);

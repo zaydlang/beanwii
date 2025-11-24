@@ -68,7 +68,6 @@ struct DspJitResult {
         this.target_register = target_register;
     }
 
-
     DspJitResultType type;
     R32 condition; // only valid if type == IfCc, CallCc, CallRcc, RetCc, or RtiCc
     u16 target_address; // only valid if type == Call or CallCc
@@ -321,7 +320,6 @@ final class DspJit {
 
             
             // if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
-
 
         u16 cdf_before = dsp_memory.read_data(0xcdf);
         u8 call_stack_sp_before = state.call_stack.sp;

@@ -731,7 +731,6 @@ final class DebugTriWindow : Window {
             parent.font_spm_small, parent.font_roboto);
         }
 
-
         // widgets ~= n
         // widgets ~= new MatrixViewer(10, 200, DEBUG_TRI_WINDOW_WIDTH - 200, DEBUG_TRI_WINDOW_HEIGHT - 310, from_hex(0x90e0ef), parent.font_roboto, parent.widget_shader, 
         // [
@@ -817,7 +816,6 @@ final class DebugTriWindow : Window {
             bias_val, 
             a, b, c, d
         );
-
 
         // d + (1 - c) * a + c * b;
 

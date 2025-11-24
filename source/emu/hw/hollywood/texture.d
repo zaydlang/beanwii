@@ -516,19 +516,13 @@ final class TextureManager {
         if (texture_allocator.length == 0) {
             texture_allocator = PageAllocator!(Color, false)(0);
         }
-        
-        
-        log_hollywood("Loading texture %d: %s", mem.mmio.hollywood.shape_groups.length, descriptor);
 
         u64 hash = calculate_texture_hash(descriptor, mem);
         long cached_index = texture_cache.lookup(hash);
         if (cached_index != -1) {
             uint texture_id = gl_texture_ids[cached_index];
-            log_texture("Cache HIT for hash 0x%X -> index %d -> texture_id %d", hash, cached_index, texture_id);
             return cast(int) texture_id;
         }
-
-        log_texture("Cache MISS for hash 0x%X, loading new texture: %s", hash, descriptor);
     
         Color[] result;
         switch (descriptor.type) {
@@ -557,7 +551,6 @@ final class TextureManager {
         
         glBindTexture(GL_TEXTURE_2D, texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.height, cast(int) descriptor.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
-        log_texture("Loaded texture into OpenGL: cache_index %d -> texture_id %d", cache_index, texture_id);
             
         return cast(int) texture_id;
     }

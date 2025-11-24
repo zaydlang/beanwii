@@ -180,7 +180,6 @@ void pretty_print_state(TestState state, DiffRepresentation diff) {
         colorize(state.xer.to_hex_string, diff.xer),
         colorize(state.fpscr.to_hex_string, diff.fpscr));
 
-
     // for (int i = 0; i < 32; i += 8) {
     //     cwritefln("\tGPRs %02d-%02d: %08x %08x %08x %08x %08x %08x %08x %08x",
     //         i, i + 7,

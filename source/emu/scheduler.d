@@ -91,7 +91,8 @@ final class Scheduler {
     }
 
     pragma(inline, true) void process_events() {
-        while (events_in_queue != 0 && current_timestamp >= events[0].timestamp) {
+        // we know we will always have at least one event in the queue
+        while (current_timestamp >= events[0].timestamp) {
             process_event();
         }
     }

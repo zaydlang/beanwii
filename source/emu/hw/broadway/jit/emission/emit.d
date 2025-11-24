@@ -463,7 +463,6 @@ private EmissionAction emit_creqv(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
-
 private EmissionAction emit_crxor(Code code, u32 opcode) {
     auto crbD = get_cr_index(opcode.bits(21, 25));
     auto crbA = get_cr_index(opcode.bits(16, 20));
@@ -816,7 +815,9 @@ private EmissionAction emit_lhzu(Code code, u32 opcode) {
     int d = sext_32(opcode.bits(0, 15), 16);
     assert(guest_ra != GuestReg.R0);
     assert(guest_ra != guest_rd);
+
     emit_load_displacement(code, guest_rd, guest_ra, d, MemorySize.HalfWord, Extension.Zero, Update.Yes, ByteOrder.BigEndian);
+    
     return EmissionAction.Continue;
 }
 
@@ -857,7 +858,9 @@ private EmissionAction emit_lhzux(Code code, u32 opcode) {
     auto guest_rd = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
+
     emit_load_indexed(code, guest_rd, guest_ra, guest_rb, MemorySize.HalfWord, Extension.Zero, Update.Yes, ByteOrder.BigEndian);
+    
     return EmissionAction.Continue;
 }
 
@@ -1564,7 +1567,9 @@ private EmissionAction emit_stw(Code code, u32 opcode) {
     auto guest_rs = opcode.bits(21, 25).to_gpr;
     auto guest_ra = opcode.bits(16, 20).to_gpr;
     int offset = sext_32(opcode.bits(0, 15), 16);
+    
     emit_store_displacement(code, guest_rs, guest_ra, offset, MemorySize.Word, ByteOrder.BigEndian, Update.No);
+    
     return EmissionAction.Continue;
 }
 
@@ -2122,10 +2127,13 @@ public EmissionAction disassemble(Code code, u32 opcode) {
     }
 }
 
-public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
+public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
     u32 original_address = address;
     int num_opcodes_processed = 0;
 
+    code.mov(code.dwordPtr(rdi, cast(int) BroadwayState.pc_at_beginning_of_block.offsetof), original_address);
+
+    code.set_mmu_enabled(mmu_enabled);
     code.reset_fp_checked();
 
     jit.idle_loop_detector.reset();
@@ -2133,6 +2141,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
 
     while (num_opcodes_processed < code.get_max_instructions_per_block()) {
         code.set_guest_pc(address);
+        code.mov(code.dwordPtr(rdi, cast(int) BroadwayState.pc.offsetof), address);
         u32 instruction = mem.cpu_read_u32(address);
         jit.idle_loop_detector.add(instruction);
         EmissionAction action = disassemble(code, instruction);
@@ -2172,10 +2181,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     
                     if (!in_idle_loop) {
                         if (ENABLE_BASIC_BLOCK_LINKING) {
-                            if (jit.has_code_for(action.get_direct_branch_target())) {
+                            if (jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
                                 log_jit("Direct linking: 0x%08x -> 0x%08x (target exists)", original_address, action.get_direct_branch_target());
                                 jit.add_dependent(action.get_direct_branch_target(), original_address);
-                                u64 target = jit.get_address_for_code(action.get_direct_branch_target());
+                                u64 target = jit.get_address_for_code(action.get_direct_branch_target(), mmu_enabled);
                                 code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                                 target += 15; // size of prologue
 
@@ -2238,9 +2247,9 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address) {
                     code.set_reg(GuestReg.PC, action.get_direct_branch_target());
 
                     if (!in_idle_loop) {
-                        if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target())) {
+                        if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
                             jit.add_dependent(action.get_direct_branch_target(), original_address);
-                            u64 target = jit.get_address_for_code(action.get_direct_branch_target());
+                            u64 target = jit.get_address_for_code(action.get_direct_branch_target(), mmu_enabled);
                             code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                             target += 15; // size of prologue
 

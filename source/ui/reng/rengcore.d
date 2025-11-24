@@ -9,7 +9,6 @@ import ui.device;
 import ui.reng.emudebugscene;
 import ui.reng.emuscene;
 
-
 class RengCore : Core {
     int width;
     int height;

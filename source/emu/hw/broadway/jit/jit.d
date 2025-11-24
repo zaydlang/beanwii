@@ -20,8 +20,14 @@ import util.log;
 import util.number;
 import util.ringbuffer;
 
-alias ReadHandler  = u32 function(u32 address);
-alias WriteHandler = void function(u32 address, u32 value);
+alias ReadHandler8  = u32 function(u32 address);
+alias ReadHandler16 = u32 function(u32 address);
+alias ReadHandler32 = u32 function(u32 address);
+alias ReadHandler64 = u64 function(u32 address);
+alias WriteHandler8  = void function(u32 address, u8 value);
+alias WriteHandler16 = void function(u32 address, u16 value);
+alias WriteHandler32 = void function(u32 address, u32 value);
+alias WriteHandler64 = void function(u32 address, u64 value);
 alias HleHandler   = void function(int param);
 alias MfsprHandler = u32 function(GuestReg spr);
 alias MtsprHandler = void function(GuestReg spr, u32 value);
@@ -29,6 +35,7 @@ alias MtsprHandler = void function(GuestReg spr, u32 value);
 struct JitContext {
     u32 pc;
     bool pse;
+    bool mmu_enabled;
 }
 
 struct JitReturnValue {
@@ -37,14 +44,22 @@ struct JitReturnValue {
 }
 
 struct JitConfig {
-    ReadHandler  read_handler8;
-    ReadHandler  read_handler16;
-    ReadHandler  read_handler32;
-    ReadHandler  read_handler64;
-    WriteHandler write_handler8;
-    WriteHandler write_handler16;
-    WriteHandler write_handler32;
-    WriteHandler write_handler64;
+    ReadHandler8   physical_read_handler8;
+    ReadHandler16  physical_read_handler16;
+    ReadHandler32  physical_read_handler32;
+    ReadHandler64  physical_read_handler64;
+    WriteHandler8  physical_write_handler8;
+    WriteHandler16 physical_write_handler16;
+    WriteHandler32 physical_write_handler32;
+    WriteHandler64 physical_write_handler64;
+    ReadHandler8   virtual_read_handler8;
+    ReadHandler16  virtual_read_handler16;
+    ReadHandler32  virtual_read_handler32;
+    ReadHandler64  virtual_read_handler64;
+    WriteHandler8  virtual_write_handler8;
+    WriteHandler16 virtual_write_handler16;
+    WriteHandler32 virtual_write_handler32;
+    WriteHandler64 virtual_write_handler64;
     HleHandler   hle_handler;
     MfsprHandler read_spr_handler;
     MtsprHandler write_spr_handler;
@@ -64,6 +79,8 @@ struct JitEntry {
     int         num_times_executed;
 }
 
+__gshared Jit g_jit;
+
 final class Jit {
     private struct DebugState {
         BroadwayState state;
@@ -80,11 +97,11 @@ final class Jit {
 
     private alias DebugRing  = RingBuffer!(DebugState);
     
-    private Mem mem;
+    public  Mem mem;
     private PageTable!JitEntry code_page_table;
     private PageTable!(BasicBlockLinkRequest[]) basic_block_link_requests;
     private DebugRing debug_ring;
-    private Code code;
+    public  Code code;
 
     private CodeBlockTracker codeblocks;
     public  IdleLoopDetector idle_loop_detector;
@@ -100,6 +117,7 @@ final class Jit {
         this.codeblocks = new CodeBlockTracker();
         this.idle_loop_detector = new IdleLoopDetector();
         this.breakpoints = [];
+        g_jit = this;
     }
 
     int dick = 0;
@@ -147,24 +165,41 @@ final class Jit {
     }
 
     // returns the number of instructions executed
-    public JitReturnValue run(BroadwayState* state) {
+    pragma(inline, true) public JitReturnValue run(BroadwayState* state) {
+            if (state.pc == 0x802f14ec) {
+                log_wbfs("BREAKPOINT HIT AT 802f14ec");
+            }
+        u32 jit_key = create_jit_key(state);
         log_jit("JIT: Running block at %x", state.pc);
-        if (code_page_table.has(state.pc)) {
-            JitEntry entry = code_page_table.get_assume_has(state.pc);
+        if (code_page_table.has(jit_key)) {
+            JitEntry entry = code_page_table.get_assume_has(jit_key);
             entry.num_times_executed++;
             return JitReturnValue(state.cycle_quota, process_jit_function(entry.func, state));
         } else {
             code.init();
-            auto num_instructions = cast(int) emit(this, code, mem, state.pc);
+            auto num_instructions = cast(int) emit(this, code, mem, state.pc, get_mmu_enabled(state));
             u8[] bytes = code.get();
             auto ptr = codeblocks.put(bytes.ptr, bytes.length);
             
             auto func = cast(JitFunction) ptr;            
-            code_page_table.put(state.pc, JitEntry(func, generate_new_jit_id(), cast(int) bytes.length, num_instructions, 1));
+            code_page_table.put(jit_key, JitEntry(func, generate_new_jit_id(), cast(int) bytes.length, num_instructions, 1));
             process_basic_block_link_requests_for_parent(state.pc);
 
             return JitReturnValue(state.cycle_quota, process_jit_function(func, state));
         }
+    }
+
+    private bool get_mmu_enabled(BroadwayState* state) {
+        return state.msr.bits(4, 5) == 0b11;
+    }
+
+    private u32 create_jit_key(BroadwayState* state) {
+        u32 key = state.pc;
+        bool mmu_enabled = get_mmu_enabled(state);
+        
+        key |= (mmu_enabled ? 1 : 0) << 27;
+        
+        return key;
     }
 
     private void log_instruction(u32 instruction, u32 pc) {
@@ -186,24 +221,26 @@ final class Jit {
         }
     }
 
-    u64 get_address_for_code(u32 address) {
-        return cast(u64) code_page_table.get_assume_has(address).func;
+    u64 get_address_for_code(u32 address, bool mmu_enabled) {
+        u32 jit_key = address | (mmu_enabled ? (1 << 27) : 0);
+        return cast(u64) code_page_table.get_assume_has(jit_key).func;
     }
 
-    bool has_code_for(u32 address) {
-        return code_page_table.has(address);
+    bool has_code_for(u32 address, bool mmu_enabled) {
+        u32 jit_key = address | (mmu_enabled ? (1 << 27) : 0);
+        return code_page_table.has(jit_key);
     }
 
-    void add_dependent(u32 parent, u32 child) {
-        log_jit("Adding dependency: parent=0x%08x -> child=0x%08x", parent, child);
-        auto list = parent in dependents;
+    void add_dependent(u32 parent_key, u32 child_key) {
+        log_jit("Adding dependency: parent=0x%08x -> child=0x%08x", parent_key, child_key);
+        auto list = parent_key in dependents;
 
         if (list is null) {
-            log_jit("Creating new dependency list for parent=0x%08x", parent);
-            dependents[parent] = [child];
+            log_jit("Creating new dependency list for parent=0x%08x", parent_key);
+            dependents[parent_key] = [child_key];
         } else {
-            log_jit("Appending to existing dependency list for parent=0x%08x (current size: %d)", parent, (*list).length);
-            dependents[parent] ~= child;
+            log_jit("Appending to existing dependency list for parent=0x%08x (current size: %d)", parent_key, (*list).length);
+            dependents[parent_key] ~= child_key;
         }
     }
 
@@ -211,17 +248,40 @@ final class Jit {
         log_jit("Invalidating block at 0x%08x", address);
         
         basic_block_link_requests.remove(address);
+        
+        code.clear_slow_access(address);
 
-        if (code_page_table.has(address)) {
-            log_jit("Block exists in page table, removing and invalidating dependents");
-            code_page_table.remove(address);
+        u32 key_mmu_off = address;
+        u32 key_mmu_on = address | (1 << 27);
+        
+        invalidate_key(key_mmu_off);
+        invalidate_key(key_mmu_on);
+    }
 
-            if (address in dependents) {
-                log_jit("Found %d dependents for block 0x%08x", dependents[address].length, address);
-                foreach (dependent; dependents[address]) {
-                    log_jit("Recursively invalidating dependent 0x%08x", dependent);
-                    invalidate(dependent);
+    void invalidate_no_clear_slowmem(u32 address) {
+        log_jit("Invalidating block at 0x%08x without clearing slowmem", address);
+        
+        basic_block_link_requests.remove(address);
+
+        u32 key_mmu_off = address;
+        u32 key_mmu_on = address | (1 << 27);
+        
+        invalidate_key(key_mmu_off);
+        invalidate_key(key_mmu_on);
+    }
+
+    void invalidate_key(u32 jit_key) {
+        if (code_page_table.has(jit_key)) {
+            log_jit("Block exists in page table (key=0x%08x), removing and invalidating dependents", jit_key);
+            code_page_table.remove(jit_key);
+
+            if (jit_key in dependents) {
+                log_jit("Found %d dependents for block 0x%08x", dependents[jit_key].length, jit_key);
+                foreach (dependent_key; dependents[jit_key]) {
+                    log_jit("Recursively invalidating dependent 0x%08x", dependent_key);
+                    invalidate_key(dependent_key);
                 }
+                dependents.remove(jit_key);
             }
         }
     }

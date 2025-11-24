@@ -66,14 +66,22 @@ final class Broadway {
         this.hle_context = new HleContext(&this.mem);
 
         jit = new Jit(JitConfig(
-            cast(ReadHandler)  (&this.mem.cpu_read_u8)   .funcptr,
-            cast(ReadHandler)  (&this.mem.cpu_read_u16)  .funcptr,
-            cast(ReadHandler)  (&this.mem.cpu_read_u32)  .funcptr,
-            cast(ReadHandler)  (&this.mem.cpu_read_u64)  .funcptr,
-            cast(WriteHandler) (&this.mem.cpu_write_u8)  .funcptr,
-            cast(WriteHandler) (&this.mem.cpu_write_u16) .funcptr,
-            cast(WriteHandler) (&this.mem.cpu_write_u32) .funcptr,
-            cast(WriteHandler) (&this.mem.cpu_write_u64) .funcptr,
+            cast(ReadHandler8)   (&this.mem.cpu_read_physical_u8)   .funcptr,
+            cast(ReadHandler16)  (&this.mem.cpu_read_physical_u16)  .funcptr,
+            cast(ReadHandler32)  (&this.mem.cpu_read_physical_u32)  .funcptr,
+            cast(ReadHandler64)  (&this.mem.cpu_read_physical_u64)  .funcptr,
+            cast(WriteHandler8)  (&this.mem.cpu_write_physical_u8)  .funcptr,
+            cast(WriteHandler16) (&this.mem.cpu_write_physical_u16) .funcptr,
+            cast(WriteHandler32) (&this.mem.cpu_write_physical_u32) .funcptr,
+            cast(WriteHandler64) (&this.mem.cpu_write_physical_u64) .funcptr,
+            cast(ReadHandler8)   (&this.mem.cpu_read_virtual_u8)    .funcptr,
+            cast(ReadHandler16)  (&this.mem.cpu_read_virtual_u16)   .funcptr,
+            cast(ReadHandler32)  (&this.mem.cpu_read_virtual_u32)   .funcptr,
+            cast(ReadHandler64)  (&this.mem.cpu_read_virtual_u64)   .funcptr,
+            cast(WriteHandler8)  (&this.mem.cpu_write_virtual_u8)   .funcptr,
+            cast(WriteHandler16) (&this.mem.cpu_write_virtual_u16)  .funcptr,
+            cast(WriteHandler32) (&this.mem.cpu_write_virtual_u32)  .funcptr,
+            cast(WriteHandler64) (&this.mem.cpu_write_virtual_u64)  .funcptr,
             cast(HleHandler)   (&this.hle_handler)      .funcptr,
             cast(MfsprHandler) (&this.mfspr_handler)    .funcptr,
             cast(MtsprHandler) (&this.mtspr_handler)    .funcptr,
@@ -126,42 +134,16 @@ final class Broadway {
     bool idle = false;
     bool exception_raised = false;
     bool shitter = false;
-    int cunt = 0;
-
 
     bool is_sussy(u64 foat) {
         auto mantissa = (foat >> 52) & 0b11111111111;
         return (mantissa == 0b11111111111);
     }
 
-    void sussy_floats() {
-        int new_count = 0;
-        for (int i = 0; i < 32; i++) {
-            if (is_sussy(state.ps[i].ps0) || is_sussy(state.ps[i].ps1)) {
-                // log_function("BIG CH: %x %x\n", mem.cpu_read_u32(state.pc - 4), 0);
-                // log_state(&state);
-            new_count |= 1 << i;
-
-            if (!cunt.bit(i)) {
-                // log_state(&state);
-                // dump_stack();
-
-            }
-            }
-
-
-        }
-
-
-        cunt = new_count;
-    }
-    
-
-
     bool debjit = false;
     bool had_17 = false;
 
-    public BroadwayReturnValue cycle(u32 num_cycles) {
+    pragma(inline, true) public BroadwayReturnValue cycle(u32 num_cycles) {
         u32 elapsed = 0;
         size_t num_fast_forwarded = 0;
         while (elapsed < num_cycles) {
@@ -177,7 +159,6 @@ version (release) {
                 return BroadwayReturnValue(elapsed, true);
             }
 }
-
 
             if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
                 raise_exception(ExceptionType.FloatingPointUnavailable);

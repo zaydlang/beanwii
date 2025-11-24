@@ -337,7 +337,6 @@ final class DSP {
         return 0;
     }
 
-
     u16 dsp_read_mailbox_register(u16 address) {
         final switch (address) {
         case 0xFFFC:

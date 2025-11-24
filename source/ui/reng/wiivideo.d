@@ -97,7 +97,6 @@ class WiiVideo : Component, Updatable, Renderable2D {
         // glEnable(GL_DEPTH_TEST);
         // glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-
         // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
         rlBegin(GL_TRIANGLES);
