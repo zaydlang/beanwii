@@ -33,6 +33,7 @@ final class SoftwareMem  {
         BROADWAY_MMIO,
         EXI_BOOT_CODE,
         LOCKED_L2_CACHE,
+        EFB,
     }
 
     struct MemoryAccess {
@@ -64,6 +65,8 @@ final class SoftwareMem  {
             return MemoryAccess(MemoryRegion.MEM1, address);
         } else if (0x10000000 <= address && address <= 0x13FFFFFF) {
             return MemoryAccess(MemoryRegion.MEM2, address - 0x10000000);
+        } else if (0x08000000 <= address && address <= 0x08FFFFFF) {
+            return MemoryAccess(MemoryRegion.EFB, address - 0x08000000);
         } else if (0x0D000000 <= address && address <= 0x0D008000) {
             return MemoryAccess(MemoryRegion.HOLLYWOOD_MMIO, address & 0x7FFF);
         } else if (0x0C000000 <= address && address <= 0x0C008003) {
@@ -88,6 +91,8 @@ final class SoftwareMem  {
                 return MemoryAccess(MemoryRegion.MEM1, address - 0x80000000);
             } else if (0x90000000 <= address && address <= 0x93FFFFFF) {
                 return MemoryAccess(MemoryRegion.MEM2, address - 0x90000000);
+            } else if (0xC8000000 <= address && address <= 0xC8FFFFFF) {
+                return MemoryAccess(MemoryRegion.EFB, address - 0xC8400000);
             } else if (0xC0000000 <= address && address <= 0xC17FFFFF) {
                 return MemoryAccess(MemoryRegion.MEM1, address - 0xC0000000);
             } else if (0xD0000000 <= address && address <= 0xD3FFFFFF) {
@@ -139,6 +144,10 @@ final class SoftwareMem  {
             case MemoryRegion.LOCKED_L2_CACHE:
                 result = this.locked_l2_cache.read_be!(T)(memory_access.offset);
                 break;
+
+            case MemoryRegion.EFB:
+                result = 0;
+                break;
         }
 
         return result;
@@ -185,6 +194,9 @@ final class SoftwareMem  {
             case MemoryRegion.LOCKED_L2_CACHE:
                 this.locked_l2_cache.write_be!(T)(memory_access.offset, value);
                 break;
+
+            case MemoryRegion.EFB:
+                break;
         }
     }
 
@@ -205,6 +217,26 @@ final class SoftwareMem  {
         write_memory!T(memory_access, address, value);
     }
 
+    pragma(inline, true) public u64 cpu_read_physical_u64(u32 address) { return cpu_read!u64(address); }
+    pragma(inline, true) public u32 cpu_read_physical_u32(u32 address) { return cpu_read!u32(address); }
+    pragma(inline, true) public u16 cpu_read_physical_u16(u32 address) { return cpu_read!u16(address); }
+    pragma(inline, true) public u8  cpu_read_physical_u8 (u32 address) { return cpu_read!u8 (address); }
+
+    pragma(inline, true) public void cpu_write_physical_u64(u32 address, u64 value) { cpu_write!u64(address, value); }
+    pragma(inline, true) public void cpu_write_physical_u32(u32 address, u32 value) { cpu_write!u32(address, value); }
+    pragma(inline, true) public void cpu_write_physical_u16(u32 address, u16 value) { cpu_write!u16(address, value); }
+    pragma(inline, true) public void cpu_write_physical_u8 (u32 address, u8 value)  { cpu_write!u8 (address, value); }
+
+    pragma(inline, true) public u64 cpu_read_virtual_u64(u32 address) { return cpu_read!u64(address); }
+    pragma(inline, true) public u32 cpu_read_virtual_u32(u32 address) { return cpu_read!u32(address); }
+    pragma(inline, true) public u16 cpu_read_virtual_u16(u32 address) { return cpu_read!u16(address); }
+    pragma(inline, true) public u8  cpu_read_virtual_u8 (u32 address) { return cpu_read!u8 (address); }
+
+    pragma(inline, true) public void cpu_write_virtual_u64(u32 address, u64 value) { cpu_write!u64(address, value); }
+    pragma(inline, true) public void cpu_write_virtual_u32(u32 address, u32 value) { cpu_write!u32(address, value); }
+    pragma(inline, true) public void cpu_write_virtual_u16(u32 address, u16 value) { cpu_write!u16(address, value); }
+    pragma(inline, true) public void cpu_write_virtual_u8 (u32 address, u8 value)  { cpu_write!u8 (address, value); }
+
     pragma(inline, true) public u64 cpu_read_u64(u32 address) { return cpu_read!u64(address); }
     pragma(inline, true) public u32 cpu_read_u32(u32 address) { return cpu_read!u32(address); }
     pragma(inline, true) public u16 cpu_read_u16(u32 address) { return cpu_read!u16(address); }
@@ -213,7 +245,7 @@ final class SoftwareMem  {
     pragma(inline, true) public void cpu_write_u64(u32 address, u64 value) { cpu_write!u64(address, value); }
     pragma(inline, true) public void cpu_write_u32(u32 address, u32 value) { cpu_write!u32(address, value); }
     pragma(inline, true) public void cpu_write_u16(u32 address, u16 value) { cpu_write!u16(address, value); }
-    pragma(inline, true) public void cpu_write_u8 (u32 address, u8  value) { cpu_write!u8 (address, value); }
+    pragma(inline, true) public void cpu_write_u8 (u32 address, u8 value)  { cpu_write!u8 (address, value); }
 
     pragma(inline, true) public u8 physical_read_u8(u32 address) {
         return this.physical_read!u8(address);
@@ -396,6 +428,7 @@ final class SoftwareMem  {
             case MemoryRegion.HOLLYWOOD_MMIO:
             case MemoryRegion.BROADWAY_MMIO:
             case MemoryRegion.EXI_BOOT_CODE:
+            case MemoryRegion.EFB:
                 error_memory("Cannot translate MMIO/special address %08x to host pointer", address);
                 return null;
         }

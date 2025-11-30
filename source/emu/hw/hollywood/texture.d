@@ -134,6 +134,10 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
+                if (x >= width || y >= height) {
+                    continue;
+                }
+
                 auto value = mem.physical_read_u16(cast(u32) current_address);
                 current_address += 2;
 
@@ -169,8 +173,13 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
+                if (x >= width || y >= height) {
+                    continue;
+                }
+
                 auto value = mem.physical_read_u16(cast(u32) current_address);
                 current_address += 2;
+
 
                 if (value & 0x8000) {
                     texture[x * height + y] = Color(

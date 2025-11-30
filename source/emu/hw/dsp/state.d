@@ -98,7 +98,7 @@ struct DspState {
     
     bool interrupt_pending;
 
-    void trigger_interrupt() {
+    void raise_interrupt() {
         interrupt_pending = true;
     }
 

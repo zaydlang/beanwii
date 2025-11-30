@@ -8,6 +8,7 @@ import emu.hw.ipc.usb.usb;
 import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
+import std.algorithm;
 import std.conv;
 import std.file;
 import std.format;
@@ -344,6 +345,17 @@ final class FileManager {
             }
 
             return 0;
+        }
+    }
+
+    final class DevNetNcdManage : File {
+        this() {
+            super("/dev/net/ncd/manage");
+        }
+
+        override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
+            log_ipc("DevNetNcdManage::ioctlv(%d, %d, %d, %d)", ioctl, argcin, argcio, data_paddr);
+            ipc_response_queue.push_later(request_paddr, IPCError.OK, 40_000);
         }
     }
 
@@ -691,7 +703,7 @@ final class FileManager {
                     return cast(int) IPCError.ENOENT_DEVFS;
                 }
 
-                std.file.remove("~/.beanwii/fs".expandTilde ~ new_filename);
+                try { std.file.remove("~/.beanwii/fs".expandTilde ~ new_filename); } catch (Exception e) {}
                 try { std.file.rename("~/.beanwii/fs".expandTilde ~ old_filename, "~/.beanwii/fs".expandTilde ~ new_filename); } catch (Exception e) {
                     log_ipc("DevFS::Rename failed %s", e.msg);
                 }
@@ -707,56 +719,111 @@ final class FileManager {
 
             int result = IPCError.OK;
             if (ioctl == 0x4) {
-                if (argcin != 1) {
-                    error_ipc("Invalid argcin %d", argcin);
+                if (argcin < 1 || argcio < 1) {
+                    log_ipc("DevFS::ReadDir invalid vector counts in:%d out:%d", argcin, argcio);
+                    result = IPCError.EINVAL_DEVFS;
+                    goto done;
                 }
 
-                if (argcio != 1) {
-                    error_ipc("Invalid argcio %d", argcio);
-                }
+                auto read_vec_data = (int idx) { return mem.physical_read_u32(data_paddr + idx * 8); };
+                auto read_vec_len  = (int idx) { return mem.physical_read_u32(data_paddr + idx * 8 + 4); };
 
-                // ReadDir
-                u32 file_addr = mem.physical_read_u32(data_paddr);
-                u32 count = 0;
-
+                // input[0]: directory/file path (0x40)
+                u32 path_addr = read_vec_data(0);
+                u32 path_len  = read_vec_len(0);
                 string filename;
-                for (int i = 0; i < 0x40; i++) {
-                    auto c = mem.physical_read_u8(file_addr + i);
-                    if (c == 0) {
-                        break;
-                    }
-
+                int path_copy_len = cast(int) path_len;
+                if (path_copy_len == 0 || path_copy_len > 0x40) {
+                    path_copy_len = 0x40;
+                }
+                for (int i = 0; i < path_copy_len; i++) {
+                    auto c = mem.physical_read_u8(path_addr + i);
+                    if (c == 0) break;
                     filename ~= cast(char) c;
                 }
 
-                for (int i = 0; i < 8; i++) {
-                    log_ipc("%x : %x", i, mem.physical_read_u32(data_paddr + i * 4));
+                // input[1]: max file count (optional, 0x4)
+                u32 max_files = uint.max;
+                if (argcin >= 2) {
+                    u32 max_files_addr = read_vec_data(1);
+                    u32 max_files_len  = read_vec_len(1);
+                    if (max_files_addr && max_files_len >= 4) {
+                        max_files = mem.physical_read_u32(max_files_addr);
+                    }
                 }
 
-                log_ipc("DevFS::ReadDir(%s, %d)", filename, count);
+                // output[0]: file name list (0x13 * max_files)
+                int names_vec_index = argcin;
+                u32 names_addr = read_vec_data(names_vec_index);
+                u32 names_len  = read_vec_len(names_vec_index);
 
-                if (!std.file.exists("~/.beanwii/fs".expandTilde ~ filename)) {
+                // output[last]: file count (0x4)
+                int count_vec_index = argcin + argcio - 1;
+                u32 count_out_addr = read_vec_data(count_vec_index);
+
+                log_ipc("DevFS::ReadDir path=%s path_len=%d max_files=%d names_addr=%x names_len=%x count_out=%x", filename, path_copy_len, max_files, names_addr, names_len, count_out_addr);
+
+                string host_path = "~/.beanwii/fs".expandTilde ~ filename;
+                if (!std.file.exists(host_path)) {
+                    log_ipc("DevFS::ReadDir missing path %s", host_path);
                     result = IPCError.ENOENT_DEVFS;
                     goto done;
                 }
 
-                if (!std.file.isDir("~/.beanwii/fs".expandTilde ~ filename)) {
-                    result = IPCError.EINVAL_DEVFS;
+                string[] entries;
+                if (std.file.isDir(host_path)) {
+                    log_ipc("DevFS::ReadDir listing directory %s", host_path);
+                    auto files = std.file.dirEntries(host_path, SpanMode.shallow);
+                    foreach (entry; files) {
+                        log_ipc("DevFS::ReadDir found entry %s", entry.name);
+                        entries ~= baseName(entry.name);
+                    }
                 } else {
-                    auto files = std.file.dirEntries("~/.beanwii/fs".expandTilde ~ filename, SpanMode.shallow);
-                    if (argcin > 2) {
-                        error_ipc("handle argcin %d", argcin);
+                    // behave like `ls file`: return the file itself
+                    log_ipc("DevFS::ReadDir path is file %s", host_path);
+                    entries ~= baseName(host_path);
+                }
+
+                u32 total_entries = cast(u32) entries.length;
+                u32 slot_capacity = names_addr != 0 ? names_len / 0x13 : 0;
+
+                u32 max_allowed = total_entries;
+                if (max_files != uint.max && max_files < max_allowed) {
+                    max_allowed = max_files;
+                }
+
+                u32 write_count = names_addr != 0 ? max_allowed : 0;
+                if (names_addr != 0 && slot_capacity < write_count) {
+                    write_count = slot_capacity;
+                }
+
+                log_ipc("DevFS::ReadDir entries=%d write_count=%d slot_capacity=%d", total_entries, write_count, slot_capacity);
+
+                for (u32 i = 0; i < write_count; i++) {
+                    u32 slot = names_addr + i * 0x13;
+
+                    // zero out the slot before writing the name
+                    for (u32 j = 0; j < 0x13; j++) {
+                        mem.physical_write_u8(slot + j, 0);
                     }
 
-                    foreach (string file; files) {
-                    //     if (count != 0) {
-                    //         error_ipc("handle this dipshit: %s %x", filename, count);
-                    //     }
-                        count++;
+                    auto name = entries[i];
+                    u32 copy_len = cast(u32) name.length;
+                    if (copy_len > 0x12) {
+                        copy_len = 0x12; // leave room for a null terminator
+                    }
+
+                    log_ipc("DevFS::ReadDir writing entry[%d]=%s len=%d slot=%x", i, name, copy_len, slot);
+                    for (u32 j = 0; j < copy_len; j++) {
+                        mem.physical_write_u8(slot + j, cast(u8) name[j]);
                     }
                 }
 
-                mem.physical_write_u32(mem.physical_read_u32(data_paddr + 0x8), count);
+                u32 reported_count = names_addr != 0 ? write_count : total_entries;
+                log_ipc("DevFS::ReadDir reported_count=%d total_entries=%d", reported_count, total_entries);
+                if (count_out_addr != 0) {
+                    mem.physical_write_u32(count_out_addr, reported_count);
+                }
             } else if (ioctl == 0xc) {
                 u32 file_addr = mem.physical_read_u32(data_paddr);
 
@@ -1039,6 +1106,7 @@ final class FileManager {
             usb_dev_57e305,
             new DevStmImmediate(),
             new DevNetKdTime(),
+            new DevNetNcdManage(),
             new DevNetKdRequest(),
             new EventHook(),
             new EncryptedBuffer("/title/00000001/00000002/data/setting.txt", settings_txt),
@@ -1077,7 +1145,8 @@ final class FileManager {
             result = new_fd;
         }
 
-        ipc_response_queue.push_later(paddr, new_fd, 40_000);
+        log_ipc("IPC::Open result %d", result);
+        ipc_response_queue.push_later(paddr, result, 40_000);
     }
 
     void close(u32 paddr, FileDescriptor fd) {
@@ -1189,8 +1258,8 @@ final class FileManager {
             return new RealFile(filename);
         }
 
-        if (filename != "/title/00010004/524d4345/data/rksys.dat" &&
-            filename != "/shared2/menu/FaceLib/RFL_DB.dat") {
+        if (filename != "/shared2/menu/FaceLib/RFL_DB.dat" &&
+            !filename.startsWith("/title/")) {
             error_ipc("File not found: %s", filename);
         }
 

@@ -1095,8 +1095,8 @@ struct EXT_LDAXNM {
 	u16 r;
 }
 
-ExtensionInstruction decode_extension(u16 instruction) {
-	u8 ext_opcode = instruction & 0xFF;
+ExtensionInstruction decode_extension(u16 instruction, u16 mask) {
+	u8 ext_opcode = cast(u8) (instruction & mask);
 	switch (ext_opcode) {
 		case 0x00: return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP(cast(u16) (instruction & 0xFF).bits(0, 1)));
 		case 0x01: return ExtensionInstruction(ExtensionOpcode.EXT_NOP, nop : EXT_NOP(cast(u16) (instruction & 0xFF).bits(0, 1)));
@@ -2140,9 +2140,9 @@ DecodedInstruction decode_instruction_with_extension(u16 instruction, u16 next_i
 	ExtensionInstruction ext_inst;
 
 	// Check if main instruction can have extension (first nybble >= 4)
-	if ((instruction >> 12) >= 4) {
+	if ((instruction >> 12) >= 3) {
 		// Extension is always present if instruction can have one
-		ext_inst = decode_extension(instruction);
+		ext_inst = decode_extension(instruction, (instruction >> 12) == 3 ? 0x7f : 0xff);
 		has_ext = true;
 	}
 

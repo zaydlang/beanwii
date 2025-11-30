@@ -256,6 +256,7 @@ final class WbfsReader : FileReader {
 
             size_t num_bytes_to_read = min(size, this.wbfs_sector_size - disk_offset);
             log_wbfs("memcpy: %x -> %x %x", this.disk_data + disk_address, out_buffer, num_bytes_to_read);
+            log_wbfs("Bunch of info: wlba_entry: %x disk_chunk: %x disk_offset: %x disk_address: %x disk data size: %x", wlba_entry, disk_chunk, disk_offset, disk_address, this.disk_size);
             memcpy(out_buffer, this.disk_data + disk_address, num_bytes_to_read);
             out_buffer = cast(void*) cast(size_t) out_buffer + num_bytes_to_read;
 

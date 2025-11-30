@@ -49,6 +49,8 @@ final class Mmio {
         MmioRegister("command_processor",    "CP_FIFO_WP_LO",         0xCC00_0036, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_FIFO_RP_LO",         0xCC00_0038, 2, READ_WRITE),
         MmioRegister("command_processor",    "CP_FIFO_RP_HI",         0xCC00_003A, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_BP_LO",         0xCC00_003C, 2, READ_WRITE),
+        MmioRegister("command_processor",    "CP_FIFO_BP_HI",         0xCC00_003E, 2, READ_WRITE),
         MmioRegister("pixel_engine",         "Z_CONFIG",              0xCC00_1000, 2, READ_WRITE),
         MmioRegister("pixel_engine",         "ALPHA_CONFIG",          0xCC00_1002, 2, READ_WRITE),
         MmioRegister("pixel_engine",         "DESTINATION_ALPHA",     0xCC00_1004, 2, READ_WRITE),
