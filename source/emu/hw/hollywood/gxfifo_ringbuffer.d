@@ -3,7 +3,7 @@ module emu.hw.hollywood.gxfifo_ringbuffer;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
 import core.stdc.string;
-import core.bitop;
+import util.bitop;
 import util.log;
 
 extern(C) int memfd_create(const char* name, uint flags);

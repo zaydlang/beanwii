@@ -115,7 +115,6 @@ final class DSP {
     void write_DSP_MAILBOX_TO_LOW(int target_byte, u8 value) {
         import std.stdio;
         log_dsp("Write DSP_MAILBOX_TO_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        
         dsp_state.cpu_mailbox_lo = cast(u16) dsp_state.cpu_mailbox_lo.set_byte(target_byte, value);
         
         if (target_byte == 1 && dsp_state.phase == DspPhase.AcceptingMicrocode && dsp_state.microcode_count < 10) {
@@ -140,10 +139,13 @@ final class DSP {
                 if (iram_len > 0) {
                     u32 iram_words = iram_len / 2;
                     u16[] iram_data = new u16[iram_words];
+
                     for (u32 i = 0; i < iram_words; i++) {
                         iram_data[i] = mem.physical_read_u16(iram_maddr + i * 2);
                     }
+
                     jit.dsp_memory.upload_iram(iram_data);
+                    dsp_state.dsp_mailbox_hi &= ~0x8000;
                 }
                 
                 dsp_state.pc = init_vec;
@@ -157,6 +159,7 @@ final class DSP {
             if (target_byte == 1) {
                 dsp_state.cpu_mailbox_hi |= 0x8000;
             }
+            
             // Resume DSP if it was idle waiting for mailbox
             resume_from_idle_loop();
         }
@@ -175,7 +178,7 @@ final class DSP {
 
     void write_DSP_MAILBOX_TO_HIGH(int target_byte, u8 value) {
         log_dsp("Write DSP_MAILBOX_TO_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        
+
         dsp_state.cpu_mailbox_hi = cast(u16) dsp_state.cpu_mailbox_hi.set_byte(target_byte, value);
         
         // Resume DSP if it was idle waiting for mailbox
@@ -188,7 +191,7 @@ final class DSP {
     }
 
     void write_DSP_CSR(T)(T value, int offset) {
-        // log_dsp("Write DSP_CSR<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Write DSP_CSR<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         
         if (value.bit(0)) {
             if (dsp_state.phase == DspPhase.Halted) {
@@ -202,15 +205,13 @@ final class DSP {
         
         if (value.bit(1)) {
             if (dsp_state.phase == DspPhase.Running) {
-                dsp_state.phase = DspPhase.Halted;
-                error_dsp("DSP halted due to CSR bit 1 write");
+                dsp_state.raise_interrupt();
             }
         }
         
         if (value.bit(2)) {
             if (dsp_state.phase == DspPhase.Running) {
-                dsp_state.trigger_interrupt();
-                log_dsp("DSP interrupt triggered due to CSR bit 2 write");
+                error_dsp("DSP halt requested while running");
             }
         }
         
@@ -405,10 +406,13 @@ final class DSP {
             log_dsp("DSP IO read to DSP_MAILBOX_FROM_HIGH: 0x%04X", dsp_state.dsp_mailbox_lo);
             return dsp_state.dsp_mailbox_lo;
         case 0xFFFE:
-            log_dsp("DSP IO read to CPU_MAILBOX_HIGH: 0x%04X", dsp_state.cpu_mailbox_hi);
+
+            import std.stdio;
+            // writefln("DSP IO read to CPU_MAILBOX_HIGH: 0x%04X", dsp_state.cpu_mailbox_hi);
             return dsp_state.cpu_mailbox_hi;
         case 0xFFFF:
-            log_dsp("DSP IO read to CPU_MAILBOX_LOW: 0x%04X", dsp_state.cpu_mailbox_lo);
+            import std.stdio;
+            // writefln("DSP IO read to CPU_MAILBOX_LOW: 0x%04X", dsp_state.cpu_mailbox_lo);
             u16 value = dsp_state.cpu_mailbox_lo;
             dsp_state.cpu_mailbox_hi &= ~0x8000;
             return value;

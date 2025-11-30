@@ -218,20 +218,19 @@ final class DspJit {
                 break;
             }
             
+            bool in_loop = state.loop_counter > 0;
             u16 old_pc = state.pc;
             
-            if (state.loop_counter > 0) {
-            // if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
-                // writefln("Decrementing loop counter from %d", state.loop_counter);
-            // }
+            JitExitReason result = execute_compiled_block(entry.func, state);
+            cycles_executed += entry.instruction_count;
+
+            if (in_loop) {
+                // writefln("Decrementing loop counter from %d %x", state.loop_counter, state.pc);
                 state.loop_counter--;
                 if (state.loop_counter > 0) {
                     state.pc = old_pc;
                 }
             }
-            
-            JitExitReason result = execute_compiled_block(entry.func, state);
-            cycles_executed += entry.instruction_count;
             
             if (result != JitExitReason.BlockEnd) {
                 return result;
@@ -242,6 +241,12 @@ final class DspJit {
     }
 
     private u8 calculate_max_block_size(DspState* state, u16 pc) {
+        // if (state.pc >= 0x0e6d && state.pc <= 0x0ee8) {
+        if ((state.pc >= 0x0d99 && state.pc <= 0xdb0)) {
+        // if ((state.pc >= 0x07c3 && state.pc <= 0x07da) || (state.pc >= 0x0e6d && state.pc <= 0x0ee8)) {
+            // return 1;
+        }
+
         if (state.loop_counter > 0) {
             return 1; // In a loop, force single instruction blocks
         }
@@ -319,22 +324,53 @@ final class DspJit {
         // writefln("SR: 0x%04x", state.peek_reg(19));
 
             
-            // if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
 
-        u16 cdf_before = dsp_memory.read_data(0xcdf);
+        u16 bb2_before = dsp_memory.read_data(0x2b2);
         u8 call_stack_sp_before = state.call_stack.sp;
         u16 pc_start = state.pc;
         u16 wr3_before = state.wr[3];
         camefrom = state.pc;
         
-        if (state.pc == 0x76a) {
-            // writefln("PC: 0x%04x camefrom=0x%04x", state.pc, camefrom);
+        if (state.pc == 0x0e3a) {
+            writefln("PC: 0x%04x camefrom=0x%04x", state.pc, camefrom);
+            writefln("PC: 0x%04x camefrom=0x%04x", state.pc, camefrom);
+            writefln("PC: 0x%04x camefrom=0x%04x", state.pc, camefrom);
+            writefln("PC: 0x%04x camefrom=0x%04x", state.pc, camefrom);
         }
+
         u32 result = func(cast(void*) state, cast(void*) dsp_memory);
         check_loop_address(state);
         u8 call_stack_sp_after = state.call_stack.sp;
         u16 pc_end = state.pc;
         u16 wr3_after = state.wr[3];
+        u16 b2b2_after = dsp_memory.read_data(0x2b2);
+
+        // if (bb2_before != b2b2_after || state.pc == 0x7c3) {
+        //     import std.stdio;
+        //     writefln("2B2 changed: 0x%04X -> 0x%04X (PC=0x%04X)", bb2_before, b2b2_after, state.pc);
+
+        //     writefln("camefrom=0x%04x after=%s", camefrom, after ? "true" : "false");
+        //     writefln("PC=0x%04x AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x] WR=[0x%04x,0x%04x,0x%04x,0x%04x] loop=%d", 
+        //             state.pc, state.ar[0], state.ar[1], state.ar[2], state.ar[3],
+        //             state.ix[0], state.ix[1], state.ix[2], state.ix[3],
+        //             state.wr[0], state.wr[1], state.wr[2], state.wr[3], state.loop_counter);
+        //     writefln("AX0=0x%08x AX1=0x%08x PROD=[0x%04x,0x%04x,0x%04x,0x%04x]",
+        //             state.ax[0].full, state.ax[1].full,
+        //             state.prod_lo, state.prod_m1, state.prod_m2, state.prod_hi);
+        //     writefln("SR: 0x%04x", state.peek_reg(19));
+        //     writefln("PC: 0x%04x", state.pc);
+        //     writefln("instruction: 0x%04x %s", dsp_memory.read_instruction(state.pc), decode_instruction_with_extension(dsp_memory.read_instruction(state.pc), dsp_memory.read_instruction(cast(u16) (state.pc + 1))));
+        //     writefln("AC0=0x%016x AC1=0x%016x AX0=0x%08x AX1=0x%08x",
+        //             state.ac[0].full, state.ac[1].full, state.ax[0].full, state.ax[1].full);
+        //     writefln("Call_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Data_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+        //             state.call_stack.sp, state.call_stack.data[0], state.call_stack.data[1], state.call_stack.data[2], state.call_stack.data[3],
+        //             state.data_stack.sp, state.data_stack.data[0], state.data_stack.data[1], state.data_stack.data[2], state.data_stack.data[3]);
+        //     writefln("Loop_Addr_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Loop_Cnt_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+        //             state.loop_address_stack.sp, state.loop_address_stack.data[0], state.loop_address_stack.data[1], state.loop_address_stack.data[2], state.loop_address_stack.data[3],
+        //             state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+        //     writefln("Loop Counter Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+        //             state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+        // }
         
         if (wr3_before != wr3_after) {
             import std.stdio;
@@ -352,29 +388,30 @@ final class DspJit {
         }
 
         // if (pc_start < pc_end && (state.pc == 0x0738 || state.pc == 0x0740)) {
-        if (state.pc >= 0x071a && state.pc <= 0x76a) {
+            if (dsp_instance.interrupt_controller.broadway.mem.mmio.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.wiimote.button_state & 4) {
+        // if ((state.pc >= 0x0d99 && state.pc <= 0xdb0)) {
             // after = state.pc == 0x03a1;
-            // writefln("camefrom=0x%04x after=%s", camefrom, after ? "true" : "false");
-            // writefln("PC=0x%04x AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x] WR=[0x%04x,0x%04x,0x%04x,0x%04x] loop=%d", 
-            //         state.pc, state.ar[0], state.ar[1], state.ar[2], state.ar[3],
-            //         state.ix[0], state.ix[1], state.ix[2], state.ix[3],
-            //         state.wr[0], state.wr[1], state.wr[2], state.wr[3], state.loop_counter);
-            // writefln("AX0=0x%08x AX1=0x%08x PROD=[0x%04x,0x%04x,0x%04x,0x%04x]",
-            //         state.ax[0].full, state.ax[1].full,
-            //         state.prod_lo, state.prod_m1, state.prod_m2, state.prod_hi);
-            // writefln("SR: 0x%04x", state.peek_reg(19));
-            // writefln("PC: 0x%04x", state.pc);
-            // writefln("instruction: 0x%04x %s", dsp_memory.read_instruction(state.pc), decode_instruction_with_extension(dsp_memory.read_instruction(state.pc), dsp_memory.read_instruction(cast(u16) (state.pc + 1))));
-            // writefln("AC0=0x%016x AC1=0x%016x AX0=0x%08x AX1=0x%08x",
-            //         state.ac[0].full, state.ac[1].full, state.ax[0].full, state.ax[1].full);
-            // writefln("Call_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Data_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
-            //         state.call_stack.sp, state.call_stack.data[0], state.call_stack.data[1], state.call_stack.data[2], state.call_stack.data[3],
-            //         state.data_stack.sp, state.data_stack.data[0], state.data_stack.data[1], state.data_stack.data[2], state.data_stack.data[3]);
-            // writefln("Loop_Addr_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Loop_Cnt_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
-            //         state.loop_address_stack.sp, state.loop_address_stack.data[0], state.loop_address_stack.data[1], state.loop_address_stack.data[2], state.loop_address_stack.data[3],
-            //         state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
-            // writefln("Loop Counter Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
-            //         state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+            writefln("camefrom=0x%04x after=%s", camefrom, after ? "true" : "false");
+            writefln("PC=0x%04x AR=[0x%04x,0x%04x,0x%04x,0x%04x] IX=[0x%04x,0x%04x,0x%04x,0x%04x] WR=[0x%04x,0x%04x,0x%04x,0x%04x] loop=%d", 
+                    state.pc, state.ar[0], state.ar[1], state.ar[2], state.ar[3],
+                    state.ix[0], state.ix[1], state.ix[2], state.ix[3],
+                    state.wr[0], state.wr[1], state.wr[2], state.wr[3], state.loop_counter);
+            writefln("AX0=0x%08x AX1=0x%08x PROD=[0x%04x,0x%04x,0x%04x,0x%04x]",
+                    state.ax[0].full, state.ax[1].full,
+                    state.prod_lo, state.prod_m1, state.prod_m2, state.prod_hi);
+            writefln("SR: 0x%04x", state.peek_reg(19));
+            writefln("PC: 0x%04x", state.pc);
+            writefln("instruction: 0x%04x %s", dsp_memory.read_instruction(state.pc), decode_instruction_with_extension(dsp_memory.read_instruction(state.pc), dsp_memory.read_instruction(cast(u16) (state.pc + 1))));
+            writefln("AC0=0x%016x AC1=0x%016x AX0=0x%08x AX1=0x%08x",
+                    state.ac[0].full, state.ac[1].full, state.ax[0].full, state.ax[1].full);
+            writefln("Call_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Data_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+                    state.call_stack.sp, state.call_stack.data[0], state.call_stack.data[1], state.call_stack.data[2], state.call_stack.data[3],
+                    state.data_stack.sp, state.data_stack.data[0], state.data_stack.data[1], state.data_stack.data[2], state.data_stack.data[3]);
+            writefln("Loop_Addr_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x] Loop_Cnt_Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+                    state.loop_address_stack.sp, state.loop_address_stack.data[0], state.loop_address_stack.data[1], state.loop_address_stack.data[2], state.loop_address_stack.data[3],
+                    state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
+            writefln("Loop Counter Stack: sp=%d [0x%04x,0x%04x,0x%04x,0x%04x]",
+                    state.loop_counter_stack.sp, state.loop_counter_stack.data[0], state.loop_counter_stack.data[1], state.loop_counter_stack.data[2], state.loop_counter_stack.data[3]);
         }
         // if (call_stack_sp_before != call_stack_sp_after) {
         //     writefln("Call stack pointer changed: %d -> %d at PC range 0x%04x-0x%04x", call_stack_sp_before, call_stack_sp_after, pc_start, pc_end);

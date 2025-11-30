@@ -133,7 +133,7 @@ final class DSPAccelerator {
         case 0xFFDC:
             log_accelerator("YN2 register write: 0x%04X", value);
             yn2_register = value;
-            dump_memory_range();
+            // dump_memory_range();
             break;
         case 0xFFDE:
             log_accelerator("GAIN register write: 0x%04X", value);
@@ -176,7 +176,7 @@ final class DSPAccelerator {
         }
         
         file.close();
-        error_accelerator("Memory dumped to %s (%d bytes)", filename, dump_end_addr - dump_current_addr + 1);
+        // error_accelerator("Memory dumped to %s (%d bytes)", filename, dump_end_addr - dump_current_addr + 1);
     }
 
     bool done;

@@ -128,6 +128,29 @@ final class CommandProcessor {
         cp_fifo_read_ptr_hi = cp_fifo_read_ptr_hi.set_byte(target_byte, value);
     }
 
+    u32 cp_fifo_b_ptr_lo;
+    u32 cp_fifo_b_ptr_hi;
+
+    u8 read_CP_FIFO_BP_LO(int target_byte) {
+        u8 result = cp_fifo_b_ptr_lo.get_byte(target_byte);
+        log_cp("read CP_FIFO_BP_LO[%d] = 0x%02x", target_byte, result);
+        return result;
+    }
+
+    void write_CP_FIFO_BP_LO(int target_byte, u8 value) {
+        cp_fifo_b_ptr_lo = cp_fifo_b_ptr_lo.set_byte(target_byte, value);
+    }
+
+    u8 read_CP_FIFO_BP_HI(int target_byte) {
+        u8 result = cp_fifo_b_ptr_hi.get_byte(target_byte);
+        log_cp("read CP_FIFO_BP_HI[%d] = 0x%02x", target_byte, result);
+        return result;
+    }
+
+    void write_CP_FIFO_BP_HI(int target_byte, u8 value) {
+        cp_fifo_b_ptr_hi = cp_fifo_b_ptr_hi.set_byte(target_byte, value);
+    }
+
     u32 cp_fifo_hi_watermark_hi;
     u32 cp_fifo_hi_watermark_lo;
     u32 cp_fifo_lo_watermark_hi;
