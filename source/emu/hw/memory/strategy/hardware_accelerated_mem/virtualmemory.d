@@ -156,6 +156,10 @@ private bool is_guest_mmio_address(u64 guest_addr) {
     return (guest_addr & 0x0E000000) == 0x0C000000;
 }
 
+private bool is_guest_efb_address(u64 guest_addr) {
+    return (guest_addr & 0xFF000000) == 0xC8000000;
+}
+
 MemoryInstructionType get_memory_instruction_type(u32 opcode) {
     int primary_opcode = opcode >> 26;
 
@@ -214,7 +218,7 @@ private void virtual_memory_segfault_handler(int signum, siginfo_t* info, void* 
         if (_virtual_memory_manager.in_range(space, fault_addr)) {
             u64 guest_addr = _virtual_memory_manager.to_guest_address(space, fault_addr);
             
-            if (is_guest_mmio_address(guest_addr)) {
+            if (is_guest_mmio_address(guest_addr) || is_guest_efb_address(guest_addr)) {
                 BroadwayState* state = cast(BroadwayState*) uctx.uc_mcontext.gregs[REG_RDI];
                 u32 opcode = g_jit.mem.cpu_read_u32(state.pc);
                 MemoryInstructionType instr_type = get_memory_instruction_type(opcode);

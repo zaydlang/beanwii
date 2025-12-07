@@ -147,6 +147,7 @@ void emit_physical_memory_read_slow(Code code, R32 result_reg, R32 address_reg, 
     code.mov(esi, address_reg);
     
     code.push(rdi);
+    code.push(rsi);
     code.enter_stack_alignment_context();
         code.mov(rdi, cast(u64) code.config.mem_handler_context);
         
@@ -213,6 +214,7 @@ void emit_physical_memory_read_slow(Code code, R32 result_reg, R32 address_reg, 
                 break;
         }
     code.exit_stack_alignment_context();
+    code.pop(rsi);
     code.pop(rdi);
     
     code.mov(result_reg.cvt64(), rax);
@@ -277,6 +279,7 @@ void emit_virtual_memory_read_slow(Code code, R32 result_reg, R32 address_reg, M
     code.mov(esi, address_reg);
     
     code.push(rdi);
+    code.push(rsi);
     code.enter_stack_alignment_context();
     code.mov(rdi, cast(u64) code.config.mem_handler_context);
     
@@ -344,6 +347,7 @@ void emit_virtual_memory_read_slow(Code code, R32 result_reg, R32 address_reg, M
     }
 
     code.exit_stack_alignment_context();
+    code.pop(rsi);
     code.pop(rdi);
     
     code.mov(result_reg.cvt64(), rax);
@@ -438,6 +442,7 @@ void emit_physical_memory_write_slow(Code code, R32 address_reg, R64 value_reg, 
     }
     
     code.push(rdi);
+    code.push(rsi);
     code.enter_stack_alignment_context();
         code.mov(rdi, cast(u64) code.config.mem_handler_context);
         
@@ -458,6 +463,7 @@ void emit_physical_memory_write_slow(Code code, R32 address_reg, R64 value_reg, 
         
         code.call(rax);
     code.exit_stack_alignment_context();
+    code.pop(rsi);
     code.pop(rdi);
 }
 
@@ -534,6 +540,7 @@ void emit_virtual_memory_write_slow(Code code, R32 address_reg, R64 value_reg, M
     }
     
     code.push(rdi);
+    code.push(rsi);
     code.enter_stack_alignment_context();
         code.mov(rdi, cast(u64) code.config.mem_handler_context);
         
@@ -554,6 +561,7 @@ void emit_virtual_memory_write_slow(Code code, R32 address_reg, R64 value_reg, M
         
         code.call(rax);
     code.exit_stack_alignment_context();
+    code.pop(rsi);
     code.pop(rdi);
 }
 

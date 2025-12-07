@@ -8,7 +8,7 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     private T* memory;
     private size_t capacity;
     private size_t used;
-    private enum page_size = 4096 / T.sizeof;
+    private enum page_size = (4096 / T.sizeof) == 0 ? 1 : (4096 / T.sizeof);
     private bool did_reallocate = false;
     
     this(int dummy) {
@@ -18,7 +18,7 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     
     T* allocate() {
         log_hollywood("Allocating 1 element  %x ", cast(void*) &this);
-        if (used >= capacity) {
+        while (used >= capacity) {
             log_hollywood("Growing allocator %x  because used: %s, capacity: %s", cast(void*) &this, used, capacity);
             grow();
         }
@@ -60,6 +60,7 @@ struct PageAllocator(T, bool ENFORCE_CONSECUTIVE = true) {
     
     private void grow() {
         size_t new_capacity = capacity == 0 ? page_size : capacity * 2;
+        if (new_capacity == 0) new_capacity = 1;
         size_t new_bytes = new_capacity * T.sizeof;
         log_hollywood("Growing allocator %x to new byte size: %s. T sizeof: %s", cast(void*) &this, new_bytes, T.sizeof);
         

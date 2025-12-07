@@ -56,6 +56,7 @@ struct InputReport {
         DataReport30               data_report_30;
         DataReport31               data_report_31;
         DataReport33               data_report_33;
+        DataReport37               data_report_37;
     }
 }
 
@@ -281,3 +282,14 @@ struct DataReport33 {
 }
 
 static assert(DataReport33.sizeof == 17);
+
+struct DataReport37 {
+    align(1):
+
+    u8[2]  button_state;
+    u8[3]  accelerometer;
+    u8[10] ir_camera;
+    u8[6]  extension;
+}
+
+static assert(DataReport37.sizeof == 21);

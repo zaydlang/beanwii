@@ -547,15 +547,39 @@ class SdlDevice : MultiMediaDevice, Window {
             bool ctrl_pressed = keyboard_state[SDL_SCANCODE_LCTRL] != 0 || keyboard_state[SDL_SCANCODE_RCTRL] != 0;
             bool l_pressed = keyboard_state[SDL_SCANCODE_L] != 0;
             bool logging_toggle_key_current = ctrl_pressed && l_pressed;
+
             if (logging_toggle_key_current && !logging_toggle_key_pressed) {
                 toggle_logging();
                 log_frontend("Logging %s", logging_paused ? "paused" : "resumed");
             }
+
             logging_toggle_key_pressed = logging_toggle_key_current;
+
+            static bool jit_dump_key_pressed = false;
+            bool jit_dump_key_current = keyboard_state[SDL_SCANCODE_D] != 0 && 
+                                       (keyboard_state[SDL_SCANCODE_LCTRL] != 0 || 
+                                        keyboard_state[SDL_SCANCODE_RCTRL] != 0);
+            
+            if (jit_dump_key_current && !jit_dump_key_pressed) {
+                wii.dump_jit_entries();
+                log_frontend("JIT entries dumped to console");
+            }
+            
+            jit_dump_key_pressed = jit_dump_key_current;
 
             foreach (wiimote_key, host_key; KeyMapping) {
                 wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
             }
+
+            int mouse_x, mouse_y;
+            SDL_GetMouseState(&mouse_x, &mouse_y);
+
+            int viewport_x = debugging ? SCREEN_BORDER_WIDTH : 0;
+            int viewport_y = debugging ? SCREEN_BORDER_WIDTH : 0;
+            int viewport_w = WII_SCREEN_WIDTH;
+            int viewport_h = WII_SCREEN_HEIGHT;
+
+            wii.set_wiimote_screen_position(mouse_x - viewport_x, mouse_y - viewport_y, viewport_w, viewport_h);
         }
 
         bool should_fast_forward() {
@@ -594,6 +618,8 @@ class SdlDevice : MultiMediaDevice, Window {
     }
     
     void dump_texture_to_file(Texture texture, int index) {
+        log_frontend("Dumping texture ID %d (%dx%d)...", texture.texture_id, texture.width, texture.height);
+        
         if (texture.texture_id == 0 || texture.width == 0 || texture.height == 0) {
             return;
         }

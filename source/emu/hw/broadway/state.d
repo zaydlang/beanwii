@@ -56,6 +56,8 @@ struct BroadwayState {
     int     cycle_quota;
 }
 
+pragma(msg, BroadwayState.cycle_quota.offsetof);
+
 struct PairedSingle {
     align(1):
     u64 ps0;

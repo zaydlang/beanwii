@@ -15,6 +15,7 @@ import emu.scheduler;
 import ldc.intrinsics;
 import util.bitop;
 import util.endian;
+import util.force_cast; 
 import util.log;
 import util.number;
 import std.stdio;
@@ -149,6 +150,11 @@ final class Broadway {
         while (elapsed < num_cycles) {
             exception_raised = false;
 
+        if (state.pc == 0x80494568 && state.ps[0].ps0 == 0x3ff19999a0000000) {
+            import std.stdio;
+            // writefln("Stack pointer: %08x", state.gprs[1]);
+        }
+
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
 
@@ -159,6 +165,21 @@ version (release) {
                 return BroadwayReturnValue(elapsed, true);
             }
 }
+
+        // if (state.pc == 0x80494570) {
+        if (state.pc >= 0x80494400 && state.pc <= 0x80494588) {
+            // writefln("geo pointer: %08x", state.gprs[1]);
+            // log_state(&state);
+        }
+
+        if (state.pc== 0x80494578) {
+            // import std.stdio;
+            // writefln("BAD BAD BAD");
+        }
+
+        if (state.pc >= 0x80493b5c && state.pc  <= 0x80493b84) {
+            // log_state(&state);
+        }
 
             if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
                 raise_exception(ExceptionType.FloatingPointUnavailable);
@@ -565,6 +586,10 @@ version (release) {
     void exit_single_step_mode() {
         in_single_step_mode = false;
         jit.exit_single_step_mode();
+    }
+
+    void dump_jit_entries() {
+        jit.dump_all_entries();
     }
 }
  

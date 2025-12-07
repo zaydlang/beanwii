@@ -7,7 +7,7 @@ in vec2 texcoord[8];
 
 in vec4 in_color[2];
 
-out vec2 UV[8];
+out vec3 UV[8];
 out vec4 frag_color;
 out vec4 color0;
 out vec4 color1;
@@ -21,6 +21,8 @@ struct TexConfig {
 	mat3x4 dualtex_matrix;
 	bool normalize_before_dualtex;
 	int texcoord_source;
+	int texmatrix_size;
+	int uses_stq;
 };
 
 layout (std140, binding = 0) uniform VertexConfig {
@@ -28,41 +30,49 @@ layout (std140, binding = 0) uniform VertexConfig {
 	int end; // used to verify the size of tex_configs[8] by getting the offset of end
 };
 
-vec2 get_texcoord(int idx) {
+vec3 get_texcoord(int idx) {
+	vec3 result = vec3(0.0, 0.0, 1.0);
 	switch (tex_configs[idx].texcoord_source) {
-		case 0: return vec2(0);
-		case 1: return vec2(0);
-		case 2: return vec2(0);
-		case 3: return vec2(0);
-		case 4: return vec2(0);
-
-		case 5:
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-		case 10:
-		case 11:
-		case 12:
-			return texcoord[tex_configs[idx].texcoord_source - 5];
+		case 0: result = vec3(in_Position.xyz); break;
+		case 5: result = vec3(texcoord[0], 1.0); break;
+		case 6: result = vec3(texcoord[1], 1.0); break;
+		case 7: result = vec3(texcoord[2], 1.0); break;
+		case 8: result = vec3(texcoord[3], 1.0); break;
+		case 9: result = vec3(texcoord[4], 1.0); break;
+		case 10: result = vec3(texcoord[5], 1.0); break;
+		case 11: result = vec3(texcoord[6], 1.0); break;
+		case 12: result = vec3(texcoord[7], 1.0); break;
 	}
+
+	if (tex_configs[idx].uses_stq == 0) {
+		result = vec3(result.xy, 1.0);
+	}
+
+	return result;
 }
 
 void main(void) {
 	gl_Position = MVP * vec4(position_matrix * vec4(in_Position, 1.0), 1.0);
 
 	for (int i = 0; i < 8; i++) {
-		vec4 coord = vec4(transpose(tex_configs[i].tex_matrix) * vec4(get_texcoord(i), 1.0, 1.0), 1.0);
+		vec3 src = get_texcoord(i);
+		vec3 coord = transpose(tex_configs[i].tex_matrix) * vec4(src, 1.0);
 
-		// UV[i] = coord.xy;
-		// UV[i] = texcoord[i];
+		if (tex_configs[i].texmatrix_size == 2) {
+			coord.z = 1.0;
+		}
+
 		if (tex_configs[i].normalize_before_dualtex) {
 			coord = normalize(coord);
 		}
 
-		// UV[i] = coord.xy;
-		UV[i] = (transpose(tex_configs[i].dualtex_matrix) * coord).xy;
-	// UV[i] = (tex_configs[i] * vec4(texcoord[i], 1.0, 1.0)).xy;
+		vec3 post = transpose(tex_configs[i].dualtex_matrix) * vec4(coord, 1.0);
+		
+		if (tex_configs[i].texmatrix_size == 2) {
+			post.z = 1.0;
+		}
+
+		UV[i] = post;
 	}
 
 	color0 = in_color[0];

@@ -54,7 +54,7 @@ final class PageTable(T) {
         l3_entries[l4].entry = entry;
     }
 
-    T get_assume_has(u32 address) {
+    T* get_assume_has(u32 address) {
         if (!has(address)) {
             error_jit("PageTable: Address %x not found in page table", address);
         }
@@ -68,7 +68,7 @@ final class PageTable(T) {
         auto l2_entries = l1_entries[l2];
         auto l3_entries = l2_entries[l3];
 
-        return l3_entries[l4].entry;
+        return &l3_entries[l4].entry;
     }
 
     void remove(u32 address) {
@@ -105,5 +105,27 @@ final class PageTable(T) {
 
         auto entry = l3_entries[l4];
         return entry.valid;
+    }
+
+    void iterate_all(void delegate(u32 address, T entry) callback) {
+        for (int l1 = 0; l1 < 128; l1++) {
+            if (entries[l1] is null) continue;
+            
+            for (int l2 = 0; l2 < 128; l2++) {
+                if (entries[l1][l2] is null) continue;
+                
+                for (int l3 = 0; l3 < 128; l3++) {
+                    if (entries[l1][l2][l3] is null) continue;
+                    
+                    for (int l4 = 0; l4 < 256; l4++) {
+                        if (entries[l1][l2][l3][l4].valid) {
+                            u32 address = (l1 << 22) | (l2 << 15) | (l3 << 8) | l4;
+                            address |= 0x80000000; // Add base offset for PowerPC memory layout
+                            callback(address, entries[l1][l2][l3][l4].entry);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

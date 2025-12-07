@@ -43,6 +43,7 @@ enum Whitelist = [
     // LogSource.SLOWMEM,
     // LogSource.SCHEDULER,
     // LogSource.TEXTURE,
+    // LogSource.TMP,
     // LogSource.USB,
     // LogSource.WBFS,
     // LogSource.WII,
@@ -87,6 +88,7 @@ enum LogSource {
     GALLINULE,
     TEXTURE,
     OPENGL,
+    TMP,
 
     NONE // dummy
 }

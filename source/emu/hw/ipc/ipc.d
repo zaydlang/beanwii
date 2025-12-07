@@ -180,7 +180,6 @@ final class IPC {
         //     // log_ipc("Relaunching IOS");
         //     return;
         // } 
-if (scheduler.current_timestamp == 0x0000000001c87894) mem.cpu.dump_stack();
         if (x1) {
             log_ipc("Sending command");
 

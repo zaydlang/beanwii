@@ -1,7 +1,9 @@
 module emu.hw.ipc.usb.wiimote;
 
 import emu.hw.ipc.usb.bluetooth;
+import emu.hw.ipc.usb.extensions.extension;
 import emu.hw.ipc.usb.l2cap;
+import emu.hw.ipc.usb.extensions.extension;
 import emu.scheduler;
 import std.algorithm;
 import std.random;
@@ -19,17 +21,17 @@ enum WiimoteState {
 }
 
 enum WiimoteButton {
-    A = 0x01,
-    B = 0x02,
-    Minus = 0x04,
-    Plus = 0x08,
-    One = 0x10,
-    Two = 0x20,
-    Home = 0x40,
-    Up = 0x100,
+    Two = 0x01,
+    One = 0x02,
+    B = 0x04,
+    A = 0x08,
+    Minus = 0x10,
+    Home = 0x80,
+    Left = 0x100,
+    Right = 0x200,
     Down = 0x200,
-    Left = 0x200,
-    Right = 0x400
+    Up = 0x400,
+    Plus = 0x800,
 }
 
 final class Wiimote {
@@ -53,6 +55,28 @@ final class Wiimote {
     auto rnd = Random(42);
 
     u16 button_state = 0;
+
+    struct IrDot {
+        u16 x;
+        u16 y;
+        bool valid;
+    }
+
+    IrDot[2] ir_dots; // we only ever emit two blobs
+
+    WiimoteExtension extension;
+
+    void connect_extension(WiimoteExtensionType extension_type) {
+        this.extension = create_extension(extension_type);
+    }
+
+    void disconnect_extension() {
+        this.extension = null;
+    }
+
+    bool is_extension_connected() {
+        return extension !is null;
+    }
 
     @property camera_enabled() {
         return camera_enable_pin1 && camera_enable_pin2;
@@ -245,7 +269,35 @@ final class Wiimote {
     }
 
     void handle_read_registers(u32 address, u16 size) {
-        error_wiimote("Read registers not implemented");
+        if (extension && address == 0xA400FA && size == 6) {
+            ReadMemoryAndRegistersData result;
+            fill_button_state(&result);
+
+            result.size_and_error = 0x50; // 6 bytes -> (6 - 1) << 4
+            result.data_offset = u16_be(cast(u16) address);
+            result.data[0 .. 6] = extension.get_id();
+
+            send_input_report_response(InputReport(InputReportId.ReadMemoryAndRegistersData, read_memory_and_registers_data : result), ReadMemoryAndRegistersData.sizeof);
+            return;
+        }
+
+        if (extension && address == 0xA40020 && size == 32) {
+            ReadMemoryAndRegistersData result;
+            fill_button_state(&result);
+
+            result.size_and_error = 0xf0; // 16 bytes -> (16 - 1) << 4
+            result.data_offset = u16_be(cast(u16) address);
+            result.data[0 .. 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+            send_input_report_response(InputReport(InputReportId.ReadMemoryAndRegistersData, read_memory_and_registers_data : result), ReadMemoryAndRegistersData.sizeof);
+            
+            result.size_and_error = 0xf0; // 16 bytes -> (16 - 1) << 4
+            result.data_offset = u16_be(cast(u16) (address + 16));
+            result.data[0 .. 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+            send_input_report_response(InputReport(InputReportId.ReadMemoryAndRegistersData, read_memory_and_registers_data : result), ReadMemoryAndRegistersData.sizeof);
+            return;
+        }
+
+        error_wiimote("Read registers not implemented : %x, size: %d", address, size);
     }
 
     void handle_write_memory_and_registers(WriteMemoryAndRegistersReport report) {
@@ -284,8 +336,26 @@ final class Wiimote {
             case 0xa20008: // speaker init part 3
                 break;
             
+            case 0xa400f0: // controller extension init part 1
+                break;
+            
+            case 0xa400fb: // controller extension init part 2
+                break;
+            
+            case 0xa40040: // controller extension init part 3
+                break;
+            
+            case 0xa40046: // controller extension init part 4
+                break;
+            
+            case 0xa4004c: // controller extension init part 5
+                break;
+            
+            case 0xa40020: // controller extension init part 6
+                break;
+            
             default: 
-                error_wiimote("Write registers not implemented: %x", address);
+                error_wiimote("Write registers not implemented: %x %s", address, data);
         }
 
         trivial_success(OutputReportId.WriteMemoryAndRegisters);
@@ -335,7 +405,7 @@ final class Wiimote {
         StatusInformationReport response;
         fill_button_state(&response);
 
-        response.led_and_flags = cast(u8) ((leds << 4) | (camera_enabled << 3));
+        response.led_and_flags = cast(u8) ((leds << 4) | (camera_enabled << 3) | (is_extension_connected() << 1));
         response.battery_level = cast(u8) (100);
 
         send_input_report_response(InputReport(InputReportId.StatusInformation, status_information_report : response), StatusInformationReport.sizeof);
@@ -407,6 +477,65 @@ final class Wiimote {
         bluetooth.send_acl_response(data);
     }
 
+    private u16 clamp_ir_x(int x) {
+        return cast(u16) clamp(x, 0, 1023);
+    }
+
+    private u16 clamp_ir_y(int y) {
+        return cast(u16) clamp(y, 0, 767);
+    }
+
+    private void fill_ir_basic(ref ubyte[10] dest) {
+        if (!camera_enabled) {
+            dest[] = 0;
+            return;
+        }
+
+        u16 x1 = ir_dots[0].valid ? clamp_ir_x(ir_dots[0].x) : 0x3ff;
+        u16 y1 = ir_dots[0].valid ? clamp_ir_y(ir_dots[0].y) : 0x3ff;
+        u16 x2 = ir_dots[1].valid ? clamp_ir_x(ir_dots[1].x) : 0x3ff;
+        u16 y2 = ir_dots[1].valid ? clamp_ir_y(ir_dots[1].y) : 0x3ff;
+
+        dest[0] = cast(ubyte) (x1 & 0xff);
+        dest[1] = cast(ubyte) (y1 & 0xff);
+        dest[2] = cast(ubyte) (((y1 >> 8) & 0x3) << 6 |
+                                ((x1 >> 8) & 0x3) << 4 |
+                                ((y2 >> 8) & 0x3) << 2 |
+                                ((x2 >> 8) & 0x3));
+        dest[3] = cast(ubyte) (x2 & 0xff);
+        dest[4] = cast(ubyte) (y2 & 0xff);
+
+        dest[5 .. 10] = 0xff;
+    }
+
+    void set_screen_position(int screen_x, int screen_y, int screen_width, int screen_height) {
+        if (screen_width <= 1 || screen_height <= 1) {
+            foreach (ref dot; ir_dots) {
+                dot.valid = false;
+            }
+            
+            return;
+        }
+
+        float nx = clamp(cast(float) screen_x / cast(float) (screen_width - 1), 0.0f, 1.0f);
+        float ny = clamp(cast(float) screen_y / cast(float) (screen_height - 1), 0.0f, 1.0f);
+
+        // collected from a stupid test rom
+        enum DOT0_X_MIN = 174;
+        enum DOT0_X_MAX = 707;
+        enum DOT1_X_MIN = 318;
+        enum DOT1_X_MAX = 850;
+        enum DOT_Y_MIN  = 280;
+        enum DOT_Y_MAX  = 688;
+
+        int dot0_x = cast(int) (DOT0_X_MIN + nx * (DOT0_X_MAX - DOT0_X_MIN) + 0.5f);
+        int dot1_x = cast(int) (DOT1_X_MIN + nx * (DOT1_X_MAX - DOT1_X_MIN) + 0.5f);
+        int dot_y  = cast(int) (DOT_Y_MIN  + ny * (DOT_Y_MAX  - DOT_Y_MIN) + 0.5f);
+
+        ir_dots[0] = IrDot(clamp_ir_x(dot0_x), clamp_ir_y(dot_y), true);
+        ir_dots[1] = IrDot(clamp_ir_x(dot1_x), clamp_ir_y(dot_y), true);
+    }
+
     void send_data_report() {
         // if (reporting_mode != 0x30) {
             // error_wiimote("Data reporting mode is not 0x30 (%x). This is not supported yet.", reporting_mode);
@@ -431,6 +560,19 @@ final class Wiimote {
                 fill_button_state(&data_report);
                 // fill_accelerometer_state(&data_report);
                 send_input_report_response(InputReport(InputReportId.DataReport33, data_report_33 : data_report), DataReport33.sizeof);
+                break;
+
+            case 0x37:
+                assert_wiimote(extension !is null, "Data report 0x37 requested with no extension connected");
+
+                DataReport37 data_report37;
+                fill_button_state(&data_report37);
+                data_report37.accelerometer[] = 0;
+                fill_ir_basic(data_report37.ir_camera);
+
+                data_report37.extension[] = extension.get_report_data();
+
+                send_input_report_response(InputReport(InputReportId.DataReport37, data_report_37 : data_report37), DataReport37.sizeof);
                 break;
 
             default: error_wiimote("Data reporting mode is not supported (%x)", reporting_mode);
