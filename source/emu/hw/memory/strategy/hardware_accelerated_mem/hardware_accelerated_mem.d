@@ -94,6 +94,9 @@ final class HardwareAcceleratedMem {
         
         if (is_mmio(address)) {
             return this.mmio.read!T(address);
+        } else if (0xC8000000 <= address && address <= 0xC8FFFFFF) {
+            // efb i dont care
+            return 0;
         }
         
         if (!real_mode) {
@@ -154,6 +157,9 @@ final class HardwareAcceleratedMem {
     private T virtual_read(T)(u32 address) {
         if (is_mmio(address)) {
             return this.mmio.read!T(address);
+        } else if (0xC8000000 <= address && address <= 0xC8FFFFFF) {
+            // efb i dont care
+            return 0;
         }
         
         return virtual_memory_manager.read_be!T(virtual_memory_space, address);
@@ -162,6 +168,9 @@ final class HardwareAcceleratedMem {
     private void virtual_write(T)(u32 address, T value) {
         if (is_mmio(address)) {
             this.mmio.write!T(address, value);
+            return;
+        } else if (0xC8000000 <= address && address <= 0xC8FFFFFF) {
+            // efb i dont care
             return;
         }
         
@@ -213,6 +222,9 @@ final class HardwareAcceleratedMem {
         
         if (is_mmio(address)) {
             this.mmio.write!T(address, value);
+            return;
+        } else if (0xC8000000 <= address && address <= 0xC8FFFFFF) {
+            // efb i dont care
             return;
         }
         

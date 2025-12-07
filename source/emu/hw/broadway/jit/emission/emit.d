@@ -985,6 +985,10 @@ private EmissionAction emit_mfspr(Code code, u32 opcode) {
         code.set_reg(guest_rd, reg);
     }
 
+    if (src == GuestReg.LR) {
+        return EmissionAction.Continue;
+    }
+
     return EmissionAction.VolatileStateChanged;
 }
 
@@ -1082,10 +1086,10 @@ private EmissionAction emit_mtspr(Code code, u32 opcode) {
         code.set_reg(sysreg, rd);
     }
 
-    if (sysreg == GuestReg.DEC) {
-        return EmissionAction.DecrementerChanged;
-    } else {
-        return EmissionAction.VolatileStateChanged;
+    switch (sysreg) {
+    case GuestReg.LR:  return EmissionAction.Continue;
+    case GuestReg.DEC: return EmissionAction.DecrementerChanged;
+    default:           return EmissionAction.VolatileStateChanged;
     }
 }
 
@@ -1695,6 +1699,11 @@ private EmissionAction emit_subfcx(Code code, u32 opcode) {
 
     auto ra = code.get_reg(guest_ra);    
     auto rb = code.get_reg(guest_rb);
+    auto c  = code.allocate_register();
+    auto t  = code.allocate_register();
+
+    code.cmp(ra, rb);
+    code.sete(c.cvt8());
 
     code.mov(ah, 1);
     code.sahf();
@@ -1702,8 +1711,13 @@ private EmissionAction emit_subfcx(Code code, u32 opcode) {
     code.not(ra);
     code.adc(ra, rb);
     code.set_reg(guest_rd, ra);
+    code.setc(t.cvt8());
 
-    set_flags(code, true, rc, oe, ra, ra, rb, code.allocate_register(), 0);
+    set_flags(code, false, rc, oe, ra, ra, rb, code.allocate_register(), 0);
+    
+    code.shl(t, cast(u8) 29);
+    code.and(code.get_address(GuestReg.XER), 0xdfff_ffff);
+    code.or(code.get_address(GuestReg.XER), t);
 
     return EmissionAction.Continue;
 }
@@ -1797,7 +1811,7 @@ private EmissionAction emit_subfzex(Code code, u32 opcode) {
     code.not(ra);
 
     code.mov(eax, code.get_address(GuestReg.XER));
-    code.shr(eax, cast(u8) 21);
+    code.shr(eax, cast(u8) 29);
     code.and(eax, 1);
 
     code.add(ra, eax);
@@ -2183,7 +2197,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                         if (ENABLE_BASIC_BLOCK_LINKING) {
                             if (jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
                                 log_jit("Direct linking: 0x%08x -> 0x%08x (target exists)", original_address, action.get_direct_branch_target());
-                                jit.add_dependent(action.get_direct_branch_target(), original_address);
+                                jit.add_dependent(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
+                                                  jit.create_jit_key_from_address(original_address, mmu_enabled));
                                 u64 target = jit.get_address_for_code(action.get_direct_branch_target(), mmu_enabled);
                                 code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                                 target += 15; // size of prologue
@@ -2198,15 +2213,16 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                             } else {
                                 log_jit("Deferring link: 0x%08x -> 0x%08x (target not compiled yet), offset=0x%016x", 
                                     original_address, action.get_direct_branch_target(), code.current_offset());
-                                jit.submit_basic_block_link_patch_point(action.get_direct_branch_target(), original_address, code.current_offset());
+                                jit.submit_basic_block_link_patch_point(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
+                                                                         jit.create_jit_key_from_address(original_address, mmu_enabled), code.current_offset());
                                 for (int i = 0; i < 25; i++) {
                                     code.nop();
                                 }
 
-                                code.mov(rax, BlockReturnValue.BranchTaken);
+                                code.mov(rax, BlockReturnValue.PatchableBranchTaken);
                             }
                         } else {
-                            code.mov(rax, BlockReturnValue.BranchTaken);
+                            code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                         }
                     }
 
@@ -2222,7 +2238,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                     }      
 
                     code.set_reg(GuestReg.PC, action.get_indirect_branch_target());
-                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     break;
 
                 case EmissionActionType.ConditionalDirectBranchTaken:
@@ -2233,7 +2249,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                     code.jnz(branch);
 
                     code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
-                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     code.jmp(end);
 
                 code.label(branch);
@@ -2248,7 +2264,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
 
                     if (!in_idle_loop) {
                         if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
-                            jit.add_dependent(action.get_direct_branch_target(), original_address);
+                            jit.add_dependent(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
+                                              jit.create_jit_key_from_address(original_address, mmu_enabled));
                             u64 target = jit.get_address_for_code(action.get_direct_branch_target(), mmu_enabled);
                             code.cmp(code.dwordPtr(rdi, cast(int) BroadwayState.cycle_quota.offsetof), 1000);
                             target += 15; // size of prologue
@@ -2262,13 +2279,15 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                             code.mov(rax, BlockReturnValue.GuestBlockEnd);
                         } else {
                             if (ENABLE_BASIC_BLOCK_LINKING) {
-                                jit.submit_basic_block_link_patch_point(action.get_direct_branch_target(), original_address, code.current_offset());
+                                jit.submit_basic_block_link_patch_point(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
+                                                                         jit.create_jit_key_from_address(original_address, mmu_enabled), code.current_offset());
                                 for (int i = 0; i < 25; i++) {
                                     code.nop();
                                 }
+                                code.mov(rax, BlockReturnValue.PatchableBranchTaken);
+                            } else {
+                                code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                             }
-                            
-                            code.mov(rax, BlockReturnValue.BranchTaken);
                         }
                     }
 
@@ -2298,7 +2317,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
 
                 code.label(end);
                     
-                    code.mov(rax, BlockReturnValue.BranchTaken);
+                    code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     break;
                     
                 case EmissionActionType.ICacheInvalidation:

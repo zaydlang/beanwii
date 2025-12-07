@@ -33,11 +33,16 @@ version (unittest) {} else {
 		g_fastmem_end_addr = cli_args.fastmem_end_addr;
 
 		if (!cli_args.start_debugger) {
-			GC.disable();
-		}
+		GC.disable();
+	}
 		
-		wii = new Wii(cli_args.ringbuffer_size);
-		auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio);
+	wii = new Wii(cli_args.ringbuffer_size);
+	
+	if (cli_args.extension) {
+		wii.get_wiimote().connect_extension(cli_args.extension.get());
+	}
+
+	auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio);
 		wii.init_opengl();	
 		// auto device = new RengMultimediaDevice(wii, 1, true);
 

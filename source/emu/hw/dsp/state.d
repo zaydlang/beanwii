@@ -99,6 +99,7 @@ struct DspState {
     bool interrupt_pending;
 
     void raise_interrupt() {
+        assert_dsp(!interrupt_pending, "Interrupt already pending");
         interrupt_pending = true;
     }
 
@@ -107,6 +108,10 @@ struct DspState {
         call_stack.push(pc);
         pc = 0xE;
         interrupt_pending = false;
+    }
+
+    bool interrupts_enabled() {
+        return sr_upper.bit(3);
     }
 
     void set_reg(int index, u16 value) {

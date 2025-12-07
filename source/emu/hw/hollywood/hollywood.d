@@ -193,16 +193,6 @@ final class Hollywood {
 
     ColorConfig[2] color_configs;
 
-    struct GlAlignedU32 {
-        u32 value;
-        u32[3] padding;
-        alias value this;
-
-        void opAssign(u32 value) {
-            this.value = value;
-        }
-    }
-
     struct GlAlignedFloat {
         float value;
         alias value this;
@@ -217,10 +207,12 @@ final class Hollywood {
         u32 in_color_b;
         u32 in_color_c;
         u32 in_color_d;
+        u32 color_op;
         u32 in_alfa_a;
         u32 in_alfa_b;
         u32 in_alfa_c;
         u32 in_alfa_d;
+        u32 alfa_op;
         u32 color_dest;
         u32 alfa_dest;
         float bias_color;
@@ -233,6 +225,11 @@ final class Hollywood {
         u32 texmap;
         u32 texcoord;
         u32 texmap_enable;
+        u32 clamp_color;
+        u32 clamp_alfa;
+        u32 kcsel;
+        u32 kasel;
+        u32[2] padding;
     }
 
     struct TevConfig {
@@ -243,6 +240,10 @@ final class Hollywood {
         GlAlignedFloat[4] reg1;
         GlAlignedFloat[4] reg2;
         GlAlignedFloat[4] reg3;
+        GlAlignedFloat[4] k0;
+        GlAlignedFloat[4] k1;
+        GlAlignedFloat[4] k2;
+        GlAlignedFloat[4] k3;
 
         int num_tev_stages;
         u64 swap_tables; // 8 * 4 
@@ -256,7 +257,8 @@ final class Hollywood {
         float[12] tex_matrix;
         GLBool    normalize_before_dualtex;
         u32       texcoord_source;
-        u32[2]    padding2;
+        u32       texmatrix_size;
+        u32       use_stq;
     }
 
     struct VertexConfig {
@@ -433,6 +435,7 @@ final class Hollywood {
         fifo_debug_history = new RingBuffer!FifoDebugValue(100);
         shape_groups = PageAllocator!ShapeGroup(0);
         log_hollywood("Hollywood constructor");
+        log_hollywood("size of shapegroup: %d", ShapeGroup.sizeof);
     }
 
     void init_opengl() {
@@ -502,6 +505,75 @@ final class Hollywood {
             glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 2, props.ptr, 2,null, values.ptr);
             log_hollywood("%s offset: %d, stride: %d %d", prop, values[1], values[0], mixin("TevConfig." ~ prop ~ ".offsetof"));
         }}
+
+        enum stage_uniform_names = [
+            "stages[0].in_color_a",
+            "stages[0].in_color_b",
+            "stages[0].in_color_c",
+            "stages[0].in_color_d",
+            "stages[0].color_op",
+            "stages[0].in_alfa_a",
+            "stages[0].in_alfa_b",
+            "stages[0].in_alfa_c",
+            "stages[0].in_alfa_d",
+            "stages[0].alfa_op",
+            "stages[0].color_dest",
+            "stages[0].alfa_dest",
+            "stages[0].bias_color",
+            "stages[0].scale_color",
+            "stages[0].bias_alfa",
+            "stages[0].scale_alfa",
+            "stages[0].ras_channel_id",
+            "stages[0].ras_swap_table_index",
+            "stages[0].tex_swap_table_index",
+            "stages[0].texmap",
+            "stages[0].texcoord",
+            "stages[0].clamp_color",
+            "stages[0].clamp_alfa",
+            "stages[0].kcsel",
+            "stages[0].kasel",
+        ];
+
+        enum stage_uniform_offsets = [
+            TevConfig.stages.offsetof + TevStage.in_color_a.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_color_b.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_color_c.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_color_d.offsetof,
+            TevConfig.stages.offsetof + TevStage.color_op.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_alfa_a.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_alfa_b.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_alfa_c.offsetof,
+            TevConfig.stages.offsetof + TevStage.in_alfa_d.offsetof,
+            TevConfig.stages.offsetof + TevStage.alfa_op.offsetof,
+            TevConfig.stages.offsetof + TevStage.color_dest.offsetof,
+            TevConfig.stages.offsetof + TevStage.alfa_dest.offsetof,
+            TevConfig.stages.offsetof + TevStage.bias_color.offsetof,
+            TevConfig.stages.offsetof + TevStage.scale_color.offsetof,
+            TevConfig.stages.offsetof + TevStage.bias_alfa.offsetof,
+            TevConfig.stages.offsetof + TevStage.scale_alfa.offsetof,
+            TevConfig.stages.offsetof + TevStage.ras_channel_id.offsetof,
+            TevConfig.stages.offsetof + TevStage.ras_swap_table_index.offsetof,
+            TevConfig.stages.offsetof + TevStage.tex_swap_table_index.offsetof,
+            TevConfig.stages.offsetof + TevStage.texmap.offsetof,
+            TevConfig.stages.offsetof + TevStage.texcoord.offsetof,
+            TevConfig.stages.offsetof + TevStage.clamp_color.offsetof,
+            TevConfig.stages.offsetof + TevStage.clamp_alfa.offsetof,
+            TevConfig.stages.offsetof + TevStage.kcsel.offsetof,
+            TevConfig.stages.offsetof + TevStage.kasel.offsetof,
+        ];
+        static assert(stage_uniform_names.length == stage_uniform_offsets.length);
+
+        foreach (i, uniform_name; stage_uniform_names) {
+            auto ix = glGetProgramResourceIndex(gl_program, GL_UNIFORM, uniform_name.ptr);
+            assert_hollywood(ix != cast(uint) - 1, "Uniform %s not found", uniform_name);
+
+            GLenum[] props = [ GL_OFFSET ];
+            GLint[1] values = [ 0 ];
+            glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 1, props.ptr, 1, null, values.ptr);
+
+            auto expected_offset = cast(int) stage_uniform_offsets[i];
+            assert_hollywood(values[0] == expected_offset, "%s offset mismatch (%d != %d)", uniform_name, values[0], expected_offset);
+        }
 
         enum vertex_properties = [
             "end"
@@ -1140,29 +1212,29 @@ final class Hollywood {
                 if (bp_register.bit(0)) {
                     log_hollywood("TEV_ALPHA_ENV_%x: %08x (tev op 1) at pc 0x%08x", bp_register - 0xc1, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc1) / 2;
+                    u32 bias = bp_data.bits(16, 17);
+                    u32 scale = bp_data.bits(20, 21);
                     tev_config.stages[idx].in_alfa_a = bp_data.bits(13, 15);
                     tev_config.stages[idx].in_alfa_b = bp_data.bits(10, 12);
                     tev_config.stages[idx].in_alfa_c = bp_data.bits(7, 9);
                     tev_config.stages[idx].in_alfa_d = bp_data.bits(4, 6);
+                    if (bias == 3) {
+                        tev_config.stages[idx].alfa_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
+                    } else {
+                        tev_config.stages[idx].alfa_op = bp_data.bit(18);
+                    }
                     tev_config.stages[idx].bias_alfa = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
                     tev_config.stages[idx].alfa_dest = bp_data.bits(22, 23);
-
-                    if (bp_data.bits(16, 17) == 3) {
-                        // error_hollywood("Invalid bias");
-                    }
+                    tev_config.stages[idx].clamp_alfa = bp_data.bit(19);
 
                     tev_config.stages[idx].scale_alfa = 
                         bp_data.bits(20, 21) == 0 ? 1 :
                         bp_data.bits(20, 21) == 1 ? 2 :
                         bp_data.bits(20, 21) == 2 ? 4 :
                         0.5;
-                    
-                    if (bp_data.bits(18, 19) > 3) {
-                        error_hollywood("Invalid scale");
-                    }
 
                     log_hollywood("Set indices to %d %d", bp_data.bits(0, 1), bp_data.bits(2, 3));
                     tev_config.stages[idx].ras_swap_table_index = value.bits(0, 1);
@@ -1171,19 +1243,23 @@ final class Hollywood {
                 } else {
                     log_hollywood("%d TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", shape_groups.length, bp_register - 0xc0, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc0) / 2;
+                    u32 bias = bp_data.bits(16, 17);
+                    u32 scale = bp_data.bits(20, 21);
                     tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
                     tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
                     tev_config.stages[idx].in_color_c = bp_data.bits(4, 7);
                     tev_config.stages[idx].in_color_d = bp_data.bits(0, 3);
+                    if (bias == 3) {
+                        tev_config.stages[idx].color_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
+                    } else {
+                        tev_config.stages[idx].color_op = bp_data.bit(18);
+                    }
                     tev_config.stages[idx].bias_color = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
+                    tev_config.stages[idx].clamp_color = bp_data.bit(19);
                     tev_config.stages[idx].color_dest = bp_data.bits(22, 23);
-
-                    if (bp_data.bits(16, 17) == 3) {
-                        // error_hollywood("Invalid bias");
-                    }
 
                     tev_config.stages[idx].scale_color = 
                         bp_data.bits(20, 21) == 0 ? 1 :
@@ -1194,13 +1270,49 @@ final class Hollywood {
                 break;
             
             case 0xe0: .. case 0xe7:
-                // if (shape_groups.length == 15) {
-                    log_hollywood("%d TEV_COLOR_REG_%x: %08x from pc %x lr %x", shape_groups.length, bp_register - 0xe0, bp_data, 
-                        mem.cpu.state.pc, mem.cpu.state.lr);
-                // }
+                log_hollywood("%d TEV_COLOR_REG_%x: %08x from pc %x lr %x", shape_groups.length, bp_register - 0xe0, bp_data, 
+                    mem.cpu.state.pc, mem.cpu.state.lr);
                 if (bp_data.bit(23)) {
-                    // set konst
-                    // not yet i dont care
+                    int idx = (bp_register - 0xe0) / 2;
+                    if (bp_register.bit(0)) {
+                        final switch (idx) {
+                        case 0: 
+                            tev_config.k0[2] = bp_data.bits(0,   7) / 255.0f; 
+                            tev_config.k0[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 1:
+                            tev_config.k1[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k1[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 2:
+                            tev_config.k2[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k2[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 3:
+                            tev_config.k3[2] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k3[1] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        }
+                    } else {
+                        final switch (idx) {
+                        case 0: 
+                            tev_config.k0[0] = bp_data.bits(0,   7) / 255.0f; 
+                            tev_config.k0[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 1:
+                            tev_config.k1[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k1[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 2:
+                            tev_config.k2[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k2[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        case 3:
+                            tev_config.k3[0] = bp_data.bits(0,   7) / 255.0f;
+                            tev_config.k3[3] = bp_data.bits(12, 19) / 255.0f;
+                            break;
+                        }
+                    }
                 } else {
                     if (bp_register.bit(0)) {
                         int idx = (bp_register - 0xe1) / 2;
@@ -1284,19 +1396,42 @@ final class Hollywood {
             case 0xf8:
             case 0xfa:
             case 0xfc:
-                log_hollywood("TEV_SWAP_TABLE_%x: %08x", bp_register - 0xf6, value);
+                log_texture("TEV_SWAP_MODE_TABLE_%02x: %08x", bp_register, bp_data);
                 int idx = (bp_register - 0xf6) / 2;
                 tev_config.swap_tables &= ~(0xf << (idx * 8));
                 tev_config.swap_tables |= value.bits(0, 3) << (idx * 8);
+                tev_config.stages[idx * 4 + 0].kcsel = value.bits(4, 8);
+                tev_config.stages[idx * 4 + 0].kasel = value.bits(9, 13);
+                tev_config.stages[idx * 4 + 1].kcsel = value.bits(14, 18);
+                tev_config.stages[idx * 4 + 1].kasel = value.bits(19, 23);
+                log_texture("set kcsel kasel %d %d %d %d", 
+                    tev_config.stages[idx * 4 + 0].kcsel,
+                    tev_config.stages[idx * 4 + 0].kasel,
+                    tev_config.stages[idx * 4 + 1].kcsel,
+                    tev_config.stages[idx * 4 + 1].kasel);
+                assert_texture(tev_config.stages[idx * 4 + 0].kasel != 12, "Invalid kcsel");
+                assert_texture(tev_config.stages[idx * 4 + 1].kasel != 12, "Invalid kcsel");
                 break;
-            
+
             case 0xf7:
             case 0xf9:
             case 0xfb:
             case 0xfd:
+                log_texture("TEV_SWAP_MODE_TABLE_%02x: %08x", bp_register, bp_data);
                 int idx = (bp_register - 0xf6) / 2;
                 tev_config.swap_tables &= ~(0xf << (idx * 8 + 4));
                 tev_config.swap_tables |= value.bits(0, 3) << (idx * 8 + 4);
+                tev_config.stages[idx * 4 + 2].kcsel = value.bits(4, 8);
+                tev_config.stages[idx * 4 + 2].kasel = value.bits(9, 13);
+                tev_config.stages[idx * 4 + 3].kcsel = value.bits(14, 18);
+                tev_config.stages[idx * 4 + 3].kasel = value.bits(19, 23);
+                log_texture("set kcsel kasel %d %d %d %d", 
+                    tev_config.stages[idx * 4 + 2].kcsel,
+                    tev_config.stages[idx * 4 + 2].kasel,
+                    tev_config.stages[idx * 4 + 3].kcsel,
+                    tev_config.stages[idx * 4 + 3].kasel);
+                assert_texture(tev_config.stages[idx * 4 + 2].kasel != 12, "Invalid kcsel");
+                assert_texture(tev_config.stages[idx * 4 + 3].kasel != 12, "Invalid kcsel");
                 break;
 
             default:
@@ -1307,6 +1442,10 @@ final class Hollywood {
 
     void handle_new_cp_write(u8 register, u32 value) {
         switch (register) {
+            case 0x30:
+                assert_hollywood(value.bits(0, 5) == 0, "Invalid geometry matrix");
+                break;
+
             case 0x50: .. case 0x57:
                 log_hollywood("Setting vertex descriptor %d: %08x", register - 0x50, value);
                 auto vcd = &vertex_descriptors[register - 0x50];
@@ -1447,6 +1586,7 @@ final class Hollywood {
         final switch (vcd.position_normal_matrix_location) {
             case VertexAttributeLocation.Direct:
                 size += 1;
+                // error_hollywood("Direct Matrix location not implemented");
                 break;
     
             case VertexAttributeLocation.Indexed8Bit:
@@ -1458,6 +1598,7 @@ final class Hollywood {
         for (int i = 0; i < 8; i++) {
             final switch (vcd.texcoord_matrix_location[i]) {
                 case VertexAttributeLocation.Direct:
+                    // error_hollywood("Direct Matrix location not implemented");
                     size += 1;
                     break;
 
@@ -1506,7 +1647,7 @@ final class Hollywood {
         switch (register) {
             case 0x1018:
                 log_hollywood("geometry_matrix: %08x", value);
-                // TODO: wtf is a geometry matrix
+                assert_hollywood(value.bits(0, 5) == 0, "Invalid geometry matrix");
                 texture_descriptors[0].tex_matrix_slot = value.bits(6, 11);
                 texture_descriptors[1].tex_matrix_slot = value.bits(12, 17);
                 texture_descriptors[2].tex_matrix_slot = value.bits(18, 23);
@@ -1546,7 +1687,8 @@ final class Hollywood {
                 int idx = register - 0x1040;
 
                 assert_hollywood(value.bits(7, 11) <= 12, "Invalid tex coord source");
-                log_hollywood("texcoord_source[%d]: %d", idx, value.bits(7, 11));
+                texture_descriptors[idx].texmatrix_size  = cast(TexcoordSource) value.bit(1) ? 3 : 2;
+                texture_descriptors[idx].use_stq         = cast(TexcoordSource) value.bit(2);
                 texture_descriptors[idx].texcoord_source = cast(TexcoordSource) value.bits(7, 11);
                 break;
 
@@ -1808,6 +1950,7 @@ final class Hollywood {
         for (int i = 0; i < 8; i++) {
             if (tev_config.stages[i].texmap_enable) { 
                 int j = tev_config.stages[i].texmap;
+                log_texture("Loading texture %d for shape group %d", j, shape_groups.length - 1);
                 shape_group.texture[j].texture_id = texture_manager.load_texture(texture_descriptors[j], mem, gl_object_manager);
                 shape_group.texture[j].width = texture_descriptors[j].width;
                 shape_group.texture[j].height = texture_descriptors[j].height;
@@ -2117,6 +2260,8 @@ final class Hollywood {
             shape_group.vertex_config.tex_configs[i].dualtex_matrix = shape_group.texture[i].dualtex_matrix; 
             shape_group.vertex_config.tex_configs[i].normalize_before_dualtex = shape_group.texture[i].normalize_before_dualtex;
             shape_group.vertex_config.tex_configs[i].texcoord_source = cast(u32) texture_descriptors[i].texcoord_source;
+            shape_group.vertex_config.tex_configs[i].texmatrix_size = cast(u32) texture_descriptors[i].texmatrix_size;
+            shape_group.vertex_config.tex_configs[i].use_stq = cast(u32) texture_descriptors[i].use_stq;
         }
 
         shape_group.enabled_textures_bitmap = enabled_textures_bitmap;

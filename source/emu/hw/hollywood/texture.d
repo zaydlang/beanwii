@@ -5,6 +5,8 @@ import dklib.khash;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.strategy.memstrategy;
+import std.file;
+import std.format;
 import util.bitop;
 import util.log;
 import util.lru;
@@ -27,6 +29,8 @@ struct TextureDescriptor {
     bool normalize_before_dualtex;
 
     int tex_matrix_slot;
+    int texmatrix_size;
+    int use_stq;
 }
 
 enum TextureType {
@@ -270,10 +274,10 @@ final class TextureManager {
         u32 current_address = base_address;
         for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
         for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
-            for (int fine_y = 0; fine_y < 8; fine_y++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
             for (int fine_x = 0; fine_x < 8; fine_x++) {
                 auto x = tile_x * 8 + fine_x;
-                auto y = tile_y * 8 + fine_y;
+                auto y = tile_y * 4 + fine_y;
 
                 if (x >= width || y >= height) {
                     continue;
@@ -281,7 +285,7 @@ final class TextureManager {
 
                 auto value = mem.physical_read_u8(cast(u32) current_address);
 
-                texture[x * height + y] = Color(value, value, value, 0xFF);
+                texture[x * height + y] = Color(value, value, value, value);
 
                 current_address += 1;
             }
@@ -532,6 +536,8 @@ final class TextureManager {
             uint texture_id = gl_texture_ids[cached_index];
             return cast(int) texture_id;
         }
+
+        log_texture("Loading texture: %s", descriptor);
     
         Color[] result;
         switch (descriptor.type) {
@@ -560,7 +566,12 @@ final class TextureManager {
         
         glBindTexture(GL_TEXTURE_2D, texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.height, cast(int) descriptor.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
-            
+        dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
         return cast(int) texture_id;
     }
+}
+    
+void dump_texture_to_file(Color[] texture, string name) {
+    string filename = format("texture_dumps/%s.rgba", name);
+    std.file.write(filename, cast(u8[]) texture);
 }

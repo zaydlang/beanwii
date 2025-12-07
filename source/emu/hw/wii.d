@@ -122,9 +122,12 @@ final class Wii {
             BroadwayReturnValue broadway_return_value = this.broadway.cycle(num_cycles);
             num_cycles -= broadway_return_value.num_cycles_ran;
 
+version (release) {
+} else {
             if (gdb_stub.needs_handling()) {
                 gdb_stub.enter();
             }
+}
         } while (num_cycles > 0);
 
         this.video_interface.scanout();
@@ -325,11 +328,23 @@ final class Wii {
         this.wiimote.set_button(button, pressed);
     }
 
+    public void set_wiimote_screen_position(int x, int y, int width, int height) {
+        this.wiimote.set_screen_position(x, y, width, height);
+    }
+
+    public Wiimote get_wiimote() {
+        return this.wiimote;
+    }
+
     public void hang_in_gdb_at_start() {
         gdb_stub.hang_at_start();
     }
 
     void create_bean_dump() {
         dump(new BeanDump(entrypoint, mem.mem1, mem.mem2));
+    }
+
+    public void dump_jit_entries() {
+        broadway.dump_jit_entries();
     }
 }

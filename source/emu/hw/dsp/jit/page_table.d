@@ -26,8 +26,8 @@ final class DspPageTable {
 
     bool has(u16 pc, u32 jit_compilation_flags) {
         u32 key = make_key(pc, jit_compilation_flags);
-        u8 high = (key >> 8) & 0xFF;
-        u8 low = key & 0xFF;
+        u8 high = (key >> 16) & 0xFF;
+        u16 low = key & 0xFFFF;
         
         if (level1[high] is null) return false;
         return level1[high][low].valid;
@@ -39,8 +39,8 @@ final class DspPageTable {
 
     DspJitEntry get(u16 pc, u32 jit_compilation_flags) {
         u32 key = make_key(pc, jit_compilation_flags);
-        u8 high = (key >> 8) & 0xFF;
-        u8 low = key & 0xFF;
+        u8 high = (key >> 16) & 0xFF;
+        u16 low = key & 0xFFFF;
         
         assert(level1[high] !is null);
         return level1[high][low];
@@ -52,11 +52,11 @@ final class DspPageTable {
 
     void put(u16 pc, u32 jit_compilation_flags, DspJitEntry entry) {
         u32 key = make_key(pc, jit_compilation_flags);
-        u8 high = (key >> 8) & 0xFF;
-        u8 low = key & 0xFF;
+        u8 high = (key >> 16) & 0xFF;
+        u16 low = key & 0xFFFF;
         
         if (level1[high] is null) {
-            level1[high] = cast(DspJitEntry*) calloc(256, DspJitEntry.sizeof);
+            level1[high] = cast(DspJitEntry*) calloc(65536, DspJitEntry.sizeof);
         }
         
         level1[high][low] = entry;
@@ -68,8 +68,8 @@ final class DspPageTable {
 
     void invalidate(u16 pc, u32 jit_compilation_flags) {
         u32 key = make_key(pc, jit_compilation_flags);
-        u8 high = (key >> 8) & 0xFF;
-        u8 low = key & 0xFF;
+        u8 high = (key >> 16) & 0xFF;
+        u16 low = key & 0xFFFF;
         
         if (level1[high] !is null) {
             level1[high][low].valid = false;

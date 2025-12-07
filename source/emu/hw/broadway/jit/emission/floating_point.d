@@ -163,8 +163,8 @@ EmissionAction emit_stfsx(Code code, u32 opcode) {
 EmissionAction emit_lfsux(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
 
-    auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
     auto guest_rd = opcode.bits(21, 25).to_ps;
 
     emit_load_ps_indexed(code, guest_rd, guest_ra, guest_rb, Update.Yes);
@@ -379,6 +379,7 @@ EmissionAction emit_faddsx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+// 111011 00011 00011 00100 00000 10100 0
 EmissionAction emit_fsubsx(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
     
@@ -399,6 +400,7 @@ EmissionAction emit_fsubsx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+// 1111 11 00010 00000 00010 0000001111 0
 EmissionAction emit_fctiwzx(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
     
@@ -410,6 +412,7 @@ EmissionAction emit_fctiwzx(Code code, u32 opcode) {
     auto rb = code.get_fpr(guest_rb);
 
     code.movq(xmm0, rb);
+    code.roundsd(xmm0, xmm0, 3);
     code.cvtsd2si(rb, xmm0);
 
     code.set_fpr(guest_rd, rb);

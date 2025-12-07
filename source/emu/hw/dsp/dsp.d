@@ -69,6 +69,7 @@ final class DSP {
             u8 result = cast(u8) ((dsp_state.dsp_mailbox_lo >> (target_byte * 8)) & 0xFF);
             
             if (target_byte == 1) {
+                log_dsp("DSP Mail acknowledged by CPU: %04x%04x", dsp_state.dsp_mailbox_hi, dsp_state.dsp_mailbox_lo);
                 dsp_state.dsp_mailbox_hi &= ~0x8000;
                 resume_from_idle_loop();
             }
@@ -84,9 +85,11 @@ final class DSP {
     u8 read_DSP_MAILBOX_FROM_HIGH(int target_byte) {
         if (dsp_state.phase == DspPhase.Bootstrap || dsp_state.phase == DspPhase.AcceptingMicrocode) {
             u8 result = dsp_state.dsp_mailbox_hi.get_byte(target_byte);
+            
             if (target_byte == 1) {
                 dsp_state.dsp_mailbox_hi ^= 0x8000;
             }
+
             log_dsp("Read DSP_MAILBOX_FROM_HIGH[%d] -> 0x%02x (%s) (PC=0x%08x LR=0x%08x)", target_byte, result, 
                    dsp_state.phase == DspPhase.Bootstrap ? "Bootstrap" : "AcceptingMicrocode",
                    interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
@@ -157,6 +160,7 @@ final class DSP {
             }
         } else {
             if (target_byte == 1) {
+                log_dsp("CPU Mail sent to DSP: %04x%04x", dsp_state.cpu_mailbox_hi, dsp_state.cpu_mailbox_lo);
                 dsp_state.cpu_mailbox_hi |= 0x8000;
             }
             
@@ -186,8 +190,16 @@ final class DSP {
     }
 
     T read_DSP_CSR(T)(int offset) {
-        log_dsp("Read DSP_CSR<%s>[%d] -> 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, dsp_state.csr, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
-        return cast(T) dsp_state.csr;
+        u16 csr_value = dsp_state.csr;
+        
+        if (dsp_state.interrupt_pending) {
+            csr_value |= (1 << 3);
+        }
+        
+        log_dsp("Read DSP_CSR<%s>[%d] -> 0x%x (interrupt_pending=%s) (PC=0x%08x LR=0x%08x)", 
+                T.stringof, offset, csr_value, dsp_state.interrupt_pending, 
+                interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        return cast(T) csr_value;
     }
 
     void write_DSP_CSR(T)(T value, int offset) {
@@ -338,38 +350,6 @@ final class DSP {
         return 0;
     }
 
-    u16 dsp_read_mailbox_register(u16 address) {
-        final switch (address) {
-        case 0xFFFC:
-            return dsp_state.dsp_mailbox_hi;
-        case 0xFFFD:
-            return dsp_state.dsp_mailbox_lo;
-        case 0xFFFE:
-            return dsp_state.cpu_mailbox_hi;
-        case 0xFFFF:
-            u16 value = dsp_state.cpu_mailbox_lo;
-            dsp_state.cpu_mailbox_hi &= ~0x8000;
-            return value;
-        }
-    }
-
-    void dsp_write_mailbox_register(u16 address, u16 value) {
-        final switch (address) {
-        case 0xFFFC:
-            dsp_state.dsp_mailbox_hi = value & 0x7FFF;
-            break;
-        case 0xFFFD:
-            dsp_state.dsp_mailbox_lo = value;
-            dsp_state.dsp_mailbox_hi |= 0x8000;
-            break;
-        case 0xFFFE:
-
-            break;
-        case 0xFFFF:
-            break;
-        }
-    }
-
     u16 dsp_io_read(u16 address) {
         switch (address) {
         case 0xFFC9:
@@ -414,6 +394,7 @@ final class DSP {
             import std.stdio;
             // writefln("DSP IO read to CPU_MAILBOX_LOW: 0x%04X", dsp_state.cpu_mailbox_lo);
             u16 value = dsp_state.cpu_mailbox_lo;
+            log_dsp("CPU Mail acknowledged by DSP: %04x%04x", dsp_state.cpu_mailbox_hi, dsp_state.cpu_mailbox_lo);
             dsp_state.cpu_mailbox_hi &= ~0x8000;
             return value;
         default:
@@ -480,6 +461,7 @@ final class DSP {
         case 0xFFFD:
             log_dsp("DSP IO write to DSP_MAILBOX_FROM_LOW: 0x%04X", value);
             dsp_state.dsp_mailbox_lo = value;
+            log_dsp("DSP Mail sent to CPU: %04x%04x", dsp_state.dsp_mailbox_hi, dsp_state.dsp_mailbox_lo);
             dsp_state.dsp_mailbox_hi |= 0x8000;
             break;
         case 0xFFFE:
@@ -562,16 +544,26 @@ final class DSP {
         bool cpu_to_dsp = !(dma_control_reg & (1 << 0));
         bool use_imem = (dma_control_reg & (1 << 1)) != 0;
         
-        log_dsp("DSP DMA: %s %d bytes between DSP 0x%04X (%s) and main memory 0x%08X at pc %x", 
-                cpu_to_dsp ? "CPU->DSP" : "DSP->CPU", transfer_bytes,
-                dsp_address, use_imem ? "IMEM" : "DMEM", main_memory_address, dsp_state.pc);
-        
         u16 transfer_words = transfer_bytes;
+
+        if (transfer_words == 192) {
+            import std.stdio;
+            // writefln("DSP DMA Transfer: %s %s, main_memory_address=0x%08X, dsp_address=0x%04X, words=%d",
+            //             cpu_to_dsp ? "CPU->DSP" : "DSP->CPU",
+            //             use_imem ? "IMEM" : "DMEM",
+            //             main_memory_address,
+            //             dsp_address,
+            //             transfer_words);
+        }
         
         for (u16 i = 0; i < transfer_words; i++) {
             u16 data;
             if (cpu_to_dsp) {
                 data = mem.physical_read_u16(main_memory_address + i * 2);
+        if (transfer_words == 192) {
+            import std.stdio;
+            // writefln("  DMA Write[%d]: 0x%04X to DSP address 0x%04X", i, data, dsp_address + i);
+        }
                 if (use_imem) {
                     jit.dsp_memory.write_instruction(cast(u16)(dsp_address + i), data);
                 } else {
@@ -678,6 +670,10 @@ final class DSP {
                 dsp_state.data_stack.data[4], dsp_state.data_stack.data[5],
                 dsp_state.data_stack.data[6], dsp_state.data_stack.data[7]);
         
+        writefln("AX0: 0x%08x", dsp_state.ax[0].full);
+        writefln("AX1: 0x%08x", dsp_state.ax[1].full);
+        
+        writefln("SR UPPER: 0x%04x", dsp_state.sr_upper);
         writefln("========================");
     }
 }

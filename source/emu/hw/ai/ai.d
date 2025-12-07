@@ -89,14 +89,14 @@ final class AudioInterface {
     }
 
     void reschedule_audio_sampling() {
-        auto num_cycles = 33_513_982 / (32 * 1000);
+        auto num_cycles = 729_000_000 / (48 * 1000);
         scheduler.remove_event(audio_sampling_event_id);
 
         audio_sampling_event_id = scheduler.add_event_relative_to_clock(&this.sample_audio, num_cycles);
     }
 
     void sample_audio() {
-        auto num_cycles = 33_513_982 / (32 * 1000);
+        auto num_cycles = 729_000_000 / (48 * 1000);
         scheduler.remove_event(audio_sampling_event_id);
 
         audio_sampling_event_id = scheduler.add_event_relative_to_self(&this.sample_audio, num_cycles);
@@ -105,7 +105,7 @@ final class AudioInterface {
 
         log_ai("Sampling audio %x %x %x", aiscnt, aiit, num_cycles);
 
-        if (aiscnt == aiit) {
+        if (aiscnt == aiit && ai_control.bit(2)) {
             log_ai("aiscnt == aiit (%d), raising interrupt", aiit);
             ai_control |= 1 << 3;
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.AI);

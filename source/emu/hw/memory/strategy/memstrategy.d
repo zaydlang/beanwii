@@ -5,7 +5,7 @@ enum MemStrategy {
     HardwareAcceleratedMem,
 }
 
-enum ChosenMemStrategy = MemStrategy.SoftwareMem;
+enum ChosenMemStrategy = MemStrategy.HardwareAcceleratedMem;
 
 static if (ChosenMemStrategy == MemStrategy.SoftwareMem) {
     public import emu.hw.memory.strategy.software_mem.software_mem;

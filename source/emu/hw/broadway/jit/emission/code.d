@@ -39,10 +39,9 @@ final class Code {
     }
 
     public bool force_slow_access(u32 pc) {
+        return true;
         import app : g_fastmem_start_addr, g_fastmem_end_addr;
         
-        if (pc > g_fastmem_start_addr && pc <= g_fastmem_end_addr) return true;
-
         pc &= 0x1fff_ffff;
 
         u32 bit_index = pc >> 2;
@@ -318,6 +317,9 @@ final class Code {
     }
 
     int get_max_instructions_per_block() {
+        if (guest_pc >= 0x80494400 && guest_pc <= 0x80494588) {
+            return 1;
+        }
         return current_max_instructions_per_block;
     }
 }

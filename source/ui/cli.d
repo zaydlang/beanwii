@@ -1,7 +1,11 @@
 module ui.cli;
 
 import commandr;
+import emu.hw.ipc.usb.extensions.extension;
 import std.conv;
+import std.typecons : Nullable;
+import std.uni;
+import util.log;
 import util.number;
 
 struct CliArgs {
@@ -13,6 +17,7 @@ struct CliArgs {
     bool   install_segfault_handler;
     u32    fastmem_start_addr;
     u32    fastmem_end_addr;
+   Nullable!WiimoteExtensionType extension;
 }
 
 CliArgs parse_cli_args(string[] args) {
@@ -24,6 +29,8 @@ CliArgs parse_cli_args(string[] args) {
         .add(new Flag("d", "debug", "start the debugger"))
         .add(new Flag("a", "record", "record audio samples to file"))
         .add(new Flag("i", "install_segfault_handler", "install segfault handler"))
+        .add(new Option("e", "extension", "wiimote extension to attach (nunchuk)")
+            .optional().defaultValue("none"))
         .add(new Option("b", "fastmem_start", "fastmem start address")
             .optional().defaultValue("80000000"))
         .add(new Option("c", "fastmem_end", "fastmem end address")
@@ -38,6 +45,17 @@ CliArgs parse_cli_args(string[] args) {
         to!bool(program.flag("record")),
         to!bool(program.flag("install_segfault_handler")),
         to!u32(program.option("fastmem_start"), 16),
-        to!u32(program.option("fastmem_end"), 16)
+        to!u32(program.option("fastmem_end"), 16),
+        parse_extension(program.option("extension"))
     );
+}
+
+Nullable!WiimoteExtensionType parse_extension(string name) {
+    auto lower = name.toLower();
+
+    if (lower == "nunchuk" || lower == "nunchuck") {
+        return Nullable!WiimoteExtensionType(WiimoteExtensionType.Nunchuk);
+    }
+
+    return Nullable!WiimoteExtensionType();
 }
