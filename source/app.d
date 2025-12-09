@@ -29,9 +29,6 @@ version (unittest) {} else {
 	void main(string[] args) {
 		CliArgs cli_args = parse_cli_args(args);
 
-		g_fastmem_start_addr = cli_args.fastmem_start_addr;
-		g_fastmem_end_addr = cli_args.fastmem_end_addr;
-
 		if (!cli_args.start_debugger) {
 		GC.disable();
 	}
@@ -42,7 +39,7 @@ version (unittest) {} else {
 		wii.get_wiimote().connect_extension(cli_args.extension.get());
 	}
 
-	auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio);
+	auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio, cli_args.use_bluetooth_wiimote);
 		wii.init_opengl();	
 		// auto device = new RengMultimediaDevice(wii, 1, true);
 

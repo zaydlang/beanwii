@@ -73,8 +73,13 @@ enum TexcoordSource {
     Tex7 = 12,
 }
 
+    struct TextureCacheEntry {
+        int texture_id;
+        u32 address;
+    }
+    
 final class TextureManager {
-    alias TextureCache = ClockCache!(u64, int, 256);
+    alias TextureCache = ClockCache!(u64, TextureCacheEntry, 256);
     TextureCache texture_cache;
     PageAllocator!(Color, false) texture_allocator;
     uint[256] gl_texture_ids;
@@ -533,8 +538,8 @@ final class TextureManager {
         u64 hash = calculate_texture_hash(descriptor, mem);
         long cached_index = texture_cache.lookup(hash);
         if (cached_index != -1) {
-            uint texture_id = gl_texture_ids[cached_index];
-            return cast(int) texture_id;
+            TextureCacheEntry entry = texture_cache.entries[cached_index].value;
+            return entry.texture_id;
         }
 
         log_texture("Loading texture: %s", descriptor);
@@ -564,10 +569,23 @@ final class TextureManager {
         size_t cache_index = texture_cache.insert(hash);
         uint texture_id = gl_texture_ids[cache_index];
         
+        TextureCacheEntry entry = TextureCacheEntry(cast(int) texture_id, descriptor.base_address);
+        texture_cache.entries[cache_index].value = entry;
+        
         glBindTexture(GL_TEXTURE_2D, texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.height, cast(int) descriptor.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
         dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
         return cast(int) texture_id;
+    }
+    
+    void invalidate_texture_at_address(u32 address) {
+        foreach (ref entry; texture_cache.entries) {
+            if (entry.valid && entry.value.address == address) {
+                entry.valid = false;
+                texture_cache.count--;
+                log_texture("Invalidated texture cache at address 0x%08x", address);
+            }
+        }
     }
 }
     

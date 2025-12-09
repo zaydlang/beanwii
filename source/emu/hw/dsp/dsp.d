@@ -294,28 +294,28 @@ final class DSP {
 
     u8 read_AR_DMA_START_HIGH(int target_byte) {
         u8 result = ar_dma_start_high.get_byte(target_byte);
-        log_cp("Read AR_DMA_START_HIGH[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Read AR_DMA_START_HIGH[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return result;
     }
 
     void write_AR_DMA_START_HIGH(int target_byte, u8 value) {
-        log_cp("Write AR_DMA_START_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Write AR_DMA_START_HIGH[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         ar_dma_start_high = cast(u16) ar_dma_start_high.set_byte(target_byte, value);
     }
 
     u8 read_AR_DMA_START_LOW(int target_byte) {
         u8 result = ar_dma_start_low.get_byte(target_byte);
-        log_cp("Read AR_DMA_START_LOW[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Read AR_DMA_START_LOW[%d] -> 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, result, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return result;
     }
 
     void write_AR_DMA_START_LOW(int target_byte, u8 value) {
-        log_cp("Write AR_DMA_START_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Write AR_DMA_START_LOW[%d] = 0x%02x (PC=0x%08x LR=0x%08x)", target_byte, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         ar_dma_start_low = cast(u16) ar_dma_start_low.set_byte(target_byte, value);
     }
 
     T read_AR_DMA_CNT(T)(int offset) {
-        log_cp("Read AR_DMA_CNT<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
+        log_dsp("Read AR_DMA_CNT<%s>[%d] -> 0x0 (PC=0x%08x LR=0x%08x)", T.stringof, offset, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return cast(T) ar_dma_cnt;
     }
 
@@ -346,8 +346,8 @@ final class DSP {
     }
 
     u8 read_DSP_DMA_BYTES_LEFT(int target_byte) {
-        log_cp("Read DSP_DMA_BYTES_LEFT[%d] -> 0x00 (PC=0x%08x LR=0x%08x)", target_byte, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return 0;
+        // return (samples_remaining >> 5).get_byte(target_byte);
     }
 
     u16 dsp_io_read(u16 address) {
@@ -507,7 +507,7 @@ final class DSP {
         }
         
         u16 wr3_before = dsp_state.wr[3];
-        JitExitReason reason = jit.run_cycles(&dsp_state, 100);
+        JitExitReason reason = jit.run_cycles(&dsp_state, 200);
         u16 wr3_after = dsp_state.wr[3];
         
         if (reason == JitExitReason.DspHalted) {
@@ -580,7 +580,7 @@ final class DSP {
         }
         
         dma_block_length = 0;
-        scheduler.add_event_relative_to_clock(&complete_dsp_dma, 100);
+        // scheduler.add_event_relative_to_clock(&complete_dsp_dma, 100);
     }
 
     private void start_audio_streaming() {
@@ -588,20 +588,23 @@ final class DSP {
         samples_remaining = ai_sample_length / 4;
         audio_streaming_active = true;
         
-        log_dsp("Starting 32kHz audio stream: address=0x%08X, samples=%d", current_audio_address, samples_remaining);
+        log_tmp("Starting 32kHz audio stream: address=0x%08X, samples=%d", current_audio_address, samples_remaining);
         
         auto audio_cycles = 729_000_000 / 32000;
         audio_stream_event_id = scheduler.add_event_relative_to_clock(&this.stream_next_sample, audio_cycles / 2);
     }
 
     private void stream_next_sample() {
-        log_dsp("Streaming next audio sample: address=0x%08X, samples_remaining=%d", current_audio_address, samples_remaining);
+        auto audio_cycles = 729_000_000 / 32000;
+        audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles / 2);
+
+        log_tmp("Streaming next audio sample: address=0x%08X, samples_remaining=%d", current_audio_address, samples_remaining);
         
         if (samples_remaining == 0) {
             current_audio_address = ((cast(u32) ar_dma_start_high << 16) | ar_dma_start_low) & 0x7FFFFFFF;
-            samples_remaining = ai_sample_length / 2;
-            audio_streaming_active = false;
-            log_dsp("Audio stream exhausted: address=0x%08X, samples=%d, streaming_active=%s", current_audio_address, samples_remaining, audio_streaming_active ? "true" : "false");
+            samples_remaining = ai_sample_length / 4;
+            // audio_streaming_active = ture;
+            log_tmp("Audio stream exhausted: address=0x%08X, samples=%d, streaming_active=%s", current_audio_address, samples_remaining, audio_streaming_active ? "true" : "false");
 
             // ?????
             trigger_dsp_dma();
@@ -622,9 +625,6 @@ final class DSP {
             current_audio_address += 4;
             samples_remaining--;
         }
-        
-        auto audio_cycles = 729_000_000 / 32000;
-        audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles / 2);
     }
 
     void dump_dsp_registers() {

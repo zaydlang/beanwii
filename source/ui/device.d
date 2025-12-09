@@ -11,8 +11,8 @@ struct Pixel {
     int b;
 }
 
-enum WII_SCREEN_WIDTH = 864;
-enum WII_SCREEN_HEIGHT = 600;
+enum WII_SCREEN_WIDTH = 640;
+enum WII_SCREEN_HEIGHT = 480;
 
 alias VideoBuffer = Pixel[WII_SCREEN_HEIGHT][WII_SCREEN_WIDTH];
 

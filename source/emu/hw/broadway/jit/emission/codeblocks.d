@@ -32,6 +32,7 @@ final class CodeBlockTracker {
         }
 
         if (allocations[allocations.length - 1].capacity < length) {
+            // mprotect(allocations[allocations.length - 1].page, 0x40000, PROT_READ | PROT_EXEC);
             add_new_allocation();
         }
 

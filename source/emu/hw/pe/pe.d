@@ -36,6 +36,12 @@ final class PixelEngine {
         return z_config.get_byte(target_byte);
     }
 
+    u32 pe_cntrl = 0;
+    
+    u8 get_efb_pixel_format() {
+        return cast(u8) (pe_cntrl & 0x7);
+    }
+
     u32 alpha_config;
     
     bool boolean_blending_enable;

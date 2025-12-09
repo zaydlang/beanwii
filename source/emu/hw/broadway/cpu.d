@@ -167,14 +167,18 @@ version (release) {
 }
 
         // if (state.pc == 0x80494570) {
-        if (state.pc >= 0x80494400 && state.pc <= 0x80494588) {
-            // writefln("geo pointer: %08x", state.gprs[1]);
-            // log_state(&state);
+        // if (state.pc >= 0x80494400 && state.pc <= 0x80494588) {
+        if (state.pc == 0x80494cfc) {
+            // log_tmp("geotussy");
+        }
+
+        if (state.pc == 0x80494528) {
+            // log_tmp("geotail pointer: %08x %x", state.gprs[5], state.gprs[6]);
         }
 
         if (state.pc== 0x80494578) {
-            // import std.stdio;
-            // writefln("BAD BAD BAD");
+            import std.stdio;
+            // log_tmp("BAD BAD BAD");
         }
 
         if (state.pc >= 0x80493b5c && state.pc  <= 0x80493b84) {

@@ -11,6 +11,7 @@ final class BlittingProcessor {
 
     private u32 xfb_addr;
     private u32 xfb_stride;
+    private u8 tex_copy_format;
 
     private u8 copy_clear_color_alpha;
     private u8 copy_clear_color_red;
@@ -51,6 +52,10 @@ final class BlittingProcessor {
 
     void write_xfb_stride(u32 value) {
         xfb_stride = value;
+    }
+
+    void write_tex_copy_format(u8 value) {
+        tex_copy_format = value;
     }
 
     void write_copy_clear_color_alpha(u8 value) {
@@ -104,4 +109,17 @@ final class BlittingProcessor {
     void write_mem_scissor_offset_y(u16 value) {
         mem_scissor_offset_y = value;
     }
+    
+    u16 get_efb_boxcoord_x() { return efb_boxcoord_x; }
+    u16 get_efb_boxcoord_y() { return efb_boxcoord_y; }
+    u16 get_efb_boxcoord_size_x() { return efb_boxcoord_size_x; }
+    u16 get_efb_boxcoord_size_y() { return efb_boxcoord_size_y; }
+    u32 get_xfb_addr() { return xfb_addr; }
+    u8 get_tex_copy_format() { return tex_copy_format; }
+    
+    u8 get_copy_clear_color_red() { return copy_clear_color_red; }
+    u8 get_copy_clear_color_green() { return copy_clear_color_green; }
+    u8 get_copy_clear_color_blue() { return copy_clear_color_blue; }
+    u8 get_copy_clear_color_alpha() { return copy_clear_color_alpha; }
+    u32 get_copy_clear_depth() { return copy_clear_depth; }
 }

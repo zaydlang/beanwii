@@ -645,8 +645,7 @@ final class VideoInterface {
 
         // log_vi("Presenting VideoBuffer");
 
-        hollywood.draw();
-        this.present_videobuffer_callback(&video_buffer);
+        hollywood.render_xfb();
         // hollywood.pixel_engine.raise_finish_interrupt();
         
         if (interrupt_enable[0]) {

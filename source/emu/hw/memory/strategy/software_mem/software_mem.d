@@ -396,6 +396,16 @@ final class SoftwareMem  {
 
     }
 
+    u32 ahbprot_disabled = 0xFFFFFFFF;
+
+    public u8 read_AHBPROT_DISABLED(int target_byte) {
+        return ahbprot_disabled.get_byte(target_byte);
+    }
+
+    public void write_AHBPROT_DISABLED(int target_byte, u8 value) {
+        ahbprot_disabled = cast(u32) ahbprot_disabled.set_byte(target_byte, value);
+    }
+
     public void read_bulk(u8* dst, u32 address, u32 size) {
         for (int i = 0; i < size; i++) {
             dst[i] = this.physical_read_u8(address + i);
@@ -408,6 +418,7 @@ final class SoftwareMem  {
         }
     }
 
+    // u32[] logged_writes = [0x8004d040, 0x8004d044, 0x8004d048, 0x8004d04c, 0x8004d050, 0x8004d054, 0x8004d058, 0x8004d05c];
     u32[] logged_writes = [];
     void log_memory_write(u32 address) {
         logged_writes ~= address;

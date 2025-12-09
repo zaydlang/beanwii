@@ -93,6 +93,7 @@ final class Mmio {
         MmioRegister("memory",               "MI_PROT_TYPE",          0xCC00_4010, 2, READ_WRITE),
         MmioRegister("memory",               "MI_INTERRUPT_MASK",     0xCC00_401C, 4, READ_WRITE),
         MmioRegister("memory",               "UNKNOWN_CC004020",      0xCC00_4020, 2, READ_WRITE),
+        MmioRegister("memory",               "AHBPROT_DISABLED",      0xCD80_0064, 4, READ_WRITE),
         MmioRegister("audio_interface",      "AI_CONTROL",            0xCD00_6C00, 4, READ_WRITE),
         MmioRegister("audio_interface",      "AIVR",                  0xCD00_6C04, 4, READ_WRITE),
         MmioRegister("audio_interface",      "AISCNT",                0xCD00_6C08, 4, READ_WRITE),
