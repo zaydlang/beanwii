@@ -317,9 +317,6 @@ final class Code {
     }
 
     int get_max_instructions_per_block() {
-        if (guest_pc >= 0x80494400 && guest_pc <= 0x80494588) {
-            return 1;
-        }
         return current_max_instructions_per_block;
     }
 }

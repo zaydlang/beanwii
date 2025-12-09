@@ -403,6 +403,16 @@ final class HardwareAcceleratedMem {
 
     }
 
+    u32 ahbprot_disabled = 0xFFFFFFFF;
+
+    public u8 read_AHBPROT_DISABLED(int target_byte) {
+        return ahbprot_disabled.get_byte(target_byte);
+    }
+
+    public void write_AHBPROT_DISABLED(int target_byte, u8 value) {
+        ahbprot_disabled = cast(u32) ahbprot_disabled.set_byte(target_byte, value);
+    }
+
     public void read_bulk(u8* dst, u32 address, u32 size) {
         for (int i = 0; i < size; i++) {
             dst[i] = this.physical_read_u8(address + i);

@@ -486,10 +486,10 @@ final class Wiimote {
     }
 
     private void fill_ir_basic(ref ubyte[10] dest) {
-        if (!camera_enabled) {
-            dest[] = 0;
-            return;
-        }
+        // if (!camera_enabled) {
+            // dest[] = 0;
+            // return;
+        // }
 
         u16 x1 = ir_dots[0].valid ? clamp_ir_x(ir_dots[0].x) : 0x3ff;
         u16 y1 = ir_dots[0].valid ? clamp_ir_y(ir_dots[0].y) : 0x3ff;
@@ -506,16 +506,12 @@ final class Wiimote {
         dest[4] = cast(ubyte) (y2 & 0xff);
 
         dest[5 .. 10] = 0xff;
+
+        log_wiimote("Filled dest: %s", dest);
     }
 
     void set_screen_position(int screen_x, int screen_y, int screen_width, int screen_height) {
-        if (screen_width <= 1 || screen_height <= 1) {
-            foreach (ref dot; ir_dots) {
-                dot.valid = false;
-            }
-            
-            return;
-        }
+        log_wiimote("Setting screen position: %d, %d (screen size: %d, %d)", screen_x, screen_y, screen_width, screen_height);
 
         float nx = clamp(cast(float) screen_x / cast(float) (screen_width - 1), 0.0f, 1.0f);
         float ny = clamp(cast(float) screen_y / cast(float) (screen_height - 1), 0.0f, 1.0f);
@@ -537,6 +533,7 @@ final class Wiimote {
     }
 
     void send_data_report() {
+        log_wiimote("Sending data report: %x", reporting_mode);
         // if (reporting_mode != 0x30) {
             // error_wiimote("Data reporting mode is not 0x30 (%x). This is not supported yet.", reporting_mode);
         // }

@@ -139,4 +139,12 @@ class RengMultimediaDevice : MultiMediaDevice {
             if (fast_foward) buffer_cursor = 0;
         }
     }
+
+    override int get_audio_buffer_capacity() {
+        return (SAMPLES_PER_UPDATE * BUFFER_SIZE_MULTIPLIER) - (buffer_cursor / NUM_CHANNELS);
+    }
+    
+    override int get_audio_buffer_num_samples() {
+        return 0;
+    }
 } 

@@ -3,6 +3,9 @@ module ui.sdl.device;
 import bindbc.freetype;
 import bindbc.opengl;
 import bindbc.sdl;
+import core.sync.mutex;
+import core.thread;
+import core.time;
 import emu.hw.hollywood.hollywood;
 import emu.hw.ipc.usb.wiimote;
 import emu.hw.wii;
@@ -12,6 +15,7 @@ import std.file;
 import std.format;
 import std.string;
 import ui.device;
+import ui.input.wiimote;
 import ui.sdl.button;
 import ui.sdl.color;
 import ui.sdl.font;
@@ -27,8 +31,90 @@ import ui.sdl.window;
 import util.bitop;
 import util.log;
 import util.number;
+import std.concurrency;
 import std.math;
 import std.stdio;
+
+class ThreadedWiimoteManager {
+    private {
+        HardwareWiimote hardware_wiimote;
+        Thread polling_thread;
+        Mutex state_mutex;
+        HardwareWiimoteState[4] wiimote_states;
+        int connected_count;
+        bool should_stop;
+        bool thread_running;
+    }
+    
+    this() {
+        hardware_wiimote = new HardwareWiimote();
+        state_mutex = new Mutex();
+        connected_count = 0;
+        should_stop = false;
+        thread_running = false;
+        
+        polling_thread = new Thread(&wiimote_polling_loop);
+        polling_thread.start();
+    }
+    
+    ~this() {
+        stop();
+    }
+    
+    void stop() {
+        should_stop = true;
+        if (polling_thread && polling_thread.isRunning) {
+            polling_thread.join();
+        }
+        thread_running = false;
+    }
+    
+    private void wiimote_polling_loop() {
+        thread_running = true;
+        
+        while (!should_stop) {
+            if (connected_count == 0) {
+                connected_count = hardware_wiimote.connect(1);
+            }
+
+            synchronized(state_mutex) {
+                if (hardware_wiimote.poll()) {
+                    for (int i = 0; i < connected_count && i < 4; i++) {
+                        wiimote_states[i] = hardware_wiimote.get_state(i);
+                    }
+                }
+            }
+            
+            Thread.sleep(dur!"msecs"(16));
+        }
+        
+        thread_running = false;
+    }
+    
+    HardwareWiimoteState get_state(int controller_id) {
+        if (controller_id < 0 || controller_id >= 4) {
+            return HardwareWiimoteState.init;
+        }
+        
+        synchronized(state_mutex) {
+            if (controller_id < connected_count) {
+                return wiimote_states[controller_id];
+            }
+        }
+        
+        return HardwareWiimoteState.init;
+    }
+    
+    @property int count() {
+        synchronized(state_mutex) {
+            return connected_count;
+        }
+    }
+    
+    @property bool is_thread_running() {
+        return thread_running;
+    }
+}
 
 extern(C) void audio_callback(void* userdata, ubyte* stream, int len) nothrow {
     try {
@@ -94,6 +180,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
     Wii wii;
     Hollywood hollywood;
+    ThreadedWiimoteManager hardware_wiimote;
 
     enum SCREEN_BORDER_WIDTH    = 10;
     enum DEBUGGER_PANEL_WIDTH   = 250;
@@ -126,9 +213,12 @@ class SdlDevice : MultiMediaDevice, Window {
 
     SdlButton pause_button;
 
-    this(Wii wii, int screen_scale, bool start_debugger, bool record_audio = false) {
+    this(Wii wii, int screen_scale, bool start_debugger, bool record_audio = false, bool use_bluetooth_wiimote = false) {
         this.wii = wii;
         this.record_audio = record_audio;
+        if (use_bluetooth_wiimote) {
+            this.hardware_wiimote = new ThreadedWiimoteManager();
+        }
         
         if (record_audio) {
             audio_file = File("audio_recording.raw", "wb");
@@ -567,8 +657,33 @@ class SdlDevice : MultiMediaDevice, Window {
             
             jit_dump_key_pressed = jit_dump_key_current;
 
+            static bool quit_key_pressed = false;
+            bool quit_key_current = keyboard_state[SDL_SCANCODE_Q] != 0 && 
+                                   (keyboard_state[SDL_SCANCODE_LCTRL] != 0 || 
+                                    keyboard_state[SDL_SCANCODE_RCTRL] != 0);
+            
+            if (quit_key_current && !quit_key_pressed) {
+                if (hardware_wiimote) {
+                    hardware_wiimote.stop();
+                }
+                
+                running = false;
+                log_frontend("Graceful shutdown initiated");
+            }
+            
+            quit_key_pressed = quit_key_current;
+
             foreach (wiimote_key, host_key; KeyMapping) {
                 wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
+            }
+
+            if (hardware_wiimote && hardware_wiimote.count > 0) {
+                auto state = hardware_wiimote.get_state(0);
+                foreach (button; [WiimoteButton.A, WiimoteButton.B, WiimoteButton.One, WiimoteButton.Two,
+                                WiimoteButton.Plus, WiimoteButton.Minus, WiimoteButton.Home,
+                                WiimoteButton.Up, WiimoteButton.Down, WiimoteButton.Left, WiimoteButton.Right]) {
+                    wii.set_wiimote_button(button, (state.buttons_held & button) != 0);
+                }
             }
 
             int mouse_x, mouse_y;

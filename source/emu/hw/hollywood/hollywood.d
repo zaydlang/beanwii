@@ -334,6 +334,23 @@ final class Hollywood {
     private GlObjectManager gl_object_manager;
     private TextureManager texture_manager;
     
+    private GLuint efb_fbo;
+    private GLuint efb_color_texture;
+    private GLuint efb_depth_texture;
+    
+    private GLuint xfb_fbo;
+    private GLuint xfb_color_texture;
+    private bool xfb_has_data = false;
+    
+    private GLuint xfb_shader_program;
+    private GLuint xfb_vao;
+    private GLuint xfb_vbo;
+    
+    private ubyte[640 * 528 * 4] rgba_buffer;
+    private ubyte[640 * 528 * 4] converted_buffer;
+    
+    private float[6] viewport;
+    
     private u32 display_list_address;
     private u32 display_list_size;
     
@@ -586,6 +603,392 @@ final class Hollywood {
             glGetProgramResourceiv(gl_program, GL_UNIFORM, ix, 2, props.ptr, 2,null, values.ptr);
             log_hollywood("%s offset: %d, stride: %d %d", prop, values[1], values[0], mixin("VertexConfig." ~ prop ~ ".offsetof"));
         }}
+        
+        glGenFramebuffers(1, &efb_fbo);
+        glGenTextures(1, &efb_color_texture);
+        glGenTextures(1, &efb_depth_texture);
+        
+        glBindTexture(GL_TEXTURE_2D, efb_color_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 640, 528, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        glBindTexture(GL_TEXTURE_2D, efb_depth_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, 640, 528, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, null);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, efb_color_texture, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, efb_depth_texture, 0);
+        
+        glGenFramebuffers(1, &xfb_fbo);
+        glGenTextures(1, &xfb_color_texture);
+        
+        glBindTexture(GL_TEXTURE_2D, xfb_color_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 640, 480, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, xfb_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, xfb_color_texture, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        
+        string xfb_vertex_text = readText("source/emu/hw/hollywood/shaders/xfb_vertex.glsl");
+        string xfb_fragment_text = readText("source/emu/hw/hollywood/shaders/xfb_fragment.glsl");
+        
+        GLuint xfb_vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+        auto xfb_vertex_src_ptr = xfb_vertex_text.ptr;
+        auto xfb_vertex_src_len = cast(int)xfb_vertex_text.length;
+        glShaderSource(xfb_vertex_shader, 1, &xfb_vertex_src_ptr, &xfb_vertex_src_len);
+        glCompileShader(xfb_vertex_shader);
+        
+        GLuint xfb_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+        auto xfb_fragment_src_ptr = xfb_fragment_text.ptr;
+        auto xfb_fragment_src_len = cast(int)xfb_fragment_text.length;
+        glShaderSource(xfb_fragment_shader, 1, &xfb_fragment_src_ptr, &xfb_fragment_src_len);
+        glCompileShader(xfb_fragment_shader);
+        
+        xfb_shader_program = glCreateProgram();
+        glAttachShader(xfb_shader_program, xfb_vertex_shader);
+        glAttachShader(xfb_shader_program, xfb_fragment_shader);
+        glLinkProgram(xfb_shader_program);
+        
+        glDeleteShader(xfb_vertex_shader);
+        glDeleteShader(xfb_fragment_shader);
+        
+        float[] xfb_quad_vertices = [
+            -1.0f, -1.0f,  0.0f, 1.0f,
+             1.0f, -1.0f,  1.0f, 1.0f,
+             1.0f,  1.0f,  1.0f, 0.0f,
+            -1.0f, -1.0f,  0.0f, 1.0f,
+             1.0f,  1.0f,  1.0f, 0.0f,
+            -1.0f,  1.0f,  0.0f, 0.0f
+        ];
+        
+        glGenVertexArrays(1, &xfb_vao);
+        glGenBuffers(1, &xfb_vbo);
+        
+        glBindVertexArray(xfb_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, xfb_vbo);
+        glBufferData(GL_ARRAY_BUFFER, xfb_quad_vertices.length * float.sizeof, xfb_quad_vertices.ptr, GL_STATIC_DRAW);
+        
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * float.sizeof, cast(void*)0);
+        glEnableVertexAttribArray(0);
+        
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * float.sizeof, cast(void*)(2 * float.sizeof));
+        glEnableVertexAttribArray(1);
+        
+        glBindVertexArray(0);
+    }
+    
+    void execute_efb_copy(u32 control_register, bool clear_efb) {
+        log_hollywood("Executing EFB copy with control register: 0x%08X", control_register);
+
+        draw();
+
+        bool is_display_copy = control_register.bit(14);
+        if (is_display_copy) {
+            // import std.stdio; writefln("Performing EFB display copy");
+            log_hollywood("EFB display copy");
+            u16 src_x = blitting_processor.get_efb_boxcoord_x();
+            u16 src_y = blitting_processor.get_efb_boxcoord_y();
+            u16 src_w = blitting_processor.get_efb_boxcoord_size_x();
+            u16 src_h = blitting_processor.get_efb_boxcoord_size_y();
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, xfb_fbo);
+            // writefln("blitting from (%d,%d) size (%d,%d) to XFB", src_x, src_y, src_w, src_h);
+            glBlitFramebuffer(src_x, src_y, src_x + src_w, src_y + src_h, src_x, src_y, src_x + src_w, src_y + src_h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            xfb_has_data = true;
+        } else {
+            // import std.stdio; writefln("Performing EFB to texture copy");
+            execute_efb_to_texture_copy();
+        }
+        
+        if (clear_efb) {
+            // import std.stdio; writefln("Clearing EFB");
+            glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
+            glClearColor(
+                blitting_processor.get_copy_clear_color_red() / 255.0f,
+                blitting_processor.get_copy_clear_color_green() / 255.0f,
+                blitting_processor.get_copy_clear_color_blue() / 255.0f,
+                blitting_processor.get_copy_clear_color_alpha() / 255.0f
+            );
+            glClearDepth((blitting_processor.get_copy_clear_depth() & 0xFFFFFF) / 16777215.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
+    }
+    
+    void execute_efb_to_texture_copy() {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
+        
+        u16 src_x = blitting_processor.get_efb_boxcoord_x();
+        u16 src_y = blitting_processor.get_efb_boxcoord_y();
+        u16 width = blitting_processor.get_efb_boxcoord_size_x();
+        u16 height = blitting_processor.get_efb_boxcoord_size_y();
+        u32 dest_addr = blitting_processor.get_xfb_addr();
+        
+        glReadPixels(src_x, src_y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba_buffer.ptr);
+        
+        u8 dest_format = blitting_processor.get_tex_copy_format();
+        
+        switch (dest_format) {
+            case 0x6: // GX_TF_RGBA8 - write as tiled RGBA32
+                write_rgba32_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0x4: // GX_TF_RGB565 - write as tiled RGB565
+                write_rgb565_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0x5: // GX_TF_RGB5A3 - write as tiled RGB5A3
+                write_rgb5a3_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0x1:
+                write_i8_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0x7:
+                write_a8_as_i8_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            default:
+                error_hollywood("Unsupported texture copy destination format: 0x%x", dest_format);
+                return;
+        }
+
+        log_hollywood("EFB to texture copy: src=(%d,%d), size=(%d,%d), dest=0x%08X, dest_format=0x%x",
+                        src_x, src_y, width, height, dest_addr, dest_format);
+        
+        texture_manager.invalidate_texture_at_address(dest_addr);
+    }
+    
+    void write_i8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 8);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 8; fine_x++) {
+                int x = tile_x * 8 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    // Convert RGB to luminance using standard weights
+                    u8 r = src[src_offset + 0];
+                    u8 g = src[src_offset + 1];
+                    u8 b = src[src_offset + 2];
+                    u8 luminance = cast(u8) ((r * 299 + g * 587 + b * 114) / 1000);
+                    
+                    mem.physical_write_u8(current_address, luminance);
+                } else {
+                    mem.physical_write_u8(current_address, 0);
+                }
+                current_address += 1;
+            }
+            }
+        }
+        }
+    }
+    
+    void write_a8_as_i8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 8);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 8; fine_x++) {
+                int x = tile_x * 8 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 alpha = src[src_offset + 3];
+                    mem.physical_write_u8(current_address, alpha);
+                } else {
+                    mem.physical_write_u8(current_address, 0);
+                }
+                current_address += 1;
+            }
+            }
+        }
+        }
+    }
+    
+    int convert_rgba8_to_rgb8(ubyte* src, ubyte* dst, u16 width, u16 height) {
+        int dst_idx = 0;
+        for (int i = 0; i < width * height; i++) {
+            dst[dst_idx++] = 255; // R
+            dst[dst_idx++] = src[i * 4 + 1]; // G
+            dst[dst_idx++] = src[i * 4 + 2]; // B
+            dst[dst_idx++] = 255;
+        }
+        return dst_idx;
+    }
+    
+    int convert_rgba8_to_rgb565(ubyte* src, ubyte* dst, u16 width, u16 height) {
+        int dst_idx = 0;
+        for (int i = 0; i < width * height; i++) {
+            u8 r = src[i * 4 + 0] >> 3;
+            u8 g = src[i * 4 + 1] >> 2;
+            u8 b = src[i * 4 + 2] >> 3;
+            u16 rgb565 = cast(u16) ((r << 11) | (g << 5) | b);
+            dst[dst_idx++] = cast(u8) (rgb565 >> 8);
+            dst[dst_idx++] = cast(u8) (rgb565 & 0xFF);
+        }
+        return dst_idx;
+    }
+    
+    int convert_rgba8_to_rgba6(ubyte* src, ubyte* dst, u16 width, u16 height) {
+        int dst_idx = 0;
+        for (int i = 0; i < width * height * 4; i += 4) {
+            u8 r = src[i + 0] >> 2;
+            u8 g = src[i + 1] >> 2;
+            u8 b = src[i + 2] >> 2;
+            u8 a = src[i + 3] >> 2;
+            u32 rgba6 = (r << 18) | (g << 12) | (b << 6) | a;
+            dst[dst_idx++] = cast(u8) ((rgba6 >> 16) & 0xFF);
+            dst[dst_idx++] = cast(u8) ((rgba6 >> 8) & 0xFF);
+            dst[dst_idx++] = cast(u8) (rgba6 & 0xFF);
+        }
+        return dst_idx;
+    }
+    
+    void write_rgba32_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 4);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            u32 ra_address = current_address;
+            u32 gb_address = current_address + 32;
+            
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 4; fine_x++) {
+                int x = tile_x * 4 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 r = src[src_offset + 0];
+                    u8 g = src[src_offset + 1];
+                    u8 b = src[src_offset + 2];
+                    u8 a = src[src_offset + 3];
+                    
+                    mem.physical_write_u8(ra_address + 0, a);
+                    mem.physical_write_u8(ra_address + 1, r);
+                    mem.physical_write_u8(gb_address + 0, g);
+                    mem.physical_write_u8(gb_address + 1, b);
+                }
+                
+                ra_address += 2;
+                gb_address += 2;
+            }
+            }
+            
+            current_address += 64;
+        }
+        }
+    }
+    
+    void write_rgb565_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 4);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 4; fine_x++) {
+                int x = tile_x * 4 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 r = src[src_offset + 0] >> 3;  // 5 bits
+                    u8 g = src[src_offset + 1] >> 2;  // 6 bits  
+                    u8 b = src[src_offset + 2] >> 3;  // 5 bits
+                    u16 rgb565 = cast(u16) ((r << 11) | (g << 5) | b);
+                    
+                    mem.physical_write_u8(current_address + 0, cast(u8)(rgb565 >> 8));
+                    mem.physical_write_u8(current_address + 1, cast(u8)(rgb565 & 0xFF));
+                }
+                current_address += 2;
+            }
+            }
+        }
+        }
+    }
+    
+    void write_rgb5a3_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 4);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 4; fine_x++) {
+                int x = tile_x * 4 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 r8 = src[src_offset + 0];
+                    u8 g8 = src[src_offset + 1]; 
+                    u8 b8 = src[src_offset + 2];
+                    u8 a8 = src[src_offset + 3];
+                    
+                    u16 pixel;
+                    if (a8 == 255) { // RGB5 mode (fully opaque)
+                        u8 r5 = r8 >> 3;  // 5 bits
+                        u8 g5 = g8 >> 3;  // 5 bits
+                        u8 b5 = b8 >> 3;  // 5 bits
+                        pixel = cast(u16) (0x8000 | (r5 << 10) | (g5 << 5) | b5);
+                    } else { // RGBA4 mode (has transparency)
+                        u8 r4 = r8 >> 4;  // 4 bits
+                        u8 g4 = g8 >> 4;  // 4 bits  
+                        u8 b4 = b8 >> 4;  // 4 bits
+                        u8 a3 = a8 >> 5;  // 3 bits
+                        pixel = cast(u16) ((a3 << 12) | (r4 << 8) | (g4 << 4) | b4);
+                    }
+                    
+                    mem.physical_write_u8(current_address + 0, cast(u8)(pixel >> 8));
+                    mem.physical_write_u8(current_address + 1, cast(u8)(pixel & 0xFF));
+                }
+                current_address += 2;
+            }
+            }
+        }
+        }
+    }
+    
+    void update_gl_viewport() {
+        float width = viewport[0] * 2;           // wd
+        float height = -viewport[1] * 2;         // ht (negate the negative)
+        float x_orig = viewport[3] - 342.0f - viewport[0];   // xOrig
+        float y_orig = viewport[4] - 342.0f + viewport[1];   // yOrig
+        
+        int gl_x = cast(int) x_orig;
+        int gl_y = cast(int) y_orig; 
+        int gl_width = cast(int) width;
+        int gl_height = cast(int) height;
+        
+        glViewport(gl_x, gl_y, gl_width, gl_height);
+        import std.stdio;
+        // writefln("GL viewport: (%d,%d) %dx%d from GC viewport(%.1f,%.1f) %.1fx%.1f", 
+        //              gl_x, gl_y, gl_width, gl_height, x_orig, y_orig, width, height);
+    }
+    
+    public GLuint get_xfb_texture() {
+        return xfb_color_texture;
+    }
+    
+    public bool has_xfb_data() {
+        return xfb_has_data;
     }
 
     Mem mem;
@@ -781,7 +1184,7 @@ final class Hollywood {
                         state = State.WaitingForVertexData;
                         cached_bytes_needed = number_of_expected_bytes_for_shape;
                         log_hollywood("vat: %s", vats[current_vat]);
-                        log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                        log_hollywood("vcd: %s", vertex_descriptors[0]);
                         log_hollywood("Number of vertices: %d", number_of_expected_vertices);
                         log_hollywood("Number of expected bytes for shape: %d", number_of_expected_bytes_for_shape);
                         handled = true;
@@ -933,7 +1336,7 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawQuads;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -945,7 +1348,7 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawTriangles;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -957,7 +1360,7 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawTriangleFan;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -969,7 +1372,7 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawTriangleStrip;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -981,7 +1384,7 @@ final class Hollywood {
                 current_draw_command = GXFifoCommand.DrawLines;
                 current_vat = (cast(int) command).bits(0, 2);
                 log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[current_vat]);
+                log_hollywood("vcd: %s", vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1082,12 +1485,12 @@ final class Hollywood {
 
             case 0x49:
                 blitting_processor.write_efb_boxcoord_x(cast(u16) bp_data.bits(0, 9));
-                blitting_processor.write_efb_boxcoord_y(cast(u16) bp_data.bits(10, 19));
+                blitting_processor.write_efb_boxcoord_y(cast(u16) bp_data.bits(10, 21));
                 break;
             
             case 0x4a:
                 blitting_processor.write_efb_boxcoord_size_x(cast(u16) (bp_data.bits(0, 9) + 1));
-                blitting_processor.write_efb_boxcoord_size_y(cast(u16) (bp_data.bits(10, 19) + 1));
+                blitting_processor.write_efb_boxcoord_size_y(cast(u16) (bp_data.bits(10, 21) + 1));
                 break;
             
             case 0x4b:
@@ -1099,7 +1502,12 @@ final class Hollywood {
                 break;
             
             case 0x52:
-                log_hollywood("Unimplemented: BP copy");
+                u8 format_bits_4_6 = cast(u8) bp_data.bits(4, 6);
+                u8 format_bit_3 = cast(u8) bp_data.bit(3);
+                u8 tex_copy_format = cast(u8) (format_bits_4_6 | (format_bit_3 << 3));
+                bool clear_efb = bp_data.bit(11);
+                blitting_processor.write_tex_copy_format(tex_copy_format);
+                execute_efb_copy(bp_data, clear_efb);
                 break;
             
             case 0x4F:
@@ -1110,6 +1518,10 @@ final class Hollywood {
             case 0x50:
                 blitting_processor.write_copy_clear_color_green(cast(u8) bp_data.bits(8, 15));
                 blitting_processor.write_copy_clear_color_blue(cast(u8) bp_data.bits(0, 7));
+                break;
+                
+            case 0x51:
+                blitting_processor.write_copy_clear_depth(bp_data);
                 break;
             
             case 1:
@@ -1387,6 +1799,11 @@ final class Hollywood {
                 scheduler.add_event_relative_to_clock(() { pixel_engine.raise_finish_interrupt(); }, 1_000_000);
                 break;
 
+            case 0x43:
+                pixel_engine.pe_cntrl = bp_data;
+                log_hollywood("PE_CNTRL: %08x, EFB format: %d", bp_data, pixel_engine.get_efb_pixel_format());
+                break;
+
             case 0x47:
                 log_hollywood("tokenize interrupt: %08x", bp_data);
                 scheduler.add_event_relative_to_clock(() { pixel_engine.raise_token_interrupt(cast(u16) bp_data.bits(0, 15)); }, 1_000_000);
@@ -1552,7 +1969,7 @@ final class Hollywood {
     }
 
     private int size_of_incoming_vertex(int vat_idx) {
-        auto vcd = &vertex_descriptors[vat_idx];
+        auto vcd = &vertex_descriptors[0];
         auto vat = &vats[vat_idx];
 
         int size = 0;
@@ -1661,12 +2078,12 @@ final class Hollywood {
                 texture_descriptors[7].tex_matrix_slot = value.bits(18, 23);
                 break;
 
-            case 0x101a: log_hollywood("viewport[0]: %f", force_cast!float(value)); break;
-            case 0x101b: log_hollywood("viewport[1]: %f", force_cast!float(value)); break;
-            case 0x101c: log_hollywood("viewport[2]: %f", force_cast!float(value)); break;
-            case 0x101d: log_hollywood("viewport[3]: %f", force_cast!float(value)); break;
-            case 0x101e: log_hollywood("viewport[4]: %f", force_cast!float(value)); break;
-            case 0x101f: log_hollywood("viewport[5]: %f", force_cast!float(value)); break;
+            case 0x101a: viewport[0] = force_cast!float(value); update_gl_viewport(); break;
+            case 0x101b: viewport[1] = force_cast!float(value); update_gl_viewport(); break;
+            case 0x101c: viewport[2] = force_cast!float(value); update_gl_viewport(); break;
+            case 0x101d: viewport[3] = force_cast!float(value); update_gl_viewport(); break;
+            case 0x101e: viewport[4] = force_cast!float(value); update_gl_viewport(); break;
+            case 0x101f: viewport[5] = force_cast!float(value); update_gl_viewport(); break;
             case 0x1020: .. case 0x1025:
                 projection_matrix_parameters[register - 0x1020] = force_cast!float(value);
                 recalculate_projection_matrix();
@@ -1920,7 +2337,7 @@ final class Hollywood {
     }
 
     private void process_new_shape_from_data(ubyte* data, size_t data_length) {
-        log_hollywood("process_new_shape_from_data %d %s %s %x %x", shape_groups.length, vats[current_vat], vertex_descriptors[current_vat], data_length, number_of_expected_bytes_for_shape);
+        log_hollywood("process_new_shape_from_data %d %s %s %x %x", shape_groups.length, vats[current_vat], vertex_descriptors[0], data_length, number_of_expected_bytes_for_shape);
 
         ShapeGroup* shape_group = shape_groups.allocate();
         shape_group.shared_vertex_start = current_vertex_offset;
@@ -1971,7 +2388,7 @@ final class Hollywood {
         }
 
         int offset = 0;
-        auto vcd = &vertex_descriptors[current_vat];
+        auto vcd = &vertex_descriptors[0];
         auto vat = &vats[current_vat];
 
         auto decode_vertex = () {
@@ -2276,6 +2693,8 @@ final class Hollywood {
     bool shit = false;
 
     public void draw() {
+        glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
+        
         if (total_display_lists > 0) {
             log_opengl("Display lists: %d total, %d draw-only, %d unique, max consecutive: %d", total_display_lists, draw_only_display_lists, display_list_vertices.length, max_consecutive_display_lists);
             log_opengl("Display lists without indexing: %d", display_lists_without_indexing);
@@ -2300,6 +2719,22 @@ final class Hollywood {
         glFlushMappedBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, current_index_offset * uint.sizeof);
         draw_shape_groups(shape_groups.all()[0 .. shape_groups.length]);
         this.shape_groups.reset();
+    }
+    
+    public void render_xfb() {
+        if (xfb_has_data) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glDisable(GL_DEPTH_TEST);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, xfb_color_texture);
+            glUseProgram(xfb_shader_program);
+            glUniform1i(glGetUniformLocation(xfb_shader_program, "u_texture"), 0);
+            glBindVertexArray(xfb_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+        }
     }
 
     private bool shapegroups_coalescable(const ref ShapeGroup a, const ref ShapeGroup b) {
@@ -2345,10 +2780,15 @@ final class Hollywood {
         }
 
         glUseProgram(gl_program);
-        glClearColor(0, 0, 0, 1); 
+        glClearColor(
+            blitting_processor.get_copy_clear_color_red() / 255.0f,
+            blitting_processor.get_copy_clear_color_green() / 255.0f, 
+            blitting_processor.get_copy_clear_color_blue() / 255.0f,
+            blitting_processor.get_copy_clear_color_alpha() / 255.0f
+        ); 
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
@@ -2367,10 +2807,15 @@ final class Hollywood {
         }
 
         glUseProgram(gl_program);
-        glClearColor(0, 0, 0, 1); 
+        glClearColor(
+            blitting_processor.get_copy_clear_color_red() / 255.0f,
+            blitting_processor.get_copy_clear_color_green() / 255.0f, 
+            blitting_processor.get_copy_clear_color_blue() / 255.0f,
+            blitting_processor.get_copy_clear_color_alpha() / 255.0f
+        ); 
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         

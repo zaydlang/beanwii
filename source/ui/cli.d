@@ -15,9 +15,8 @@ struct CliArgs {
     bool   hang_in_gdb_at_start;
     bool   record_audio;
     bool   install_segfault_handler;
-    u32    fastmem_start_addr;
-    u32    fastmem_end_addr;
-   Nullable!WiimoteExtensionType extension;
+    bool   use_bluetooth_wiimote;
+    Nullable!WiimoteExtensionType extension;
 }
 
 CliArgs parse_cli_args(string[] args) {
@@ -31,10 +30,7 @@ CliArgs parse_cli_args(string[] args) {
         .add(new Flag("i", "install_segfault_handler", "install segfault handler"))
         .add(new Option("e", "extension", "wiimote extension to attach (nunchuk)")
             .optional().defaultValue("none"))
-        .add(new Option("b", "fastmem_start", "fastmem start address")
-            .optional().defaultValue("80000000"))
-        .add(new Option("c", "fastmem_end", "fastmem end address")
-            .optional().defaultValue("80200000"))
+        .add(new Flag("b", "bluetooth", "enable bluetooth wiimote support"))
         .parse(args);
 
     return CliArgs(
@@ -44,8 +40,7 @@ CliArgs parse_cli_args(string[] args) {
         to!bool(program.flag("wait")),
         to!bool(program.flag("record")),
         to!bool(program.flag("install_segfault_handler")),
-        to!u32(program.option("fastmem_start"), 16),
-        to!u32(program.option("fastmem_end"), 16),
+        to!bool(program.flag("bluetooth")),
         parse_extension(program.option("extension"))
     );
 }

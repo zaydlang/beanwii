@@ -2150,7 +2150,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
     code.set_mmu_enabled(mmu_enabled);
     code.reset_fp_checked();
 
-    jit.idle_loop_detector.reset();
+    jit.idle_loop_detector.reset(original_address);
     jit.idle_loop_detector.debug_prints = original_address == 0x80274d70;
 
     while (num_opcodes_processed < code.get_max_instructions_per_block()) {
@@ -2176,6 +2176,10 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                 code.xor(was_branch_taken, was_branch_taken);
             }
 
+            if (original_address == 0x804943fc) {
+                import std.stdio;
+                writefln("action type: %s", action.type);
+            }
             final switch (action.type) {
                 case EmissionActionType.Continue:                       
                     code.set_reg(GuestReg.PC, code.get_guest_pc() + 4);
@@ -2255,6 +2259,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                 code.label(branch);
                     if (in_idle_loop) {
                         code.mov(was_branch_taken, 1);
+                        code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     }
 
                     if (action.is_with_link()) {
@@ -2368,6 +2373,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                         code.je(not_an_idle_loop);
                     }
 
+                    code.mov(rax, BlockReturnValue.IdleLoopDetected);
+                } else {
                     code.mov(rax, BlockReturnValue.IdleLoopDetected);
                 }
 
