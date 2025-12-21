@@ -558,7 +558,7 @@ final class FileManager {
             
             // go and fuck yourself
             try { ("~/.beanwii/fs".expandTilde ~ "/tmp").rmdirRecurse(); } catch (Exception e) {}
-            assert_ipc(mkdir(cast(const char*) ("~/.beanwii/fs".expandTilde ~ "/tmp"), std.conv.octal!"777") == 0, "failed to create /tmp: %d", errno);
+            mkdir(cast(const char*) ("~/.beanwii/fs".expandTilde ~ "/tmp"), std.conv.octal!"777");
         }
 
         void set_title_id(u64 title_id) {

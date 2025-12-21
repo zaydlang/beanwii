@@ -1881,6 +1881,7 @@ private EmissionAction emit_op_04(Code code, u32 opcode) {
         case PrimaryOp04SecondaryOpcode.PS_MULS0:   return emit_ps_muls0  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MULS1:   return emit_ps_muls1  (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_MSUBX:   return emit_ps_msubx  (code, opcode);
+        case PrimaryOp04SecondaryOpcode.PS_SEL:     return emit_ps_sel    (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUM0:    return emit_ps_sum0   (code, opcode);
         case PrimaryOp04SecondaryOpcode.PS_SUM1:    return emit_ps_sum1   (code, opcode);
         default: break;
@@ -2003,6 +2004,7 @@ private EmissionAction emit_op_1F(Code code, u32 opcode) {
         case PrimaryOp1FSecondaryOpcode.STBX:    return emit_stbx   (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFDX:   return emit_stfdx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFIWX:  return emit_stfiwx (code, opcode);
+        case PrimaryOp1FSecondaryOpcode.STFSUX:  return emit_stfsux (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STFSX:   return emit_stfsx  (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHBRX:  return emit_sthbrx (code, opcode);
         case PrimaryOp1FSecondaryOpcode.STHUX:   return emit_sthux  (code, opcode);
@@ -2074,7 +2076,7 @@ private EmissionAction emit_op_3F(Code code, u32 opcode) {
         case PrimaryOp3FSecondaryOpcode.FRSQRTEX: return emit_frsqrtex(code, opcode);
         case PrimaryOp3FSecondaryOpcode.FSEL:     return emit_fsel    (code, opcode);
         // case PrimaryOp3FSecondaryOpcode.FNMADDX: return emit_fnmaddx(code, opcode);
-        // case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
+        case PrimaryOp3FSecondaryOpcode.FNMSUBX: return emit_fnmsubx(code, opcode);
         default: unimplemented_opcode(opcode); return EmissionAction.Continue;
     }
 }
@@ -2228,6 +2230,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                         } else {
                             code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                         }
+                    } else {
+                        code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     }
 
                     break;
@@ -2294,6 +2298,8 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                                 code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                             }
                         }
+                    } else {
+                        code.mov(rax, BlockReturnValue.UnpatchableBranchTaken);
                     }
 
                 code.label(end);

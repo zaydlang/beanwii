@@ -115,6 +115,10 @@ final class SoftwareMem  {
     private T read_memory(T)(MemoryAccess memory_access, u32 original_address) {
         auto region = memory_access.region;
         T result;
+        if (cpu.state.pc == 0x8023f690) {
+            import std.stdio;
+            writefln("debjit! %x %x %x\n", original_address, cpu.state.gprs[3], 0);
+        }
 
         final switch (region) {
             case MemoryRegion.MEM1:
@@ -166,6 +170,10 @@ final class SoftwareMem  {
     private void write_memory(T)(MemoryAccess memory_access, u32 original_address, T value) {
         auto region = memory_access.region;
 
+        if ((cpu.state.pc & 0xfffffff0) == 0x8023f6b0) {
+            import std.stdio;
+            // writefln("debjit! %x\n", original_address);
+        }
         final switch (region) {
             case MemoryRegion.MEM1:
                 this.mem1.write_be!(T)(memory_access.offset, value);
@@ -204,7 +212,7 @@ final class SoftwareMem  {
         foreach (logged_write; logged_writes) {
             if (address == logged_write) {
                 import std.stdio;
-                writefln("  Write to 0x%08x = 0x%08x (pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
+                writefln("  cpu_write to 0x%08x = 0x%08x (pc: %x, lr: %x, thread: %x)", address, value, cpu.state.pc, cpu.state.lr, physical_read_u32(0x0000_00e4));
             }
         }
 
@@ -213,6 +221,14 @@ final class SoftwareMem  {
     }
 
     private void physical_write(T)(u32 address, T value) {
+        foreach (logged_write; logged_writes) {
+            if (address == logged_write) {
+                import std.stdio;
+                // error_memory("Logged physical write detected");
+                writefln("  physical_write to 0x%08x = 0x%08x (pc: %x, lr: %x)", address, value, cpu.state.pc, cpu.state.lr);
+            }
+        }
+
         auto memory_access = resolve_physical_address(address);
         write_memory!T(memory_access, address, value);
     }
@@ -419,6 +435,9 @@ final class SoftwareMem  {
     }
 
     // u32[] logged_writes = [0x8004d040, 0x8004d044, 0x8004d048, 0x8004d04c, 0x8004d050, 0x8004d054, 0x8004d058, 0x8004d05c];
+    // u32[] logged_writes = [0x80398e8c, 0x9129b1d4];
+    // u32[] logged_writes = [0x8000ffcc, 0x8000ffd0, 0x81201064];
+    // u32[] logged_writes = [0x933b5ac0, 0x133b5ac0, 0x933b5ac1, 0x133b5ac1, 0x933b5ac2, 0x133b5ac2, 0x933b5ac3, 0x133b5ac3, 0x807d683d, 0x807d683e, 0x807d683f];
     u32[] logged_writes = [];
     void log_memory_write(u32 address) {
         logged_writes ~= address;
@@ -443,5 +462,10 @@ final class SoftwareMem  {
                 error_memory("Cannot translate MMIO/special address %08x to host pointer", address);
                 return null;
         }
+    }
+
+    void write_MAGIC_PRINTF(int target_byte, u8 value) {
+        import std.stdio;
+        writef("%c", cast(char) value);
     }
 }

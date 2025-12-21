@@ -143,12 +143,12 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
+                auto value = mem.physical_read_u16(cast(u32) current_address);
+                current_address += 2;
+
                 if (x >= width || y >= height) {
                     continue;
                 }
-
-                auto value = mem.physical_read_u16(cast(u32) current_address);
-                current_address += 2;
 
                 texture[x * height + y] = Color(
                     (value & 0x001f) << 3,
@@ -182,13 +182,12 @@ final class TextureManager {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
-                if (x >= width || y >= height) {
-                    continue;
-                }
-
                 auto value = mem.physical_read_u16(cast(u32) current_address);
                 current_address += 2;
 
+                if (x >= width || y >= height) {
+                    continue;
+                }
 
                 if (value & 0x8000) {
                     texture[x * height + y] = Color(
@@ -284,15 +283,15 @@ final class TextureManager {
                 auto x = tile_x * 8 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
+                auto value = mem.physical_read_u8(cast(u32) current_address);
+
+                current_address += 1;
+
                 if (x >= width || y >= height) {
                     continue;
                 }
 
-                auto value = mem.physical_read_u8(cast(u32) current_address);
-
                 texture[x * height + y] = Color(value, value, value, value);
-
-                current_address += 1;
             }
             }
         }
@@ -356,18 +355,18 @@ final class TextureManager {
         for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
             for (int fine_y = 0; fine_y < 4; fine_y++) {
             for (int fine_x = 0; fine_x < 4; fine_x++) {
-                auto value = mem.physical_read_u16(current_address);
-                current_address += 2;
-
-                u8 intensity = cast(u8) value.bits(0, 7);
-                u8 alpha     = cast(u8) value.bits(8, 15);
-                
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
+
+                auto value = mem.physical_read_u16(current_address);
+                current_address += 2;
 
                 if (x >= width || y >= height) {
                     continue;
                 }
+
+                u8 intensity = cast(u8) value.bits(0, 7);
+                u8 alpha     = cast(u8) value.bits(8, 15);
 
                 texture[x * height + y] = Color(
                     intensity,
@@ -503,23 +502,27 @@ final class TextureManager {
         u32 current_address = base_address;
         for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
         for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
-            auto ra_address = current_address;
-            auto gb_address = current_address + 32;
+            auto ba_address = current_address;
+            auto rg_address = current_address + 32;
 
             for (int fine_y = 0; fine_y < 4; fine_y++) {
             for (int fine_x = 0; fine_x < 4; fine_x++) {
                 auto x = tile_x * 4 + fine_x;
                 auto y = tile_y * 4 + fine_y;
 
+                if (x >= width || y >= height) {
+                    continue;
+                }
+
                 texture[x * height + y] = Color(
-                    mem.physical_read_u8(ra_address + 1),
-                    mem.physical_read_u8(gb_address + 0),
-                    mem.physical_read_u8(gb_address + 1),
-                    mem.physical_read_u8(ra_address + 0)
+                    mem.physical_read_u8(rg_address + 1),
+                    mem.physical_read_u8(rg_address + 0),
+                    mem.physical_read_u8(ba_address + 1),
+                    mem.physical_read_u8(ba_address + 0)
                 );
 
-                ra_address += 2;
-                gb_address += 2;
+                ba_address += 2;
+                rg_address += 2;
             }
             }
 

@@ -68,6 +68,7 @@ struct OutputReport {
     union {
         align(1):
 
+        RumbleReport                   rumble_report;
         PlayerLEDs                     player_leds;
         DataReportingMode              data_reporting_mode;
         IRCameraEnable                 ir_camera_enable;
@@ -77,7 +78,7 @@ struct OutputReport {
         ReadMemoryAndRegistersReport   read_memory_and_registers;
         WriteMemoryAndRegistersReport  write_memory_and_registers;
         IRCameraEnable2                ir_camera_enable2;
-        RumbleReport                   rumble_report;
+        SpeakerData                    speaker_data;
     }
 }
 
@@ -236,6 +237,15 @@ struct RumbleReport {
 }
 
 static assert(RumbleReport.sizeof == 1);
+
+struct SpeakerData {
+    align(1):
+
+    u8 data_size;
+    // theres more here but i dont care
+}
+
+static assert(SpeakerData.sizeof == 1);
 
 struct StatusInformationReport {
     align(1):

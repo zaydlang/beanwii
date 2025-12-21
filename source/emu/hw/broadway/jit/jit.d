@@ -202,7 +202,7 @@ final class Jit {
         
         total_instructions_executed += ret.num_instructions_executed;
         total_jit_exits++;
-        exit_reason_histogram[ret.block_return_value.value()]++;
+        // exit_reason_histogram[ret.block_return_value.value()]++;
         
         return ret;
     }

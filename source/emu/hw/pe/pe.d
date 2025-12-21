@@ -55,6 +55,10 @@ final class PixelEngine {
     int blend_operator;
     
     void write_ALPHA_CONFIG(int target_byte, u8 value) {
+        if (interrupt_controller.broadway.mem.mmio.hollywood.is_sussy()) {
+            import std.stdio : writefln;
+            writefln("SUSSY BAKA ALPHA_CONFIG %x", value);
+        }
         log_pe("ALPHA_CONFIG: %d %x", target_byte, value);
         alpha_config = alpha_config.set_byte(target_byte, value);
         

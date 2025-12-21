@@ -103,6 +103,7 @@ final class Hollywood {
         float[3] normal;
         float[2][8] texcoord;
         float[4][2] color;
+        int position_matrix_index;
     }
 
     struct Texture {
@@ -125,6 +126,7 @@ final class Hollywood {
         VertexConfig vertex_config;
         bool textured;
         int enabled_textures_bitmap;
+        int geometry_matrix_idx;
 
         bool depth_test_enabled;
         bool depth_write_enabled;
@@ -141,6 +143,10 @@ final class Hollywood {
         int blend_destination;
         bool subtractive_additive_toggle;
         int blend_operator;
+
+        // Per-vertex matrix support
+        bool uses_per_vertex_matrices = false;
+        u8[] unique_matrix_indices;
 
         size_t shared_vertex_start = 0;
         size_t shared_vertex_count = 0;
@@ -246,7 +252,15 @@ final class Hollywood {
         GlAlignedFloat[4] k3;
 
         int num_tev_stages;
+        int padding;
         u64 swap_tables; // 8 * 4 
+        
+        // Alpha compare
+        int alpha_comp0;
+        int alpha_comp1;
+        int alpha_aop;
+        int alpha_ref0;
+        int alpha_ref1;
     }
 
     alias GLBool = u32;
@@ -286,6 +300,8 @@ final class Hollywood {
     u32 current_depth_func;
 
     int current_cull_mode;
+    bool color_update_enable;
+    bool alpha_update_enable;
 
     bool current_alpha_update_enable;
     bool current_color_update_enable;
@@ -296,6 +312,9 @@ final class Hollywood {
     int current_blend_destination;
     bool current_subtractive_additive_toggle;
     int current_blend_operator;
+
+    int next_bp_mask = 0x00ff_ffff;
+    u32[256] bp_registers;
 
     ProjectionMode projection_mode;
 
@@ -346,10 +365,12 @@ final class Hollywood {
     private GLuint xfb_vao;
     private GLuint xfb_vbo;
     
-    private ubyte[640 * 528 * 4] rgba_buffer;
-    private ubyte[640 * 528 * 4] converted_buffer;
+    private u8[640 * 528 * 4] rgba_buffer;
+    private u8[640 * 528 * 4] converted_buffer;
     
     private float[6] viewport;
+    
+    int geometry_matrix_idx;
     
     private u32 display_list_address;
     private u32 display_list_size;
@@ -377,8 +398,10 @@ final class Hollywood {
     int normal_attr_location = -1;
     int texcoord_attr_location = -1;
     int color_attr_location = -1;
+    int matrix_index_attr_location = -1;
     int position_matrix_uniform_location = -1;
     int texture_matrix_uniform_location = -1;
+    int matrix_data_uniform_location = -1;
     int mvp_uniform_location = -1;
     uint tev_config_block_index = -1;
     uint vertex_config_block_index = -1;
@@ -512,6 +535,12 @@ final class Hollywood {
             "reg1",
             "reg2",
             "reg3",
+            "swap_tables",
+            "alpha_comp0",
+            "alpha_comp1",
+            "alpha_aop",
+            "alpha_ref0",
+            "alpha_ref1",
         ];
 
         // losing my mind over this
@@ -698,12 +727,14 @@ final class Hollywood {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, xfb_fbo);
             // writefln("blitting from (%d,%d) size (%d,%d) to XFB", src_x, src_y, src_w, src_h);
+
+            glColorMask(true, true, true, true);
             glBlitFramebuffer(src_x, src_y, src_x + src_w, src_y + src_h, src_x, src_y, src_x + src_w, src_y + src_h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             xfb_has_data = true;
         } else {
             // import std.stdio; writefln("Performing EFB to texture copy");
-            execute_efb_to_texture_copy();
+            execute_efb_to_texture_copy(control_register.bit(9));
         }
         
         if (clear_efb) {
@@ -720,7 +751,9 @@ final class Hollywood {
         }
     }
     
-    void execute_efb_to_texture_copy() {
+    void execute_efb_to_texture_copy(bool mipmap) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
         
         u16 src_x = blitting_processor.get_efb_boxcoord_x();
@@ -731,16 +764,22 @@ final class Hollywood {
         
         glReadPixels(src_x, src_y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba_buffer.ptr);
         
+        if (mipmap) {
+            downsample_rgba_buffer_by_2(rgba_buffer.ptr, width, height);
+            width /= 2;
+            height /= 2;
+        }
+        
         u8 dest_format = blitting_processor.get_tex_copy_format();
         
         switch (dest_format) {
-            case 0x6: // GX_TF_RGBA8 - write as tiled RGBA32
+            case 0x6:
                 write_rgba32_tiled(rgba_buffer.ptr, dest_addr, width, height);
                 break;
-            case 0x4: // GX_TF_RGB565 - write as tiled RGB565
+            case 0x4:
                 write_rgb565_tiled(rgba_buffer.ptr, dest_addr, width, height);
                 break;
-            case 0x5: // GX_TF_RGB5A3 - write as tiled RGB5A3
+            case 0x5: 
                 write_rgb5a3_tiled(rgba_buffer.ptr, dest_addr, width, height);
                 break;
             case 0x1:
@@ -748,6 +787,12 @@ final class Hollywood {
                 break;
             case 0x7:
                 write_a8_as_i8_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0x8:
+                write_r8_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
+            case 0xB:
+                write_rg8_tiled(rgba_buffer.ptr, dest_addr, width, height);
                 break;
             default:
                 error_hollywood("Unsupported texture copy destination format: 0x%x", dest_format);
@@ -758,6 +803,30 @@ final class Hollywood {
                         src_x, src_y, width, height, dest_addr, dest_format);
         
         texture_manager.invalidate_texture_at_address(dest_addr);
+    }
+    
+    void downsample_rgba_buffer_by_2(u8* buffer, u16 width, u16 height) {
+        u16 new_width = width / 2;
+        u16 new_height = height / 2;
+        
+        for (int y = 0; y < new_height; y++) {
+            for (int x = 0; x < new_width; x++) {
+                int src_x = x * 2;
+                int src_y = y * 2;
+                
+                int src_offset1 = (src_y * width + src_x) * 4;
+                int src_offset2 = (src_y * width + src_x + 1) * 4;
+                int src_offset3 = ((src_y + 1) * width + src_x) * 4;
+                int src_offset4 = ((src_y + 1) * width + src_x + 1) * 4;
+                
+                int dst_offset = (y * new_width + x) * 4;
+                
+                buffer[dst_offset + 0] = cast(u8) ((buffer[src_offset1 + 0] + buffer[src_offset2 + 0] + buffer[src_offset3 + 0] + buffer[src_offset4 + 0]) / 4);
+                buffer[dst_offset + 1] = cast(u8) ((buffer[src_offset1 + 1] + buffer[src_offset2 + 1] + buffer[src_offset3 + 1] + buffer[src_offset4 + 1]) / 4);
+                buffer[dst_offset + 2] = cast(u8) ((buffer[src_offset1 + 2] + buffer[src_offset2 + 2] + buffer[src_offset3 + 2] + buffer[src_offset4 + 2]) / 4);
+                buffer[dst_offset + 3] = cast(u8) ((buffer[src_offset1 + 3] + buffer[src_offset2 + 3] + buffer[src_offset3 + 3] + buffer[src_offset4 + 3]) / 4);
+            }
+        }
     }
     
     void write_i8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
@@ -966,6 +1035,59 @@ final class Hollywood {
         }
     }
     
+    void write_r8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 8);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 8; fine_x++) {
+                int x = tile_x * 8 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 r = src[src_offset + 0];
+                    
+                    mem.physical_write_u8(current_address, r);
+                }
+                current_address += 1;
+            }
+            }
+        }
+        }
+    }
+    
+    void write_rg8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 4);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 4; fine_x++) {
+                int x = tile_x * 4 + fine_x;
+                int y = tile_y * 4 + fine_y;
+                
+                if (x < width && y < height) {
+                    int src_offset = (y * width + x) * 4;
+                    u8 r = src[src_offset + 0];
+                    u8 g = src[src_offset + 1];
+                    
+                    u16 rg_value = (r << 8) | g;
+                    mem.physical_write_u8(current_address + 0, cast(u8)(rg_value >> 8));
+                    mem.physical_write_u8(current_address + 1, cast(u8)(rg_value & 0xFF));
+                }
+                current_address += 2;
+            }
+            }
+        }
+        }
+    }
+    
     void update_gl_viewport() {
         float width = viewport[0] * 2;           // wd
         float height = -viewport[1] * 2;         // ht (negate the negative)
@@ -978,7 +1100,6 @@ final class Hollywood {
         int gl_height = cast(int) height;
         
         glViewport(gl_x, gl_y, gl_width, gl_height);
-        import std.stdio;
         // writefln("GL viewport: (%d,%d) %dx%d from GC viewport(%.1f,%.1f) %.1fx%.1f", 
         //              gl_x, gl_y, gl_width, gl_height, x_orig, y_orig, width, height);
     }
@@ -1042,7 +1163,7 @@ final class Hollywood {
         log_hollywood("PI FIFO write: %08x %d %x %x", value, T.sizeof, mem.cpu.state.pc, mem.cpu.state.lr);
         
         static foreach (i; 0 .. T.sizeof) {
-            mem.physical_write_u8(cast(u32) (fifo_write_ptr + i), value.get_byte(T.sizeof - i - 1));
+            mem.physical_write_u8(cast(u32) (fifo_write_ptr + i) & 0x1fffffff, value.get_byte(T.sizeof - i - 1));
         }
         
         fifo_write_ptr += T.sizeof;
@@ -1074,6 +1195,7 @@ final class Hollywood {
 
         log_hollywood("read_from_fifo_data: %x", value);
 
+        fifo_debug_history.add_overwrite(FifoDebugValue(value, state));
         return value;
     }
 
@@ -1166,8 +1288,24 @@ final class Hollywood {
 
                 case State.WaitingForLoadMtxIdxData:
                     if (offset + 4 <= length) {
-                        load_mtx_idx_values[current_load_mtx_idx] = read_from_fifo_data!u32(data, offset);
-                        log_hollywood("LoadMtxIdx[%d]: %08x", current_load_mtx_idx, load_mtx_idx_values[current_load_mtx_idx]);
+                        u32 param = read_from_fifo_data!u32(data, offset);
+
+                        // if (current_load_mtx_idx == 0) {
+                            int address = param.bits(0, 11);
+                            int size    = param.bits(12, 15) + 1;
+                            int mtxidx  = param.bits(16, 31);
+
+                            u32 src_addr = array_bases[12 + current_load_mtx_idx] + (array_strides[12 + current_load_mtx_idx] * mtxidx);
+
+                            for (int i = 0; i < size; i++) {
+                                u32 float_bits = mem.physical_read_u32(src_addr + i * 4);
+                                
+                                // TODO: fixme
+                                if (address + i <= 0xff) {
+                                    general_matrix_ram[address + i] = force_cast!float(float_bits);
+                                }
+                            }
+                        // }
                         
                         state = State.WaitingForCommand;
                         cached_bytes_needed = 1;
@@ -1462,6 +1600,15 @@ final class Hollywood {
         auto bp_register = value.bits(24, 31);
         auto bp_data = value.bits(0, 23);
 
+        auto current_value = bp_registers[bp_register];
+        auto masked_new_bits = bp_data & next_bp_mask;
+        auto preserved_old_bits = current_value & ~next_bp_mask;
+        auto final_value = masked_new_bits | preserved_old_bits;
+        
+        bp_registers[bp_register] = final_value;
+        bp_data = final_value;
+        next_bp_mask = 0x00ff_ffff;
+
         switch (bp_register) {
             case 0x40:
                 log_hollywood("BP DEPTH: %08x", bp_data);
@@ -1481,6 +1628,15 @@ final class Hollywood {
 
                 log_hollywood("Depth test: %s, Depth write: %s, Depth func: %08x", current_depth_test_enabled ? "enabled" : "disabled", current_depth_write_enabled ? "enabled" : "disabled", current_depth_func);
 
+                break;
+            
+            case 0x41:
+                color_update_enable = bp_data.bit(3);
+                alpha_update_enable = bp_data.bit(4);
+                current_arithmetic_blending_enable = bp_data.bit(0);
+                current_blend_destination = cast(int) bp_data.bits(5, 7);
+                current_blend_source = cast(int) bp_data.bits(8, 10);
+                current_subtractive_additive_toggle = bp_data.bit(11);
                 break;
 
             case 0x49:
@@ -1624,17 +1780,20 @@ final class Hollywood {
                 if (bp_register.bit(0)) {
                     log_hollywood("TEV_ALPHA_ENV_%x: %08x (tev op 1) at pc 0x%08x", bp_register - 0xc1, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc1) / 2;
+                    
                     u32 bias = bp_data.bits(16, 17);
                     u32 scale = bp_data.bits(20, 21);
                     tev_config.stages[idx].in_alfa_a = bp_data.bits(13, 15);
                     tev_config.stages[idx].in_alfa_b = bp_data.bits(10, 12);
                     tev_config.stages[idx].in_alfa_c = bp_data.bits(7, 9);
                     tev_config.stages[idx].in_alfa_d = bp_data.bits(4, 6);
+
                     if (bias == 3) {
                         tev_config.stages[idx].alfa_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
                     } else {
                         tev_config.stages[idx].alfa_op = bp_data.bit(18);
                     }
+
                     tev_config.stages[idx].bias_alfa = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
@@ -1649,23 +1808,26 @@ final class Hollywood {
                         0.5;
 
                     log_hollywood("Set indices to %d %d", bp_data.bits(0, 1), bp_data.bits(2, 3));
-                    tev_config.stages[idx].ras_swap_table_index = value.bits(0, 1);
-                    tev_config.stages[idx].tex_swap_table_index = value.bits(2, 3);
+                    tev_config.stages[idx].ras_swap_table_index = bp_data.bits(0, 1);
+                    tev_config.stages[idx].tex_swap_table_index = bp_data.bits(2, 3);
                     break;
                 } else {
                     log_hollywood("%d TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", shape_groups.length, bp_register - 0xc0, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc0) / 2;
+
                     u32 bias = bp_data.bits(16, 17);
                     u32 scale = bp_data.bits(20, 21);
                     tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
                     tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
                     tev_config.stages[idx].in_color_c = bp_data.bits(4, 7);
                     tev_config.stages[idx].in_color_d = bp_data.bits(0, 3);
+
                     if (bias == 3) {
                         tev_config.stages[idx].color_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
                     } else {
                         tev_config.stages[idx].color_op = bp_data.bit(18);
                     }
+
                     tev_config.stages[idx].bias_color = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
@@ -1778,6 +1940,12 @@ final class Hollywood {
 
             case 0xf3:
                 log_hollywood("TEV_ALPHAFUNC: %08x", bp_data);
+                blitting_processor.write_alpha_compare(bp_data);
+                tev_config.alpha_comp0 = blitting_processor.get_alpha_comp0();
+                tev_config.alpha_comp1 = blitting_processor.get_alpha_comp1();
+                tev_config.alpha_aop = blitting_processor.get_alpha_aop();
+                tev_config.alpha_ref0 = blitting_processor.get_alpha_ref0();
+                tev_config.alpha_ref1 = blitting_processor.get_alpha_ref1();
                 break;
             
             case 0xf4: .. case 0xf5:
@@ -1850,6 +2018,10 @@ final class Hollywood {
                 assert_texture(tev_config.stages[idx * 4 + 2].kasel != 12, "Invalid kcsel");
                 assert_texture(tev_config.stages[idx * 4 + 3].kasel != 12, "Invalid kcsel");
                 break;
+            
+            case 0xfe:
+                next_bp_mask = bp_data;
+                break;
 
             default:
                 log_hollywood("Unimplemented: BP register %02x", bp_register);
@@ -1860,7 +2032,7 @@ final class Hollywood {
     void handle_new_cp_write(u8 register, u32 value) {
         switch (register) {
             case 0x30:
-                assert_hollywood(value.bits(0, 5) == 0, "Invalid geometry matrix");
+                geometry_matrix_idx = value.bits(0, 5);
                 break;
 
             case 0x50: .. case 0x57:
@@ -2064,7 +2236,7 @@ final class Hollywood {
         switch (register) {
             case 0x1018:
                 log_hollywood("geometry_matrix: %08x", value);
-                assert_hollywood(value.bits(0, 5) == 0, "Invalid geometry matrix");
+                geometry_matrix_idx = value.bits(0, 5);
                 texture_descriptors[0].tex_matrix_slot = value.bits(6, 11);
                 texture_descriptors[1].tex_matrix_slot = value.bits(12, 17);
                 texture_descriptors[2].tex_matrix_slot = value.bits(18, 23);
@@ -2344,7 +2516,7 @@ final class Hollywood {
         shape_group.shared_index_start = current_index_offset;
 
         shape_group.textured = false;
-        shape_group.position_matrix = general_matrix_ram[0 .. 12];
+        shape_group.position_matrix = general_matrix_ram[shape_group.geometry_matrix_idx * 4 .. shape_group.geometry_matrix_idx * 4 + 12];
         shape_group.projection_matrix = projection_matrix;
 
         shape_group.depth_test_enabled = current_depth_test_enabled;
@@ -2353,14 +2525,14 @@ final class Hollywood {
 
         shape_group.cull_mode = current_cull_mode;
 
-        shape_group.alpha_update_enable = pixel_engine.alpha_update_enable;
-        shape_group.color_update_enable = pixel_engine.color_update_enable;
+        shape_group.alpha_update_enable = this.alpha_update_enable;
+        shape_group.color_update_enable = this.color_update_enable;
         shape_group.dither_enable = pixel_engine.dither_enable;
-        shape_group.arithmetic_blending_enable = pixel_engine.arithmetic_blending_enable;
+        shape_group.arithmetic_blending_enable = current_arithmetic_blending_enable;
         shape_group.boolean_blending_enable = pixel_engine.boolean_blending_enable;
-        shape_group.blend_source = pixel_engine.blend_source;
-        shape_group.blend_destination = pixel_engine.blend_destination;
-        shape_group.subtractive_additive_toggle = pixel_engine.subtractive_additive_toggle;
+        shape_group.blend_source = current_blend_source;
+        shape_group.blend_destination = current_blend_destination;
+        shape_group.subtractive_additive_toggle = current_subtractive_additive_toggle;
         shape_group.blend_operator = pixel_engine.blend_operator;
 
         int enabled_textures_bitmap;
@@ -2391,11 +2563,17 @@ final class Hollywood {
         auto vcd = &vertex_descriptors[0];
         auto vat = &vats[current_vat];
 
+        shape_group.uses_per_vertex_matrices = (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent);
+
         auto decode_vertex = () {
             Vertex v;
 
             if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+                v.position_matrix_index = read_from_shape_data_buffer_direct(data, offset, 1);
                 offset += 1;
+            } else {
+                v.position_matrix_index = -1;
+                shape_group.geometry_matrix_idx = geometry_matrix_idx;
             }
 
             for (int j = 0; j < 8; j++) {
@@ -2688,6 +2866,10 @@ final class Hollywood {
         
         shape_group.vertex_config_offset = next_vertex_config_offset();
         *cast(VertexConfig*) (cast(ubyte*) persistent_vertex_config_ptr + shape_group.vertex_config_offset) = shape_group.vertex_config;
+
+        if (shape_group.uses_per_vertex_matrices) {
+            draw();
+        }
     }
 
     bool shit = false;
@@ -2727,6 +2909,8 @@ final class Hollywood {
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+            glDisable(GL_SCISSOR_TEST);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, xfb_color_texture);
             glUseProgram(xfb_shader_program);
@@ -2774,6 +2958,19 @@ final class Hollywood {
         return coalescable_pairs;
     }
 
+    private uint gc_blend_factor_to_gl(int gc_factor) {
+        final switch (gc_factor) {
+            case 0: return GL_ZERO;
+            case 1: return GL_ONE;
+            case 2: return GL_SRC_COLOR;
+            case 3: return GL_ONE_MINUS_SRC_COLOR;
+            case 4: return GL_SRC_ALPHA;
+            case 5: return GL_ONE_MINUS_SRC_ALPHA;
+            case 6: return GL_DST_ALPHA;
+            case 7: return GL_ONE_MINUS_DST_ALPHA;
+        }
+    }
+
     void draw_shape_groups(ShapeGroup[] shape_groups) {
         if (shape_groups.length == 0) {
             return;
@@ -2789,8 +2986,7 @@ final class Hollywood {
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
         // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // glEnable(GL_BLEND);
         
         gl_object_manager.deallocate_all_objects();
         
@@ -2816,8 +3012,7 @@ final class Hollywood {
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
         // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // glEnable(GL_BLEND);
         
         gl_object_manager.deallocate_all_objects();
 
@@ -2836,7 +3031,7 @@ final class Hollywood {
         glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (22 * float.sizeof));
 
         foreach (i, shape_group; shape_groups) {
-            draw_shape_group_batched_single(shape_group);
+            // draw_shape_group_batched_single(shape_group);
         }
 
         this.shape_groups.reset();
@@ -2848,74 +3043,20 @@ final class Hollywood {
         }
     }
 
-    void draw_shape_group_batched_single(ShapeGroup shape_group) {
-        if (shape_group.textured) {
-            int enabled_textures_bitmap = shape_group.enabled_textures_bitmap;
-            // while (enabled_textures_bitmap != 0) {
-            //     int i = cast(int) enabled_textures_bitmap.bfs;
-            //     enabled_textures_bitmap &= ~(1 << i);
-
-            //     log_opengl("  Binding texture %d (id=%d)", i, shape_group.texture[i].texture_id);
-            //     glActiveTexture(GL_TEXTURE0 + i);
-            //     glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
-
-            //     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            //     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-            //     final switch (shape_group.texture[i].wrap_s) {
-            //         case TextureWrap.Clamp:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            //             break;
-            //         case TextureWrap.Repeat:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            //             break;
-            //         case TextureWrap.Mirror:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-            //             break;
-            //     }
-
-            //     final switch (shape_group.texture[i].wrap_t) {
-            //         case TextureWrap.Clamp:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            //             break;
-            //         case TextureWrap.Repeat:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            //             break;
-            //         case TextureWrap.Mirror:
-            //             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-            //             break;
-            //     }
-
-            //     glUniform1i(texture_uniform_locations[i], i);
-            // }
-        }
-
-        glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, shape_group.position_matrix.ptr);
-        glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, shape_group.texture[0].tex_matrix.ptr);
-        glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, shape_group.projection_matrix.ptr);
-
-        glUniformBlockBinding(gl_program, tev_config_block_index, 0);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 0, persistent_tev_buffer, 
-                         shape_group.tev_config_offset, TevConfig.sizeof);
-
-        glUniformBlockBinding(gl_program, vertex_config_block_index, 1);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 1, persistent_vertex_config_buffer,
-                         shape_group.vertex_config_offset, VertexConfig.sizeof);
-
-        if (shape_group.depth_test_enabled) {
-            glEnable(GL_DEPTH_TEST);
-            glDepthMask(shape_group.depth_write_enabled ? GL_TRUE : GL_FALSE);
-            glDepthFunc(shape_group.depth_func);
-        } else {
-            glDisable(GL_DEPTH_TEST);
-        }
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
-        glDrawElements(GL_TRIANGLES, cast(int) shape_group.shared_index_count, GL_UNSIGNED_INT,
-                      cast(void*) (shape_group.shared_index_start * uint.sizeof));
-    }
-
     void draw_shape_group(ShapeGroup shape_group) {
+        if (shape_group.arithmetic_blending_enable) {
+            glEnable(GL_BLEND);
+
+            auto op1 = gc_blend_factor_to_gl(shape_group.blend_source);
+            auto op2 = gc_blend_factor_to_gl(shape_group.blend_destination);
+            glBlendFunc(op1, op2);
+            // assert_hollywood(op1 != GL_LINES && op2 != GL_LINES, "Invalid blend factors: %d %d", shape_group.blend_source, shape_group.blend_destination);
+        } else {
+            // error_hollywood("Boolean blending not implemented");
+            // glBlendFunc();
+            glDisable(GL_BLEND);
+        }
+
         if (shape_group.textured) {
             int enabled_textures_bitmap = shape_group.enabled_textures_bitmap;
             while (enabled_textures_bitmap != 0) {
@@ -2979,18 +3120,26 @@ final class Hollywood {
         size_t base_offset = shape_group.shared_vertex_start * Vertex.sizeof;
         
         glEnableVertexAttribArray(position_attr_location);
-        glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (base_offset + 0));
+        glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 0));
 
         glEnableVertexAttribArray(normal_attr_location);
-        glVertexAttribPointer(normal_attr_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (base_offset + 3 * float.sizeof));
+        glVertexAttribPointer(normal_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 3 * float.sizeof));
 
         glEnableVertexAttribArray(texcoord_attr_location);
-        glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (base_offset + 6 * float.sizeof));
+        glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 6 * float.sizeof));
 
         glEnableVertexAttribArray(color_attr_location);
-        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (base_offset + 22 * float.sizeof));
+        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 22 * float.sizeof));
 
-        glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE,  shape_group.position_matrix.ptr);
+        glEnableVertexAttribArray(matrix_index_attr_location);
+        glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + 30 * float.sizeof));
+            
+        if (shape_group.uses_per_vertex_matrices) {
+            glUniform1fv(matrix_data_uniform_location, 256, general_matrix_ram.ptr);
+        } else {
+            glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, shape_group.position_matrix.ptr);
+        }
+
         glUniformMatrix4x3fv(texture_matrix_uniform_location,  1, GL_TRUE,  shape_group.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv  (mvp_uniform_location,             1, GL_FALSE, shape_group.projection_matrix.ptr);
 
@@ -3002,6 +3151,13 @@ final class Hollywood {
         glUniformBlockBinding(gl_program, vertex_config_block_index, 1);
         glBindBufferRange(GL_UNIFORM_BUFFER, 1, persistent_vertex_config_buffer,
                          shape_group.vertex_config_offset, VertexConfig.sizeof);
+
+        glColorMask(
+            shape_group.color_update_enable, 
+            shape_group.color_update_enable, 
+            shape_group.color_update_enable, 
+            shape_group.alpha_update_enable
+        );
 
         if (shape_group.depth_test_enabled) {
             glEnable(GL_DEPTH_TEST);
@@ -3110,8 +3266,10 @@ final class Hollywood {
         normal_attr_location              = glGetAttribLocation(gl_program, "normal");
         texcoord_attr_location            = glGetAttribLocation(gl_program, "texcoord");
         color_attr_location               = glGetAttribLocation(gl_program, "in_color");
+        matrix_index_attr_location        = glGetAttribLocation(gl_program, "matrix_index");
         position_matrix_uniform_location  = glGetUniformLocation(gl_program, "position_matrix");
         texture_matrix_uniform_location   = glGetUniformLocation(gl_program, "texture_matrix");
+        matrix_data_uniform_location      = glGetUniformLocation(gl_program, "matrix_data");
         mvp_uniform_location              = glGetUniformLocation(gl_program, "MVP");
         tev_config_block_index            = glGetUniformBlockIndex(gl_program, "TevConfig");
         vertex_config_block_index         = glGetUniformBlockIndex(gl_program, "VertexConfig");
@@ -3157,7 +3315,6 @@ final class Hollywood {
     void write_FIFO_WRITE_PTR(int target_byte, u8 value) {
         log_broadway("write FIFO_WRITE_PTR[%d] = %02x", target_byte, value);
         fifo_write_ptr = fifo_write_ptr.set_byte(target_byte, value);
-        fifo_write_ptr &= 0x1fffffff;
 
         if (target_byte == 3) {
             fifo_wrapped = value.bit(5);
@@ -3263,5 +3420,17 @@ final class Hollywood {
         foreach (debug_value; fifo_debug_history.get()) {
             writefln("FIFO_DEBUG: (%016x %s)", debug_value.value, debug_value.state);
         }
+    }
+
+    bool is_sussy() {
+        return tev_config.num_tev_stages == 2 &&
+            tev_config.stages[1].in_color_a == 2 &&
+            tev_config.stages[1].in_color_b == 0 &&
+            tev_config.stages[1].in_color_c == 8 &&
+            tev_config.stages[1].in_color_d == 15 &&
+            tev_config.stages[1].in_alfa_a == 1 &&
+            tev_config.stages[1].in_alfa_b == 2 &&
+            tev_config.stages[1].in_alfa_c == 6 &&
+            tev_config.stages[1].in_alfa_d == 7;
     }
 }

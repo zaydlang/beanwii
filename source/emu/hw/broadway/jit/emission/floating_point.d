@@ -147,6 +147,18 @@ EmissionAction emit_stfdu(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_stfsux(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
+    auto guest_rb = opcode.bits(11, 15).to_gpr;
+    auto guest_ra = opcode.bits(16, 20).to_gpr;
+    auto guest_rs = opcode.bits(21, 25).to_ps;
+
+    emit_store_ps_indexed(code, guest_rs, guest_ra, guest_rb, Update.Yes);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_stfsx(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
 
@@ -711,6 +723,34 @@ EmissionAction emit_fnmsubsx(Code code, u32 opcode) {
 
 code.label(end);
     code.set_ps(guest_rd, xmm0);
+
+    return EmissionAction.Continue;
+}
+
+EmissionAction emit_fnmsubx(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+    
+    auto guest_rd = opcode.bits(21, 25).to_ps;
+    auto guest_ra = opcode.bits(16, 20).to_ps;
+    auto guest_rb = opcode.bits(11, 15).to_ps;
+    auto guest_rc = opcode.bits(6, 10).to_ps;
+    bool rc = opcode.bit(0);
+    assert(rc == 0);
+
+    auto tmp = code.allocate_register();
+    auto tmp2 = code.allocate_register();
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+
+    code.mulsd(xmm0, xmm2);
+    code.subsd(xmm0, xmm1);
+    code.movq(tmp.cvt64(), xmm0);
+    code.mov(tmp2.cvt64(), 0x80000000_00000000);
+    code.xor(tmp.cvt64(), tmp2.cvt64());
+
+    code.set_fpr(guest_rd, tmp.cvt64());
 
     return EmissionAction.Continue;
 }

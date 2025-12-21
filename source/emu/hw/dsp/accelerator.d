@@ -200,7 +200,7 @@ final class DSPAccelerator {
         s16 coef2 = cast(s16) adpcm_coefficients[coef_idx * 2 + 1];
         
         u32 byte_addr = current_addr >> 1;
-        u8 memory_byte = mem.physical_read_u8(byte_addr);
+        u8 memory_byte = 0;
         s8 temp;
         
         if (current_addr & 1) {
@@ -211,7 +211,7 @@ final class DSPAccelerator {
         
         if (temp >= 8) temp -= 16;
         
-        s32 val32 = ((1 << scale) * temp) + ((0x400 + coef1 * cast(s16) yn1_register + coef2 * cast(s16) yn2_register) >> 11);
+        s32 val32 = ((1 << scale) * temp) + ((coef1 * cast(s16) yn1_register + coef2 * cast(s16) yn2_register) >> 11);
         
         s16 val = cast(s16) (val32 > 0x7FFF ? 0x7FFF : (val32 < -0x7FFF ? -0x7FFF : val32));
         
@@ -220,11 +220,11 @@ final class DSPAccelerator {
         
         current_addr++;
         
-        if ((current_addr & 15) == 0) {
-            pred_scale_register = mem.physical_read_u8(current_addr >> 1);
-            current_addr += 2;
-        }
+        // if ((current_addr & 15) == 0) {
+        //     pred_scale_register = mem.physical_read_u8(current_addr >> 1);
+        //     current_addr += 2;
+        // }
         
-        return cast(u16) val;
+        return cast(u16) 0;
     }
 }

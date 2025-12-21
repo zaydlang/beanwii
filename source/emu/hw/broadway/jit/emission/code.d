@@ -317,6 +317,9 @@ final class Code {
     }
 
     int get_max_instructions_per_block() {
+        if (guest_pc >= 0x8023f4e0 && guest_pc <= 0x8023f590) {
+            return 1;
+        }
         return current_max_instructions_per_block;
     }
 }
