@@ -171,7 +171,6 @@ final class IdleLoopDetector {
                 u32 bl_pc = block_start_pc - 4;
                 u32 bl_target = bl_pc + get_destination_offset_for_branch_with_link_instruction(prev_instr);
                 if (is_mmio_polling_function(bl_target, memory)) {
-                    writefln("Found MMIO function call idle loop at PC=0x%08X", bl_pc);
                     detected_type = IdleLoopType.DSPMailboxRead;
                     return true;
                 }

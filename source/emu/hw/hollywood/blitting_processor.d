@@ -30,6 +30,12 @@ final class BlittingProcessor {
     private u16 mem_scissor_offset_x;
     private u16 mem_scissor_offset_y;
 
+    private u8 alpha_comp0;
+    private u8 alpha_comp1;
+    private u8 alpha_aop;
+    private u8 alpha_ref0;
+    private u8 alpha_ref1;
+
     void write_efb_boxcoord_x(u16 value) {
         efb_boxcoord_x = value;
     }
@@ -109,6 +115,14 @@ final class BlittingProcessor {
     void write_mem_scissor_offset_y(u16 value) {
         mem_scissor_offset_y = value;
     }
+
+    void write_alpha_compare(u32 value) {
+        alpha_comp0 = cast(u8) value.bits(16, 18);
+        alpha_comp1 = cast(u8) value.bits(19, 21);
+        alpha_aop = cast(u8) value.bits(22, 23);
+        alpha_ref0 = cast(u8) value.bits(0, 7);
+        alpha_ref1 = cast(u8) value.bits(8, 15);
+    }
     
     u16 get_efb_boxcoord_x() { return efb_boxcoord_x; }
     u16 get_efb_boxcoord_y() { return efb_boxcoord_y; }
@@ -122,4 +136,10 @@ final class BlittingProcessor {
     u8 get_copy_clear_color_blue() { return copy_clear_color_blue; }
     u8 get_copy_clear_color_alpha() { return copy_clear_color_alpha; }
     u32 get_copy_clear_depth() { return copy_clear_depth; }
+
+    u8 get_alpha_comp0() { return alpha_comp0; }
+    u8 get_alpha_comp1() { return alpha_comp1; }
+    u8 get_alpha_aop() { return alpha_aop; }
+    u8 get_alpha_ref0() { return alpha_ref0; }
+    u8 get_alpha_ref1() { return alpha_ref1; }
 }

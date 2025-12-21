@@ -1,4 +1,5 @@
 #version 420
+#extension GL_ARB_gpu_shader_int64 : require
 
 out vec4 out_Color;
 
@@ -56,7 +57,12 @@ layout (std140, binding = 1) uniform TevConfig {
 	uniform vec4 k2;
 	uniform vec4 k3;
 	uniform int num_tev_stages;
-	uniform int swap_tables;
+	uniform uint64_t swap_tables;
+	uniform int alpha_comp0;
+	uniform int alpha_comp1;
+	uniform int alpha_aop;
+	uniform int alpha_ref0;
+	uniform int alpha_ref1;
 };
 
 vec4 color_regs[4];
@@ -75,7 +81,7 @@ vec4 get_color_from_ras_channel_id(int ras_channel_id, int stage) {
 		case 7: ras = vec4(1.0); break;
 	}
 
-	int swap = (swap_tables >> (stages[stage].ras_swap_table_index * 8)) & 0xFF;
+	int swap = int((swap_tables >> (stages[stage].ras_swap_table_index * 8)) & 0xFF);
 	
 	vec4 result;
 	result[0] = ras[(swap >> 0) & 3];
@@ -129,6 +135,20 @@ vec3 resolve_kcsel(int kcsel) {
 		case 0x1A: return k2.bbb;
 		case 0x1B: return k3.bbb;
 		default:   return vec3(0.0);
+	}
+}
+
+bool alpha_compare(float alpha, int comp, int ref) {
+	float ref_float = float(ref) / 255.0;
+	switch (comp) {
+		case 0: return false;
+		case 1: return alpha < ref_float;
+		case 2: return alpha == ref_float;
+		case 3: return alpha <= ref_float;
+		case 4: return alpha > ref_float;
+		case 5: return alpha != ref_float;
+		case 6: return alpha >= ref_float;
+		case 7: return true;
 	}
 }
 
@@ -270,11 +290,22 @@ void main(void) {
 	}
 
 	// last_alfa_dest = 1;
-	out_Color = vec4(last_color_dest, last_alfa_dest);
-
-	if (last_alfa_dest == 0) {
+	bool alpha_test0 = alpha_compare(last_alfa_dest, alpha_comp0, alpha_ref0);
+	bool alpha_test1 = alpha_compare(last_alfa_dest, alpha_comp1, alpha_ref1);
+	
+	bool alpha_pass;
+	switch (alpha_aop) {
+		case 0: alpha_pass = alpha_test0 && alpha_test1; break;
+		case 1: alpha_pass = alpha_test0 || alpha_test1; break;
+		case 2: alpha_pass = alpha_test0 != alpha_test1; break;
+		case 3: alpha_pass = alpha_test0 == alpha_test1; break;
+	}
+	
+	if (!alpha_pass) {
 		discard;
 	}
+
+	out_Color = vec4(last_color_dest, last_alfa_dest);
 	// out_Color = vec4(UV[0],UV[1],0,1);
 
 	// if (stages[0].in_alfa_a == 7 && stages[0].in_alfa_b == 7 && stages[0].in_alfa_c == 7 && stages[0].in_alfa_d == 6) {

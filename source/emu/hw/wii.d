@@ -108,6 +108,7 @@ final class Wii {
         this.hollywood.connect_command_processor(this.command_processor);
         this.gdb_stub.connect_mem(this.mem);
         this.gdb_stub.connect_broadway(this.broadway);
+        this.gdb_stub.connect_wii(this);
         // todo: ew
         this.wiimote.connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);
         this.wiimote.connect_scheduler(this.scheduler);
@@ -122,12 +123,12 @@ final class Wii {
             BroadwayReturnValue broadway_return_value = this.broadway.cycle(num_cycles);
             num_cycles -= broadway_return_value.num_cycles_ran;
 
-version (release) {
-} else {
+// version (release) {
+// } else {
             if (gdb_stub.needs_handling()) {
                 gdb_stub.enter();
             }
-}
+// }
         } while (num_cycles > 0);
 
         this.video_interface.scanout();
@@ -173,20 +174,20 @@ version (release) {
 
         // r1 is reserved for the stack, so let's just set the stack somewhere arbitrary that won't
         // conflict with the apploader code
-        this.broadway.set_gpr(1, 0x8001_0000);
+        this.broadway.set_gpr(1, 0x8156_6550);
 
         // arguments
-        this.broadway.set_gpr(3, 0x8060_0000);
-        this.broadway.set_gpr(4, 0x8060_0004);
-        this.broadway.set_gpr(5, 0x8060_0008);
+        this.broadway.set_gpr(3, 0x8000_4000);
+        this.broadway.set_gpr(4, 0x8000_4004);
+        this.broadway.set_gpr(5, 0x8000_4008);
 
         log_apploader("Running apploader...");
         this.broadway.set_pc(cast(u32) apploader.header.entry_point);
         this.broadway.run_until_return();
 
-        u32 init_ptr  = cast(u32) this.mem.cpu_read_u32(0x8060_0000);
-        u32 main_ptr  = cast(u32) this.mem.cpu_read_u32(0x8060_0004);
-        u32 close_ptr = cast(u32) this.mem.cpu_read_u32(0x8060_0008);
+        u32 init_ptr  = cast(u32) this.mem.cpu_read_u32(0x8000_4000);
+        u32 main_ptr  = cast(u32) this.mem.cpu_read_u32(0x8000_4004);
+        u32 close_ptr = cast(u32) this.mem.cpu_read_u32(0x8000_4008);
 
         log_apploader("Apploader entry() returned.");
         log_apploader("Apploader init  ptr = %08x", init_ptr);
@@ -202,9 +203,9 @@ version (release) {
         log_apploader("Apploader init() returned.");
 
         do {
-            this.broadway.set_gpr(3, 0x8060_0000);
-            this.broadway.set_gpr(4, 0x8060_0004);
-            this.broadway.set_gpr(5, 0x8060_0008);
+            this.broadway.set_gpr(3, 0x8000_4000);
+            this.broadway.set_gpr(4, 0x8000_4004);
+            this.broadway.set_gpr(5, 0x8000_4008);
             this.broadway.set_pc(main_ptr);
             this.broadway.run_until_return();
 
@@ -215,9 +216,9 @@ version (release) {
             // and found something that contradicted the documentation
             // i'm not even kidding
 
-            u32 disk_read_dest   = cast(u32) this.mem.cpu_read_u32(0x8060_0000);
-            u32 disk_read_size   = cast(u32) this.mem.cpu_read_u32(0x8060_0004);
-            u32 disk_read_offset = cast(u32) this.mem.cpu_read_u32(0x8060_0008) << 2;
+            u32 disk_read_dest   = cast(u32) this.mem.cpu_read_u32(0x8000_4000);
+            u32 disk_read_size   = cast(u32) this.mem.cpu_read_u32(0x8000_4004);
+            u32 disk_read_offset = cast(u32) this.mem.cpu_read_u32(0x8000_4008) << 2;
             log_apploader("Apploader main() read request: dest = %08x, size = %08x, offset = %08x", disk_read_dest, disk_read_size, disk_read_offset);
             for (int i = 0; i < disk_read_size; i++) {
                 this.mem.cpu_write_u8(disk_read_dest + i, wii_disk_data[disk_read_offset + i]);
@@ -273,13 +274,14 @@ version (release) {
         this.mem.cpu_write_u32(0x8000_3110, 0x8180_0000); // MEM1 Arena End (end of usable memory by the game)
         this.mem.cpu_write_u32(0x8000_3118, 0x0400_0000); // Physical MEM2 size
         this.mem.cpu_write_u32(0x8000_311C, 0x0400_0000); // Simulated MEM2 size
-        this.mem.cpu_write_u32(0x8000_3120, 0x9340_0000); // End of MEM2 addressable to PPC
+        this.mem.cpu_write_u32(0x8000_3120, 0x9360_0000); // End of MEM2 addressable to PPC
         this.mem.cpu_write_u32(0x8000_3124, 0x9000_0800); // Usable MEM2 Start
-        this.mem.cpu_write_u32(0x8000_3128, 0x933E_0000); // Usable MEM2 End
-        this.mem.cpu_write_u32(0x8000_3130, 0x933E_0000); // IOS IPC Buffer Start
-        this.mem.cpu_write_u32(0x8000_3134, 0x9340_0000); // IOS IPC Buffer End
+        this.mem.cpu_write_u32(0x8000_3128, 0x935E_0000); // Usable MEM2 End
+        this.mem.cpu_write_u32(0x8000_3130, 0x935E_0000); // IOS IPC Buffer Start
+        this.mem.cpu_write_u32(0x8000_3134, 0x9360_0000); // IOS IPC Buffer End
         this.mem.cpu_write_u32(0x8000_3138, 0x0000_0011); // Hollywood Version
-        this.mem.cpu_write_u32(0x8000_3140, 0x0035_161f); // IOS Version
+        // this.mem.cpu_write_u32(0x8000_3140, 0x0035_161f); // IOS Version nsmbwii
+        this.mem.cpu_write_u32(0x8000_3140, 0x0038_161e); // IOS Version galaxy2
         this.mem.cpu_write_u32(0x8000_3144, 0x0003_0310); // IOS Build Date (03/03/2010)
         this.mem.cpu_write_u32(0x8000_3148, 0x9360_0000); // IOS Reserved Heap Start
         this.mem.cpu_write_u32(0x8000_314C, 0x9362_0000); // IOS Reserved Heap End

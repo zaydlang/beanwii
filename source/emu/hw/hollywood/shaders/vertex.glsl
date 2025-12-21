@@ -6,6 +6,7 @@ in  vec3 normal;
 in vec2 texcoord[8];
 
 in vec4 in_color[2];
+in int matrix_index;
 
 out vec3 UV[8];
 out vec4 frag_color;
@@ -14,6 +15,7 @@ out vec4 color1;
 
 uniform mat4x3 position_matrix;
 uniform mat4x3 texture_matrix;
+uniform float matrix_data[256];
 uniform mat4 MVP;
 
 struct TexConfig {
@@ -51,9 +53,29 @@ vec3 get_texcoord(int idx) {
 	return result;
 }
 
-void main(void) {
-	gl_Position = MVP * vec4(position_matrix * vec4(in_Position, 1.0), 1.0);
+mat4x3 get_matrix(int index) {
+	int base = index * 4;
+	
+	return mat4x3(
+		matrix_data[base+0], matrix_data[base+4], matrix_data[base+8],
+		matrix_data[base+1], matrix_data[base+5], matrix_data[base+9],
+		matrix_data[base+2], matrix_data[base+6], matrix_data[base+10],
+		matrix_data[base+3], matrix_data[base+7], matrix_data[base+11]
+	);
+}
 
+void main(void) {
+	mat4x3 transform_matrix;
+	
+	if (matrix_index >= 0) {
+		transform_matrix = get_matrix(matrix_index);
+	} else {
+		transform_matrix = position_matrix;
+	}
+	
+	gl_Position = MVP * vec4(transform_matrix * vec4(in_Position, 1.0), 1.0);
+	// gl_Position.z = -gl_Position.z;
+	
 	for (int i = 0; i < 8; i++) {
 		vec3 src = get_texcoord(i);
 		vec3 coord = transpose(tex_configs[i].tex_matrix) * vec4(src, 1.0);

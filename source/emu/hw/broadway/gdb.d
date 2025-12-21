@@ -4,6 +4,7 @@ import core.stdc.stdlib;
 import core.sys.posix.signal;
 import emu.hw.broadway.cpu;
 import emu.hw.memory.strategy.memstrategy;
+import emu.hw.wii;
 import std.algorithm;
 import std.array;
 import std.conv;
@@ -35,6 +36,7 @@ final class GDBStub {
 
     Broadway cpu;
     Mem mem;
+    Wii wii;
 
     bool was_breakpoint_hit;
     bool needs_to_hang_at_start;
@@ -58,6 +60,7 @@ final class GDBStub {
             Command("l", "log",      "Log memory writes",    &log_memory_writes),
             Command("s", "step",     "Step one instruction", &step_instruction),
             Command("t", "stack",    "Show stack",           &show_stack),
+            Command("d", "dump",     "Dump memory to file",  &dump_memory),
             Command("q", "quit",     "Quit beanwii",         &quit_gdb),
         ];
     }
@@ -68,6 +71,10 @@ final class GDBStub {
 
     void connect_mem(Mem mem) {
         this.mem = mem;
+    }
+
+    void connect_wii(Wii wii) {
+        this.wii = wii;
     }
 
     bool needs_handling() {
@@ -228,6 +235,13 @@ final class GDBStub {
         for (int i = 0; i < 100; i++) {
             writef("  %08x: %08x\n", stack + i * 4, mem.cpu_read_u32(stack + i * 4));
         }
+        return false;
+    }
+
+    bool dump_memory(string command) {
+        writef("  Dumping memory to bean.bdp, mem1.bin, mem2.bin...\n");
+        wii.debug_dump_memory();
+        writef("  Memory dump complete\n");
         return false;
     }
 

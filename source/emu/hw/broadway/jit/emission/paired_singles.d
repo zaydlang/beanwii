@@ -292,6 +292,32 @@ EmissionAction emit_ps_maddx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
+EmissionAction emit_ps_sel(Code code, u32 opcode) {
+    check_fp_enabled_or_jump(code);
+
+    abort_if_no_pse(code);
+
+    auto guest_ra = opcode.bits(16, 20).to_fpr;
+    auto guest_rb = opcode.bits(11, 15).to_fpr;
+    auto guest_rc = opcode.bits(6, 10).to_fpr;
+    auto guest_rd = opcode.bits(21, 25).to_fpr;
+    assert(opcode.bit(0) == 0);
+
+    code.get_ps(guest_ra, xmm0);
+    code.get_ps(guest_rb, xmm1);
+    code.get_ps(guest_rc, xmm2);
+
+    code.xorpd(xmm3, xmm3);
+    code.cmppd(xmm0, xmm3, 0xD);
+    code.pandn(xmm1, xmm0);
+    code.pand(xmm2, xmm0);
+    code.por(xmm1, xmm2);
+
+    code.set_ps(guest_rd, xmm1);
+
+    return EmissionAction.Continue;
+}
+
 EmissionAction emit_ps_sum0(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
 
@@ -691,7 +717,7 @@ EmissionAction emit_ps_nmsubx(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm1);
     code.get_ps(guest_rc, xmm2);
     code.mulpd(xmm0, xmm2);
-    code.subps(xmm0, xmm1);
+    code.subpd(xmm0, xmm1);
     code.mov(tmp.cvt64(), 0x8000_0000_0000_0000UL);
     code.movq(xmm1, tmp.cvt64());
     code.vpbroadcastq(xmm1, xmm1);
@@ -802,6 +828,7 @@ void quantize(Code code, XMM src, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM 
 
     code.movd(tmp_xmm, tmp1);
     code.mulss(tmp_xmm, src);
+    code.roundsd(tmp_xmm, tmp_xmm, 3);
     code.cvtss2si(tmp1, tmp_xmm);
 
     code.cmp(tmp2, 4);

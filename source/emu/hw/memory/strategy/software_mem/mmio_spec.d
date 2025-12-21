@@ -134,6 +134,8 @@ final class Mmio {
         MmioRegister("serial_interface",     "SIEXILK",               0xCD00_643C, 4, READ_WRITE),
         MmioRegister("serial_interface",     "SIOBUF",                0xCD00_6480, 4, READ_WRITE),
         MmioRegister("video_interface",      "GPIOB_STUB",            0xCD00_00C0, 4, READ_WRITE).repeat(7, 4),
+
+        MmioRegister("memory",               "MAGIC_PRINTF",          0xCC00_6969, 1,      WRITE),
     ];
 
     this() {

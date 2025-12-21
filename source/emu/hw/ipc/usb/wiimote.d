@@ -198,6 +198,7 @@ final class Wiimote {
 
     void handle_output_report(OutputReport output_report) {
         switch (output_report.report_id) {
+            case OutputReportId.RumbleReport:             handle_rumble                    (output_report.rumble_report);              break;
             case OutputReportId.PlayerLEDs:               handle_player_leds               (output_report.player_leds);                break;
             case OutputReportId.DataReportingMode:        handle_data_reporting_mode       (output_report.data_reporting_mode);        break;
             case OutputReportId.IRCameraEnable:           handle_ir_camera_enable          (output_report.ir_camera_enable);           break;
@@ -207,7 +208,7 @@ final class Wiimote {
             case OutputReportId.ReadMemoryAndRegisters:   handle_read_memory_and_registers (output_report.read_memory_and_registers);  break;
             case OutputReportId.WriteMemoryAndRegisters:  handle_write_memory_and_registers(output_report.write_memory_and_registers); break;
             case OutputReportId.IRCameraEnable2:          handle_ir_camera_enable2         (output_report.ir_camera_enable2);          break; 
-            case OutputReportId.RumbleReport:             handle_rumble                    (output_report.rumble_report);              break;
+            case OutputReportId.SpeakerData:              handle_speaker_data              (output_report.speaker_data);               break;
         
             default: error_wiimote("Output report not implemented: %s", output_report.report_id); break;
         }
@@ -427,6 +428,10 @@ final class Wiimote {
         log_wiimote("RumbleReport: %s", report.rumble ? "On" : "Off");
 
         trivial_success(OutputReportId.RumbleReport);
+    }
+
+    void handle_speaker_data(SpeakerData report) {
+        trivial_success(OutputReportId.SpeakerData);
     }
 
     // TODO: make this less bad

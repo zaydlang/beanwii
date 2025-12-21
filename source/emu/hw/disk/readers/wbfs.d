@@ -188,6 +188,8 @@ final class WbfsReader : FileReader {
     }
 
     public void decrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        log_wbfs("decrypted_disk_read(slot: %d, address: %x, size: %x)", disk_slot, address, size);
+        
         size_t first_sector_number                  = address / 0x7C00;
         size_t first_sector_offset_within_partition = first_sector_number * 0x8000;
         size_t offset_within_first_sector           = address % 0x7C00;
@@ -217,6 +219,8 @@ final class WbfsReader : FileReader {
     }
 
     public void encrypted_disk_read(size_t disk_slot, size_t address, void* out_buffer, size_t size) {
+        log_wbfs("encrypted_disk_read(slot: %d, address: %x, size: %x)", disk_slot, address, size);
+
         size_t first_sector_number                  = address / 0x7C00;
         size_t first_sector_offset_within_partition = first_sector_number * 0x8000;
         size_t offset_within_first_sector           = address % 0x7C00;

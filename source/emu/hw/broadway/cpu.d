@@ -150,40 +150,42 @@ final class Broadway {
         while (elapsed < num_cycles) {
             exception_raised = false;
 
-        if (state.pc == 0x80494568 && state.ps[0].ps0 == 0x3ff19999a0000000) {
-            import std.stdio;
-            // writefln("Stack pointer: %08x", state.gprs[1]);
+        if (state.pc == 0x80245b40) {
+            writefln("bad function %x %x %x from %x\n", state.gprs[3], state.gprs[4], state.gprs[5], state.lr);
         }
 
+        if (state.pc >= 0x8023f4e0 && state.pc <= 0x8023f590) {
+            writefln("sussy fp %x from %x\n", state.pc, state.lr);
+                log_state(&state);
+        }
+        // for (int i = 0; i < 32; i++) {
+        //     // if (state.gprs[i] == 0x90a2) {
+        //     //     import std.stdio;
+        //     //     writefln("sussy gpr %d at %x from %x\n", i, state.pc, state.lr);
+        //     //     log_state(&state);
+        //     // }
+
+        //     double ps0 = force_cast!double(state.ps[i].ps0);
+        //     double ps1 = force_cast!double(state.ps[i].ps1);
+        //     double diff_ps0 = (ps0 - -25.61703);
+        //     double diff_ps1 = (ps1 - -25.61703);
+        //     double diff_ps0_abs = diff_ps0 < 0 ? -diff_ps0 : diff_ps0;
+        //     double diff_ps1_abs = diff_ps1 < 0 ? -diff_ps1 : diff_ps1;
+        //     if (diff_ps1_abs < 0.00001 || diff_ps0_abs < 0.00001) {
+        //         import std.stdio;
+        //         writefln("sussy ps %d at %x from %x\n", i, state.pc, state.lr);
+        //         log_state(&state);
+        //     }
+        // }
+
+        bool was =(state.pc >= 0x805b86f0 && state.pc <= 0x805b8cd4);
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
 
-version (release) {
-} else {
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
                 gdb_stub.breakpoint_hit(state.pc);
                 return BroadwayReturnValue(elapsed, true);
             }
-}
-
-        // if (state.pc == 0x80494570) {
-        // if (state.pc >= 0x80494400 && state.pc <= 0x80494588) {
-        if (state.pc == 0x80494cfc) {
-            // log_tmp("geotussy");
-        }
-
-        if (state.pc == 0x80494528) {
-            // log_tmp("geotail pointer: %08x %x", state.gprs[5], state.gprs[6]);
-        }
-
-        if (state.pc== 0x80494578) {
-            import std.stdio;
-            // log_tmp("BAD BAD BAD");
-        }
-
-        if (state.pc >= 0x80493b5c && state.pc  <= 0x80493b84) {
-            // log_state(&state);
-        }
 
             if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
                 raise_exception(ExceptionType.FloatingPointUnavailable);
