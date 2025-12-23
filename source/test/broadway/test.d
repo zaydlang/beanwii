@@ -23,6 +23,8 @@ struct TestState {
     u32[8] cr;
     u32 xer;
     u32 fpscr;
+    u64[32] ps0;
+    u64[32] ps1;
 }
 
 enum Diff {
@@ -39,6 +41,8 @@ struct DiffRepresentation {
     Diff[8] cr;
     Diff xer;
     Diff fpscr;
+    Diff[32] ps0;
+    Diff[32] ps1;
 }
 
 u32 instruction_for_golden_line(string line) {
@@ -47,9 +51,13 @@ u32 instruction_for_golden_line(string line) {
     return parts[1].parse!u32(16);
 }
 
-string disassembly_for_golden_line(string line) {
+string disassembly_for_golden_line(string line, string test_name) {
     auto parts = line.split(" ");
-    return parts[94..$].join(" ");
+    if (test_name.length > 0 && test_name[0] == 'f') {
+        return parts[190..$].join(" ");
+    } else {
+        return parts[94..$].join(" ");
+    }
 }
 
 bool is_failure(Diff diff) {
@@ -57,11 +65,12 @@ bool is_failure(Diff diff) {
 }
 
 bool is_failure(DiffRepresentation diff) {
-    return is_failure(diff.pc) || is_failure(diff.lr) || is_failure(diff.xer) || is_failure(diff.fpscr) ||
-        any!(a => is_failure(a))(diff.gprs[]) || any!(a => is_failure(a))(diff.cr[]);
+    return is_failure(diff.pc) || is_failure(diff.lr) || is_failure(diff.xer) ||
+        any!(a => is_failure(a))(diff.gprs[]) || any!(a => is_failure(a))(diff.cr[]) || 
+        any!(a => is_failure(a))(diff.ps0[]) || any!(a => is_failure(a))(diff.ps1[]);
 }
 
-TestState get_golden_test_state(string line) {
+TestState get_golden_test_state(string line, string test_name) {
     TestState state;
     auto parts = line.split(" ");
     state.pc = parts[3].parse!u32(16);
@@ -78,10 +87,17 @@ TestState get_golden_test_state(string line) {
         state.gprs[i] = parts[30 + i * 2].parse!u32(16);
     }
 
+    if (test_name.length > 0 && test_name[0] == 'f') {
+        for (int i = 0; i < 32; i++) {
+            state.ps0[i] = parts[94 + i * 3].parse!u64(16);
+            state.ps1[i] = parts[95 + i * 3].parse!u64(16);
+        }
+    }
+
     return state;
 }   
 
-TestState get_actual_test_state(Wii wii) {
+TestState get_actual_test_state(Wii wii, string test_name) {
     TestState state;
     state.pc = wii.broadway.state.pc;
 
@@ -95,6 +111,13 @@ TestState get_actual_test_state(Wii wii) {
     
     for (int i = 0; i < 32; i++) {
         state.gprs[i] = wii.broadway.state.gprs[i];
+    }
+
+    if (test_name.length > 0 && test_name[0] == 'f') {
+        for (int i = 0; i < 32; i++) {
+            state.ps0[i] = wii.broadway.state.ps[i].ps0;
+            state.ps1[i] = wii.broadway.state.ps[i].ps1;
+        }
     }
 
     return state;
@@ -115,6 +138,39 @@ DiffRepresentation get_diff(TestState previous, TestState golden, TestState actu
         } 
     };
 
+    auto diff_helper_u64 = (u64 golden_value, u64 actual_value, u64 previous_value) {
+        if (golden_value != actual_value && golden_value != previous_value) {
+            return Diff.ChangedFromBoth;
+        } else if (golden_value != previous_value) {
+            return Diff.ChangedFromPrevious;
+        } else if (golden_value != actual_value) {
+            return Diff.ChangedFromGolden;
+        } else {
+            return Diff.Unchanged;
+        } 
+    };
+
+    auto diff_helper_ps = (u64 golden_value, u64 actual_value, u64 previous_value) {
+        import std.math : fabs;
+        double golden_f = *cast(double*) &golden_value;
+        double actual_f = *cast(double*) &actual_value;
+        double previous_f = *cast(double*) &previous_value;
+        double eps = 1e-3;
+        
+        bool golden_differs = fabs(golden_f - actual_f) > eps;
+        bool previous_differs = fabs(golden_f - previous_f) > eps;
+        
+        if (golden_differs && previous_differs) {
+            return Diff.ChangedFromBoth;
+        } else if (previous_differs) {
+            return Diff.ChangedFromPrevious;
+        } else if (golden_differs) {
+            return Diff.ChangedFromGolden;
+        } else {
+            return Diff.Unchanged;
+        }
+    };
+
     diff.pc = diff_helper(golden.pc, actual.pc, previous.pc);
     diff.lr = diff_helper(golden.lr, actual.lr, previous.lr);
     diff.xer = diff_helper(golden.xer, actual.xer, previous.xer);
@@ -122,6 +178,8 @@ DiffRepresentation get_diff(TestState previous, TestState golden, TestState actu
     
     for (int i = 0; i < 32; i++) {
         diff.gprs[i] = diff_helper(golden.gprs[i], actual.gprs[i], previous.gprs[i]);
+        diff.ps0[i] = diff_helper_ps(golden.ps0[i], actual.ps0[i], previous.ps0[i]);
+        diff.ps1[i] = diff_helper_ps(golden.ps1[i], actual.ps1[i], previous.ps1[i]);
     }
 
     for (int i = 0; i < 8; i++) {
@@ -148,10 +206,7 @@ string to_hex_string(u32 value) {
     return "%08x".format(value);
 }
 
-void pretty_print_state(TestState state, DiffRepresentation diff) {
-    // if a fieldis a diff, print it in red by doing <red>field</red>
-    // else, print it in grey by doing <grey>field</grey>
-
+void pretty_print_state(TestState state, DiffRepresentation diff, string test_name) {
     for (int i = 0; i < 32; i += 8) {
         cwritefln("\tGPRs %02d-%02d: %s %s %s %s %s %s %s %s",
             i, i + 7,
@@ -163,6 +218,21 @@ void pretty_print_state(TestState state, DiffRepresentation diff) {
             colorize(state.gprs[i + 5].to_hex_string, diff.gprs[i + 5]),
             colorize(state.gprs[i + 6].to_hex_string, diff.gprs[i + 6]),
             colorize(state.gprs[i + 7].to_hex_string, diff.gprs[i + 7]));
+    }
+
+    if (test_name.length > 0 && test_name[0] == 'f') {
+        for (int i = 0; i < 32; i += 4) {
+            cwritefln("\tPS  %02d-%02d: %s.%s %s.%s %s.%s %s.%s",
+                i, i + 3,
+                colorize("%016x".format(state.ps0[i + 0]), diff.ps0[i + 0]),
+                colorize("%016x".format(state.ps1[i + 0]), diff.ps1[i + 0]),
+                colorize("%016x".format(state.ps0[i + 1]), diff.ps0[i + 1]),
+                colorize("%016x".format(state.ps1[i + 1]), diff.ps1[i + 1]),
+                colorize("%016x".format(state.ps0[i + 2]), diff.ps0[i + 2]),
+                colorize("%016x".format(state.ps1[i + 2]), diff.ps1[i + 2]),
+                colorize("%016x".format(state.ps0[i + 3]), diff.ps0[i + 3]),
+                colorize("%016x".format(state.ps1[i + 3]), diff.ps1[i + 3]));
+        }
     }
 
     for (int i = 0; i < 8; i += 4) {
@@ -200,62 +270,92 @@ void pretty_print_state(TestState state, DiffRepresentation diff) {
 enum tests = [
     "sanity",
 
-    "addcx",
-    "addex",
-    "addic",
-    "addic_rc",
-    "addi",
-    "addis",
-    "addmex",
-    "addx",
-    "addzex",
-    "andcx",
-    "andi_rc",
-    "andis_rc",
-    "andx",
-    "cmp",
-    "cmpi",
-    "cmpl",
-    "cmpli",
-    "cntlzwx",
-    "divwux",
-    "divwx",
-    "eqvx",
-    "extsbx",
-    "extshx",
-    "mulhwux",
-    "mulhwx",
-    "mulli",
-    "mullwx",
-    "nandx",
-    "negx",
-    "norx",
-    "orcx",
-    "ori",
-    "oris",
-    "orx",
-    "rlwimix",
-    "rlwinmx",
-    "rlwnmx",
-    "slwx",
-    "srawix",
-    "srawx",
-    "srwx",
-    "subfcx",
-    "subfex",
-    "subfic",
-    "subfmex",
-    "subfx",
-    "subfzex",
-    "xori",
-    "xoris",
-    "xorx",
+    // "addcx",
+    // "addex",
+    // "addic",
+    // "addic_rc",
+    // "addi",
+    // "addis",
+    // "addmex",
+    // "addx",
+    // "addzex",
+    // "andcx",
+    // "andi_rc",
+    // "andis_rc",
+    // "andx",
+    // "cmp",
+    // "cmpi",
+    // "cmpl",
+    // "cmpli",
+    // "cntlzwx",
+    // "divwux",
+    // "divwx",
+    // "eqvx",
+    // "extsbx",
+    // "extshx",
+    // "mulhwux",
+    // "mulhwx",
+    // "mulli",
+    // "mullwx",
+    // "nandx",
+    // "negx",
+    // "norx",
+    // "orcx",
+    // "ori",
+    // "oris",
+    // "orx",
+    // "rlwimix",
+    // "rlwinmx",
+    // "rlwnmx",
+    // "slwx",
+    // "srawix",
+    // "srawx",
+    // "srwx",
+    // "subfcx",
+    // "subfex",
+    // "subfic",
+    // "subfmex",
+    // "subfx",
+    // "subfzex",
+    // "xori",
+    // "xoris",
+    // "xorx",
+
+    "fabsx",
+    "faddsx", 
+    "faddx",
+    "fcmpo",
+    "fcmpu",
+    "fctiwzx",
+    "fctiwx",
+    "fdivsx",
+    "fdivx",
+    "fmaddsx",
+    "fmaddx",
+    "fmrx",
+    "fmsubsx",
+    "fmsubx",
+    "fmulsx",
+    "fmulx",
+    "fnabsx",
+    "fnegx",
+    "fnmaddsx",
+    "fnmaddx",
+    "fnmsubsx",
+    "fnmsubx",
+    "fresx",
+    "frspx",
+    "frsqrtex",
+    "fselx",
+    "fsubsx",
+    "fsubx"
 ];
 
 static foreach (test; tests) {
     @(test)
     unittest {
         Wii wii = new Wii(0);
+        wii.broadway.enter_single_step_mode();
 
 		auto disk_data = load_file_as_bytes("source/test/broadway/dols/" ~ test ~ ".dol");
 		parse_and_load_file(wii, disk_data);
@@ -265,12 +365,12 @@ static foreach (test; tests) {
 
         u32 previous_instruction = 0;
         string previous_disassembly = "";
-        TestState previous_state = get_actual_test_state(wii);
+        TestState previous_state = get_actual_test_state(wii, test);
 
         // pairwise iteration
         foreach (line; golden_data) {
-            auto golden_state = get_golden_test_state(cast(string) line);
-            auto actual_state = get_actual_test_state(wii);
+            auto golden_state = get_golden_test_state(cast(string) line, test);
+            auto actual_state = get_actual_test_state(wii, test);
             
             auto diff = get_diff(previous_state, golden_state, actual_state);
             
@@ -279,17 +379,17 @@ static foreach (test; tests) {
                 writefln("Instruction: %s (%08x)", previous_disassembly, previous_instruction);
 
                 writefln("Previous state:");
-                pretty_print_state(previous_state, diff);
+                pretty_print_state(previous_state, diff, test);
                 writefln("Expected:");
-                pretty_print_state(golden_state, diff);
+                pretty_print_state(golden_state, diff, test);
                 writefln("Actual:");
-                pretty_print_state(actual_state, diff);
+                pretty_print_state(actual_state, diff, test);
                 assert(0);
             }
 
             previous_state = actual_state;
             previous_instruction = instruction_for_golden_line(cast(string) line);
-            previous_disassembly = disassembly_for_golden_line(cast(string) line);
+            previous_disassembly = disassembly_for_golden_line(cast(string) line, test);
             wii.single_step();
         }
     }

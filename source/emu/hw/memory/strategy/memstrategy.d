@@ -5,6 +5,7 @@ enum MemStrategy {
     HardwareAcceleratedMem,
 }
 
+// enum ChosenMemStrategy = MemStrategy.SoftwareMem;
 enum ChosenMemStrategy = MemStrategy.HardwareAcceleratedMem;
 
 static if (ChosenMemStrategy == MemStrategy.SoftwareMem) {

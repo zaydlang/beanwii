@@ -247,9 +247,9 @@ EmissionAction emit_fsel(Code code, u32 opcode) {
     bool rc = opcode.bit(0);
     assert(rc == 0);
 
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
+    code.get_fpr(guest_ra, xmm0);
+    code.get_fpr(guest_rb, xmm1);
+    code.get_fpr(guest_rc, xmm2);
 
     auto smaller = code.fresh_label();
     auto end = code.fresh_label();
@@ -265,7 +265,7 @@ code.label(smaller);
     code.movq(xmm0, xmm1);
 
 code.label(end);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -349,7 +349,7 @@ EmissionAction emit_fresx(Code code, u32 opcode) {
     auto paired_single = code.fresh_label();
     auto end = code.fresh_label();
 
-    code.get_ps(guest_rb, xmm0);
+    code.get_fpr(guest_rb, xmm0);
     auto hid2 = code.get_reg(GuestReg.HID2);
     code.test(hid2, 1 << 29);
     code.jnz(paired_single);
@@ -478,12 +478,12 @@ EmissionAction emit_fabsx(Code code, u32 opcode) {
     auto tmp = code.allocate_register();
     auto tmp2 = code.allocate_register();
 
-    code.get_ps(guest_rb, xmm0);
+    code.get_fpr(guest_rb, xmm0);
     code.movq(tmp.cvt64(), xmm0);
     code.mov(tmp2.cvt64(), ~0x80000000_00000000);
     code.and(tmp.cvt64(), tmp2.cvt64());
     code.movq(xmm0, tmp.cvt64());
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -529,13 +529,13 @@ EmissionAction emit_fmsubx(Code code, u32 opcode) {
     bool rc = opcode.bit(0);
     assert(rc == 0);
 
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
+    code.get_fpr(guest_ra, xmm0);
+    code.get_fpr(guest_rb, xmm1);
+    code.get_fpr(guest_rc, xmm2);
 
     code.mulsd(xmm0, xmm2);
     code.subsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -550,9 +550,9 @@ EmissionAction emit_fmsubsx(Code code, u32 opcode) {
     bool rc = opcode.bit(0);
     assert(rc == 0);
 
-    code.get_ps(guest_ra, xmm0);
-    code.get_ps(guest_rb, xmm1);
-    code.get_ps(guest_rc, xmm2);
+    code.get_fpr(guest_ra, xmm0);
+    code.get_fpr(guest_rb, xmm1);
+    code.get_fpr(guest_rc, xmm2);
 
     auto paired_single = code.fresh_label();
     auto end = code.fresh_label();
@@ -584,11 +584,11 @@ EmissionAction emit_frsqrtex(Code code, u32 opcode) {
     bool rc = opcode.bit(0);
     assert(rc == 0);
 
-    code.get_ps(guest_rb, xmm0);
+    code.get_fpr(guest_rb, xmm0);
     code.cvtsd2ss(xmm0, xmm0);
     code.rsqrtss(xmm0, xmm0);
     code.cvtss2sd(xmm0, xmm0);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -641,12 +641,12 @@ EmissionAction emit_fnegx(Code code, u32 opcode) {
     auto tmp = code.allocate_register();
     auto tmp2 = code.allocate_register();
 
-    code.get_ps(guest_rb, xmm0);
+    code.get_fpr(guest_rb, xmm0);
     code.movq(tmp.cvt64(), xmm0);
     code.mov(tmp2.cvt64(), 0x80000000_00000000);
     code.xor(tmp.cvt64(), tmp2.cvt64());
     code.movq(xmm0, tmp.cvt64());
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }

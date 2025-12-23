@@ -309,11 +309,11 @@ EmissionAction emit_ps_sel(Code code, u32 opcode) {
 
     code.xorpd(xmm3, xmm3);
     code.cmppd(xmm0, xmm3, 0xD);
-    code.pandn(xmm1, xmm0);
     code.pand(xmm2, xmm0);
-    code.por(xmm1, xmm2);
+    code.pandn(xmm0, xmm1);
+    code.por(xmm0, xmm2);
 
-    code.set_ps(guest_rd, xmm1);
+    code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }

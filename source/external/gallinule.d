@@ -2382,7 +2382,7 @@ import std.stdio;
     auto movd(RM)(XMM dst, RM src) if (valid!(RM, 32)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0x66, 0x0f, 0x6e, dst, src);
     auto movd(RM)(RM dst, XMM src) if (valid!(RM, 32)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0x66, 0x0f, 0x7e, src, dst);
     // TODO: This won't flip dst and src but should also also should generate a REX
-    auto movq(RM)(XMM dst, RM src) if (valid!(RM, 64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0x66, 0x0f, 0x6e, dst, src);
+    auto movq(RM)(XMM dst, RM src) if (is(RM == Reg!64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0x66, 0x0f, 0x6e, dst, src);
     auto movq(RM)(RM dst, XMM src) if (valid!(RM, 64)) => emit!(0, SSE, 128, DEFAULT, 0, true)(0x66, 0x0f, 0x7e, src, dst);
 
     auto movupd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x10, dst, src);
@@ -2394,6 +2394,11 @@ import std.stdio;
     auto addsubps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0xf2, 0x0f, 0xd0, dst, src);
     auto addsubpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xd0, dst, src);
     auto blendpd(RM)(XMM dst, RM src, ubyte imm8) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x3a, 0x0d, dst, src, imm8);
+    
+    auto pand(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xdb, dst, src);
+    auto pandn(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xdf, dst, src);
+    auto por(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xeb, dst, src);
+    auto cmppd(RM)(XMM dst, RM src, ubyte comp) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0xc2, dst, src, comp);
     /* ====== AVX ====== */
 
     // auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src, imm8);
@@ -4130,4 +4135,26 @@ unittest
     import std.stdio;
     writefln(block.finalize().toHexString);
     assert(block.finalize().toHexString == "66458B650090");
+}
+
+
+@("gallinule_pandn_pand_por_cmppd")
+unittest
+{
+    Block!true block;
+    with (block) {
+        pandn(xmm3, xmm2);
+        pand(xmm3, xmm2);
+        por(xmm3, xmm2);
+        cmppd(xmm3, xmm2, 0xd);
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString == 
+        "660FDFDA" ~
+        "660FDBDA" ~
+        "660FEBDA" ~
+        "660FC2DA0D");
 }
