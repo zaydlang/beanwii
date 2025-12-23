@@ -123,6 +123,11 @@ final class Code {
         return host_reg;
     }
 
+    void get_fpr(GuestReg reg, XMM dest) {
+        auto offset = get_reg_offset(reg);
+        this.movq(dest, qwordPtr(rdi, cast(int) offset));
+    }
+
     void get_ps(GuestReg reg, XMM dest) {
         auto offset = get_reg_offset(reg);
         this.movupd(dest, xmmwordPtr(rdi, cast(int) offset));
@@ -141,6 +146,11 @@ final class Code {
     void set_fpr(GuestReg reg, R64 host_reg) {
         auto offset = get_reg_offset(reg);
         this.mov(qwordPtr(rdi, cast(int) offset), host_reg);
+    }
+
+    void set_fpr(GuestReg reg, XMM src) {
+        auto offset = get_reg_offset(reg);
+        this.movq(qwordPtr(rdi, cast(int) offset), src);
     }
 
     void set_ps(GuestReg reg, XMM src) {
@@ -317,9 +327,9 @@ final class Code {
     }
 
     int get_max_instructions_per_block() {
-        if (guest_pc >= 0x8023f4e0 && guest_pc <= 0x8023f590) {
-            return 1;
-        }
+        // if (guest_pc >= 0x8023f4e0 && guest_pc <= 0x8023f590) {
+            // return 1;
+        // }
         return current_max_instructions_per_block;
     }
 }

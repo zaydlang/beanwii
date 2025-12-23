@@ -150,14 +150,11 @@ final class Broadway {
         while (elapsed < num_cycles) {
             exception_raised = false;
 
-        if (state.pc == 0x80245b40) {
-            writefln("bad function %x %x %x from %x\n", state.gprs[3], state.gprs[4], state.gprs[5], state.lr);
-        }
+        // if (state.pc == 0x80245b40) {
+        //     writefln("bad function %x %x %x from %x\n", state.gprs[3], state.gprs[4], state.gprs[5], state.lr);
+        // }
 
-        if (state.pc >= 0x8023f4e0 && state.pc <= 0x8023f590) {
-            writefln("sussy fp %x from %x\n", state.pc, state.lr);
-                log_state(&state);
-        }
+
         // for (int i = 0; i < 32; i++) {
         //     // if (state.gprs[i] == 0x90a2) {
         //     //     import std.stdio;
@@ -167,8 +164,8 @@ final class Broadway {
 
         //     double ps0 = force_cast!double(state.ps[i].ps0);
         //     double ps1 = force_cast!double(state.ps[i].ps1);
-        //     double diff_ps0 = (ps0 - -25.61703);
-        //     double diff_ps1 = (ps1 - -25.61703);
+        //     double diff_ps0 = (ps0 - 5.49717);
+        //     double diff_ps1 = (ps1 - 5.49717);
         //     double diff_ps0_abs = diff_ps0 < 0 ? -diff_ps0 : diff_ps0;
         //     double diff_ps1_abs = diff_ps1 < 0 ? -diff_ps1 : diff_ps1;
         //     if (diff_ps1_abs < 0.00001 || diff_ps0_abs < 0.00001) {
@@ -176,6 +173,11 @@ final class Broadway {
         //         writefln("sussy ps %d at %x from %x\n", i, state.pc, state.lr);
         //         log_state(&state);
         //     }
+        // }
+
+        // if (state.pc >= 0x80007268 && state.pc <= 0x80007268) {
+            // writefln("sussy fp %x from %x\n", state.pc, state.lr);
+                // log_state(&state);
         // }
 
         bool was =(state.pc >= 0x805b86f0 && state.pc <= 0x805b8cd4);

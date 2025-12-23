@@ -10,6 +10,7 @@ import emu.hw.pe.pe;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import std.file;
+import std.stdio;
 import util.bitop;
 import util.force_cast;
 import util.log;
@@ -387,6 +388,8 @@ final class Hollywood {
     private bool last_command_was_display_list = false;
     private bool debug_next_commands = false;
     private uint debug_commands_left = 0;
+    private uint total_coalescable_pairs = 0;
+    private uint total_shape_groups = 0;
 
     u32[16] array_bases;
     u32[16] array_strides;
@@ -2899,12 +2902,21 @@ final class Hollywood {
         glFlushMappedBufferRange(GL_ARRAY_BUFFER, 0, current_vertex_offset * Vertex.sizeof);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
         glFlushMappedBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, current_index_offset * uint.sizeof);
-        draw_shape_groups(shape_groups.all()[0 .. shape_groups.length]);
+        
+        auto shape_groups_array = shape_groups.all()[0 .. shape_groups.length];
+        total_coalescable_pairs += count_coalescable_shapegroups(shape_groups_array);
+        total_shape_groups += shape_groups_array.length;
+        
+        draw_shape_groups(shape_groups_array);
         this.shape_groups.reset();
     }
     
     public void render_xfb() {
         if (xfb_has_data) {
+            writefln("Coalescable pairs: %d/%d", total_coalescable_pairs, total_shape_groups);
+            total_coalescable_pairs = 0;
+            total_shape_groups = 0;
+            
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2947,11 +2959,9 @@ final class Hollywood {
     private int count_coalescable_shapegroups(ShapeGroup[] shape_groups) {
         int coalescable_pairs = 0;
         
-        for (int i = 0; i < shape_groups.length; i++) {
-            for (int j = i + 1; j < shape_groups.length; j++) {
-                if (shapegroups_coalescable(shape_groups[i], shape_groups[j])) {
-                    coalescable_pairs++;
-                }
+        for (int i = 0; i + 1 < shape_groups.length; i++) {
+            if (shapegroups_coalescable(shape_groups[i], shape_groups[i + 1])) {
+                coalescable_pairs++;
             }
         }
         
