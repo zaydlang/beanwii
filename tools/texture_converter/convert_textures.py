@@ -6,8 +6,8 @@ from PIL import Image
 for filename in os.listdir('texture_dumps'):
     if filename.endswith('.rgba'):
         parts = filename.replace('.rgba', '').split('_')
-        width = int(parts[2].split('x')[0])
-        height = int(parts[2].split('x')[1])
+        width = int(parts[3])
+        height = int(parts[4])
         
         with open(f'texture_dumps/{filename}', 'rb') as f:
             data = f.read()

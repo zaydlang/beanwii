@@ -197,8 +197,8 @@ def generate_extension_table_for(extension_instructions):
     return table
 
 def write_extension_decoder(f, extension_instructions):
-    f.write('ExtensionInstruction decode_extension(u16 instruction) {\n')
-    f.write('\tu8 ext_opcode = instruction & 0xFF;\n')
+    f.write('ExtensionInstruction decode_extension(u16 instruction, u16 mask) {\n')
+    f.write('\tu8 ext_opcode = cast(u8) (instruction & mask);\n')
     f.write('\tswitch (ext_opcode) {\n')
     
     table = generate_extension_table_for(extension_instructions)
@@ -218,14 +218,6 @@ def write_extension_decoder(f, extension_instructions):
     f.write('\t}\n')
     f.write('}\n\n')
 
-def can_instruction_have_extension(instruction):
-    # Check if instruction can have extension based on first nybble rules
-    # First nybble 0, 1, 2 cannot be extended
-    # First nybble 4+ can be extended with 8-bit extension
-    # First nybble 3 can be extended with 7-bit extension (not implemented yet)
-    first_nybble = (instruction >> 12) & 0xF
-    return first_nybble >= 4
-
 def write_main_decoder_function(f):
     f.write('DecodedInstruction decode_instruction_with_extension(u16 instruction, u16 next_instruction) {\n')
     f.write('\tDspInstruction main_inst = decode_instruction(instruction, next_instruction);\n')
@@ -233,9 +225,9 @@ def write_main_decoder_function(f):
     f.write('\tExtensionInstruction ext_inst;\n')
     f.write('\n')
     f.write('\t// Check if main instruction can have extension (first nybble >= 4)\n')
-    f.write('\tif ((instruction >> 12) >= 4) {\n')
+    f.write('\tif ((instruction >> 12) >= 3) {\n')
     f.write('\t\t// Extension is always present if instruction can have one\n')
-    f.write('\t\text_inst = decode_extension(instruction);\n')
+    f.write('\t\text_inst = decode_extension(instruction, (instruction >> 12) == 3 ? 0x7f : 0xff);\n')
     f.write('\t\thas_ext = true;\n')
     f.write('\t}\n')
     f.write('\n')
