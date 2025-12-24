@@ -119,12 +119,15 @@ final class Hollywood {
         bool normalize_before_dualtex;
     }
 
-    struct ShapeGroup {    
+    struct RenderState {
         float[12] position_matrix;
         float[16] projection_matrix;
         Texture[8] texture;
-        TevConfig tev_config;
+        TextureDescriptor[8] texture_descriptors;
+
         VertexConfig vertex_config;
+        TevConfig tev_config;
+
         bool textured;
         int enabled_textures_bitmap;
         int geometry_matrix_idx;
@@ -145,16 +148,15 @@ final class Hollywood {
         bool subtractive_additive_toggle;
         int blend_operator;
 
-        // Per-vertex matrix support
         bool uses_per_vertex_matrices = false;
         u8[] unique_matrix_indices;
+    }
 
+    struct ShapeGroup {
         size_t shared_vertex_start = 0;
         size_t shared_vertex_count = 0;
         size_t shared_index_start = 0;
         size_t shared_index_count = 0;
-        size_t tev_config_offset = 0;
-        size_t vertex_config_offset = 0;
     }
 
     struct Shape {
@@ -255,8 +257,7 @@ final class Hollywood {
         int num_tev_stages;
         int padding;
         u64 swap_tables; // 8 * 4 
-        
-        // Alpha compare
+
         int alpha_comp0;
         int alpha_comp1;
         int alpha_aop;
@@ -293,27 +294,6 @@ final class Hollywood {
         AlphaBump = 7,
     }
 
-    RasChannelId[16] ras_color;
-    TevConfig tev_config;
-
-    bool current_depth_test_enabled;
-    bool current_depth_write_enabled;
-    u32 current_depth_func;
-
-    int current_cull_mode;
-    bool color_update_enable;
-    bool alpha_update_enable;
-
-    bool current_alpha_update_enable;
-    bool current_color_update_enable;
-    bool current_dither_enable;
-    bool current_arithmetic_blending_enable;
-    bool current_boolean_blending_enable;
-    int current_blend_source;
-    int current_blend_destination;
-    bool current_subtractive_additive_toggle;
-    int current_blend_operator;
-
     int next_bp_mask = 0x00ff_ffff;
     u32[256] bp_registers;
 
@@ -321,7 +301,6 @@ final class Hollywood {
 
     PageAllocator!ShapeGroup shape_groups;
     VertexDescriptor[8] vertex_descriptors;
-    TextureDescriptor[8] texture_descriptors;
 
     private State state;
     private size_t cached_bytes_needed = 1;
@@ -339,7 +318,6 @@ final class Hollywood {
     
     private int bazinga;
 
-    private GLfloat[16] projection_matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     private GLfloat[6]  projection_matrix_parameters;
     private float[256] general_matrix_ram;
     private float[256] dt_texture_matrix_ram;
@@ -371,8 +349,6 @@ final class Hollywood {
     
     private float[6] viewport;
     
-    int geometry_matrix_idx;
-    
     private u32 display_list_address;
     private u32 display_list_size;
     
@@ -390,11 +366,13 @@ final class Hollywood {
     private uint debug_commands_left = 0;
     private uint total_coalescable_pairs = 0;
     private uint total_shape_groups = 0;
+    
+    private RenderState current_render_state;
+    private ShapeGroup accumulated_geometry;
 
     u32[16] array_bases;
     u32[16] array_strides;
 
-    u16 enabled_textures;
     int[8] texture_uniform_locations;
     
     int position_attr_location = -1;
@@ -420,13 +398,9 @@ final class Hollywood {
     uint persistent_index_buffer = 0;
     
     Vertex* persistent_vertex_ptr = null;
-    void* persistent_tev_ptr = null;
-    void* persistent_vertex_config_ptr = null;
     uint* persistent_index_ptr = null;
     
     size_t current_vertex_offset = 0;
-    size_t current_tev_byte_offset = 0;
-    size_t current_vertex_config_byte_offset = 0;
     size_t current_index_offset = 0;
     
     GLint uniform_buffer_alignment;
@@ -445,25 +419,6 @@ final class Hollywood {
         return &persistent_index_ptr[current_index_offset++];
     }
     
-    size_t next_tev_config_offset() {
-        size_t aligned_size = (TevConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
-        if (current_tev_byte_offset + aligned_size > MAX_TEV_CONFIGS * aligned_size) {
-            current_tev_byte_offset = 0;
-        }
-        size_t result = current_tev_byte_offset;
-        current_tev_byte_offset += aligned_size;
-        return result;
-    }
-    
-    size_t next_vertex_config_offset() {
-        size_t aligned_size = (VertexConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
-        if (current_vertex_config_byte_offset + aligned_size > MAX_VERTEX_CONFIGS * aligned_size) {
-            current_vertex_config_byte_offset = 0;
-        }
-        size_t result = current_vertex_config_byte_offset;
-        current_vertex_config_byte_offset += aligned_size;
-        return result;
-    }
 
     struct FifoDebugValue {
         u64 value;
@@ -497,23 +452,13 @@ final class Hollywood {
         persistent_vertex_ptr = cast(Vertex*) glMapBufferRange(GL_ARRAY_BUFFER, 0, MAX_VERTICES * Vertex.sizeof,
                                                               GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         
-        size_t tev_aligned_size = (TevConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
-        size_t tev_buffer_size = MAX_TEV_CONFIGS * tev_aligned_size;
         glGenBuffers(1, &persistent_tev_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
-        glBufferStorage(GL_UNIFORM_BUFFER, tev_buffer_size, null,
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        persistent_tev_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, tev_buffer_size,
-                                             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        
-        size_t vertex_config_aligned_size = (VertexConfig.sizeof + uniform_buffer_alignment - 1) & ~(uniform_buffer_alignment - 1);
-        size_t vertex_config_buffer_size = MAX_VERTEX_CONFIGS * vertex_config_aligned_size;
+        glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, null, GL_DYNAMIC_DRAW);
+
         glGenBuffers(1, &persistent_vertex_config_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);
-        glBufferStorage(GL_UNIFORM_BUFFER, vertex_config_buffer_size, null,
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        persistent_vertex_config_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, vertex_config_buffer_size,
-                                                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
+        glBufferData(GL_UNIFORM_BUFFER, VertexConfig.sizeof, null, GL_DYNAMIC_DRAW);
 
         glGenBuffers(1, &persistent_index_buffer);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
@@ -523,13 +468,12 @@ final class Hollywood {
                                                            GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
         
         current_vertex_offset = 0;
-        current_tev_byte_offset = 0;
-        current_vertex_config_byte_offset = 0;
         current_index_offset = 0;
 
         load_shaders();
 
-        projection_matrix[15] = 1;
+        auto render_state = get_render_state_for_modification();
+        render_state.projection_matrix[15] = 1;
 
         enum tev_properties = [
             "num_tev_stages",
@@ -712,12 +656,184 @@ final class Hollywood {
         glEnableVertexAttribArray(1);
         
         glBindVertexArray(0);
+
+    }
+
+    private void flush_accumulated_batch() {
+        import std.stdio;
+        if (accumulated_geometry.shared_index_count == 0) {
+            return;
+        }
+        writefln("Flushing accumulated batch with %d indices", accumulated_geometry.shared_index_count);
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
+
+        total_display_lists = 0;
+        draw_only_display_lists = 0;
+        display_lists_without_indexing = 0;
+        display_list_vertices.clear();
+        max_consecutive_display_lists = 0;
+        consecutive_display_lists = 0;
+        last_command_was_display_list = false;
+        debug_next_commands = false;
+        debug_commands_left = 0;
+        
+        glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
+        glFlushMappedBufferRange(GL_ARRAY_BUFFER, 0, current_vertex_offset * Vertex.sizeof);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
+        glFlushMappedBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, current_index_offset * uint.sizeof);
+        
+        auto shape_groups_array = shape_groups.all()[0 .. shape_groups.length];
+        // total_coalescable_pairs += count_coalescable_shapegroups(shape_groups_array);
+        total_shape_groups += shape_groups_array.length;
+        
+        apply_opengl_state(current_render_state);
+        submit_geometry_to_opengl(accumulated_geometry, current_render_state);
+
+        accumulated_geometry.shared_index_count = 0;
+
+        
+        accumulated_geometry = ShapeGroup();
+    }
+
+    private RenderState* get_render_state_for_modification() {
+        if (accumulated_geometry.shared_index_count > 0) {
+            flush_accumulated_batch();
+        }
+        
+        return &current_render_state;
+    }
+
+    private void submit_shape_group(ShapeGroup geometry) {
+        if (accumulated_geometry.shared_index_count == 0) {
+            accumulated_geometry = geometry;
+        } else {
+            accumulated_geometry.shared_index_count += geometry.shared_index_count;
+        }
+    }
+
+    public const(RenderState)* get_current_render_state() const {
+        return &current_render_state;
+    }
+    
+    private void flush_if_needed() {
+        if (accumulated_geometry.shared_index_count > 0) {
+            flush_accumulated_batch();
+        }
+    }
+
+    private void apply_opengl_state(RenderState render_state) {
+        glUseProgram(gl_program);
+        glClearColor(
+            blitting_processor.get_copy_clear_color_red() / 255.0f,
+            blitting_processor.get_copy_clear_color_green() / 255.0f, 
+            blitting_processor.get_copy_clear_color_blue() / 255.0f,
+            blitting_processor.get_copy_clear_color_alpha() / 255.0f
+        ); 
+        
+        gl_object_manager.deallocate_all_objects();
+
+        glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, render_state.texture[0].tex_matrix.ptr);
+        glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, render_state.projection_matrix.ptr);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, TevConfig.sizeof, &render_state.tev_config);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, persistent_tev_buffer);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, VertexConfig.sizeof, &render_state.vertex_config);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 1, persistent_vertex_config_buffer);
+
+        if (render_state.arithmetic_blending_enable) {
+            glEnable(GL_BLEND);
+
+            auto op1 = gc_blend_factor_to_gl(render_state.blend_source);
+            auto op2 = gc_blend_factor_to_gl(render_state.blend_destination);
+            glBlendFunc(op1, op2);
+        } else {
+            glDisable(GL_BLEND);
+        }
+
+        while (render_state.enabled_textures_bitmap != 0) {
+            int i = cast(int) render_state.enabled_textures_bitmap.bfs;
+            render_state.enabled_textures_bitmap &= ~(1 << i);
+
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, render_state.texture[i].texture_id);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+            final switch (render_state.texture[i].wrap_s) {
+                case TextureWrap.Clamp:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    break;
+                
+                case TextureWrap.Repeat:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    break;
+                
+                case TextureWrap.Mirror:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+                    break;
+            }
+
+            final switch (render_state.texture[i].wrap_t) {
+                case TextureWrap.Clamp:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    break;
+                
+                case TextureWrap.Repeat:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    break;
+                
+                case TextureWrap.Mirror:
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+                    break;
+            }
+
+            glUniform1i(texture_uniform_locations[i], i);
+        }
+
+        glColorMask(
+            render_state.color_update_enable, 
+            render_state.color_update_enable, 
+            render_state.color_update_enable, 
+            render_state.alpha_update_enable
+        );
+
+        if (render_state.depth_test_enabled) {
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(render_state.depth_func);
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+
+        glDepthMask(render_state.depth_write_enabled ? GL_TRUE : GL_FALSE);
+
+        final switch (render_state.cull_mode) {
+            case 0:
+                // glDisable(GL_CULL_FACE);
+                break;
+            case 1:
+                // glEnable(GL_CULL_FACE);
+                // glCullFace(GL_FRONT);
+                break;
+            case 2:
+                // glEnable(GL_CULL_FACE);
+                // glCullFace(GL_BACK);
+                break;
+            case 3:
+                // glEnable(GL_CULL_FACE);
+                // glCullFace(GL_FRONT_AND_BACK);
+                break;
+        }
     }
     
     void execute_efb_copy(u32 control_register, bool clear_efb) {
         log_hollywood("Executing EFB copy with control register: 0x%08X", control_register);
 
-        draw();
+        flush_accumulated_batch();
 
         bool is_display_copy = control_register.bit(14);
         if (is_display_copy) {
@@ -1084,6 +1200,7 @@ final class Hollywood {
                     mem.physical_write_u8(current_address + 0, cast(u8)(rg_value >> 8));
                     mem.physical_write_u8(current_address + 1, cast(u8)(rg_value & 0xFF));
                 }
+
                 current_address += 2;
             }
             }
@@ -1092,10 +1209,10 @@ final class Hollywood {
     }
     
     void update_gl_viewport() {
-        float width = viewport[0] * 2;           // wd
-        float height = -viewport[1] * 2;         // ht (negate the negative)
-        float x_orig = viewport[3] - 342.0f - viewport[0];   // xOrig
-        float y_orig = viewport[4] - 342.0f + viewport[1];   // yOrig
+        float width = viewport[0] * 2;
+        float height = -viewport[1] * 2;
+        float x_orig = viewport[3] - 342.0f - viewport[0];
+        float y_orig = viewport[4] - 342.0f + viewport[1];
         
         int gl_x = cast(int) x_orig;
         int gl_y = cast(int) y_orig; 
@@ -1103,8 +1220,30 @@ final class Hollywood {
         int gl_height = cast(int) height;
         
         glViewport(gl_x, gl_y, gl_width, gl_height);
-        // writefln("GL viewport: (%d,%d) %dx%d from GC viewport(%.1f,%.1f) %.1fx%.1f", 
-        //              gl_x, gl_y, gl_width, gl_height, x_orig, y_orig, width, height);
+    }
+
+    private void update_texture_matrices() {
+        auto render_state = get_render_state_for_modification();
+        
+        for (int i = 0; i < 8; i++) {
+            int tex_slot = render_state.texture_descriptors[i].tex_matrix_slot;
+            int dualtex_slot = render_state.texture_descriptors[i].dualtex_matrix_slot;
+            
+            for (int j = 0; j < 12; j++) {
+                render_state.vertex_config.tex_configs[i].tex_matrix[j] = general_matrix_ram[tex_slot * 4 + j];
+                render_state.vertex_config.tex_configs[i].dualtex_matrix[j] = dt_texture_matrix_ram[dualtex_slot * 4 + j];
+            }
+            
+            render_state.vertex_config.tex_configs[i].normalize_before_dualtex = render_state.texture_descriptors[i].normalize_before_dualtex;
+            render_state.vertex_config.tex_configs[i].texcoord_source = render_state.texture_descriptors[i].texcoord_source;
+            render_state.vertex_config.tex_configs[i].texmatrix_size = render_state.texture_descriptors[i].texmatrix_size;
+            render_state.vertex_config.tex_configs[i].use_stq = render_state.texture_descriptors[i].use_stq;
+        }
+
+        render_state.position_matrix = general_matrix_ram[render_state.geometry_matrix_idx * 4 .. render_state.geometry_matrix_idx * 4 + 12];
+
+        import std.stdio;
+        writefln("Updated texture matrices in render state");
     }
     
     public GLuint get_xfb_texture() {
@@ -1615,31 +1754,33 @@ final class Hollywood {
         switch (bp_register) {
             case 0x40:
                 log_hollywood("BP DEPTH: %08x", bp_data);
-                current_depth_test_enabled = bp_data.bit(0);
-                current_depth_write_enabled = bp_data.bit(4);
+                get_render_state_for_modification().depth_test_enabled = bp_data.bit(0);
+                get_render_state_for_modification().depth_write_enabled = bp_data.bit(4);
 
                 final switch (bp_data.bits(1, 3)) {
-                    case 0: current_depth_func = GL_NEVER; break;
-                    case 1: current_depth_func = GL_LESS; break;
-                    case 2: current_depth_func = GL_EQUAL; break;
-                    case 3: current_depth_func = GL_LEQUAL; break;
-                    case 4: current_depth_func = GL_GREATER; break;
-                    case 5: current_depth_func = GL_NOTEQUAL; break;
-                    case 6: current_depth_func = GL_GEQUAL; break;
-                    case 7: current_depth_func = GL_ALWAYS; break;
+                    case 0: get_render_state_for_modification().depth_func = GL_NEVER; break;
+                    case 1: get_render_state_for_modification().depth_func = GL_LESS; break;
+                    case 2: get_render_state_for_modification().depth_func = GL_EQUAL; break;
+                    case 3: get_render_state_for_modification().depth_func = GL_LEQUAL; break;
+                    case 4: get_render_state_for_modification().depth_func = GL_GREATER; break;
+                    case 5: get_render_state_for_modification().depth_func = GL_NOTEQUAL; break;
+                    case 6: get_render_state_for_modification().depth_func = GL_GEQUAL; break;
+                    case 7: get_render_state_for_modification().depth_func = GL_ALWAYS; break;
                 }
 
-                log_hollywood("Depth test: %s, Depth write: %s, Depth func: %08x", current_depth_test_enabled ? "enabled" : "disabled", current_depth_write_enabled ? "enabled" : "disabled", current_depth_func);
+                log_hollywood("Depth test: %s, Depth write: %s, Depth func: %08x", current_render_state.depth_test_enabled ? "enabled" : "disabled", current_render_state.depth_write_enabled ? "enabled" : "disabled", current_render_state.depth_func);
 
                 break;
             
             case 0x41:
-                color_update_enable = bp_data.bit(3);
-                alpha_update_enable = bp_data.bit(4);
-                current_arithmetic_blending_enable = bp_data.bit(0);
-                current_blend_destination = cast(int) bp_data.bits(5, 7);
-                current_blend_source = cast(int) bp_data.bits(8, 10);
-                current_subtractive_additive_toggle = bp_data.bit(11);
+                auto render_state = get_render_state_for_modification();
+
+                render_state.color_update_enable = bp_data.bit(3);
+                render_state.alpha_update_enable = bp_data.bit(4);
+                render_state.arithmetic_blending_enable = bp_data.bit(0);
+                render_state.blend_destination = cast(int) bp_data.bits(5, 7);
+                render_state.blend_source = cast(int) bp_data.bits(8, 10);
+                render_state.subtractive_additive_toggle = bp_data.bit(11);
                 break;
 
             case 0x49:
@@ -1728,91 +1869,94 @@ final class Hollywood {
                 break;
             
             case 0x00:
-                tev_config.num_tev_stages = bp_data.bits(10, 13) + 1;
-                current_cull_mode = bp_data.bits(14, 15);
+                auto render_state = get_render_state_for_modification();
+
+                render_state.tev_config.num_tev_stages = bp_data.bits(10, 13) + 1;
+                render_state.cull_mode = bp_data.bits(14, 15);
                 log_hollywood("GEN_MODE: %08x", bp_data);
                 break;
 
             case 0x94: .. case 0x97:
-                if (bp_data << 5 == 0x01a4db90) {
-                    error_hollywood("dumb fuck address");
-                }
-            log_hollywood("Texture descriptor: %02x %08x", bp_register, bp_data);
-                texture_descriptors[bp_register - 0x94].base_address = bp_data << 5;
+                auto render_state = get_render_state_for_modification();
+
+                render_state.texture_descriptors[bp_register - 0x94].base_address = bp_data << 5;
                 break;
             
             case 0xb4: .. case 0xb7:
-                texture_descriptors[bp_register - 0xb4 + 4].base_address = bp_data << 5;
+                auto render_state = get_render_state_for_modification();
+
+                render_state.texture_descriptors[bp_register - 0xb4 + 4].base_address = bp_data << 5;
                 break;
             
             case 0x88: .. case 0x8b:
-            log_hollywood("Texture descriptor: %02x %08x", bp_register, bp_data);
-                texture_descriptors[bp_register - 0x88].width  = bp_data.bits(0, 9) + 1;
-                texture_descriptors[bp_register - 0x88].height = bp_data.bits(10, 19) + 1;
-                texture_descriptors[bp_register - 0x88].type   = cast(TextureType) bp_data.bits(20, 23);
+                auto render_state = get_render_state_for_modification();
+
+                render_state.texture_descriptors[bp_register - 0x88].width  = bp_data.bits(0, 9) + 1;
+                render_state.texture_descriptors[bp_register - 0x88].height = bp_data.bits(10, 19) + 1;
+                render_state.texture_descriptors[bp_register - 0x88].type   = cast(TextureType) bp_data.bits(20, 23);
                 break;
             
             case 0xa8: .. case 0xab:
-                texture_descriptors[bp_register - 0xa8 + 4].width  = bp_data.bits(0, 9) + 1;
-                texture_descriptors[bp_register - 0xa8 + 4].height = bp_data.bits(10, 19) + 1;
-                texture_descriptors[bp_register - 0xa8 + 4].type   = cast(TextureType) bp_data.bits(20, 23);
+                auto render_state = get_render_state_for_modification();
+
+                render_state.texture_descriptors[bp_register - 0xa8 + 4].width  = bp_data.bits(0, 9) + 1;
+                render_state.texture_descriptors[bp_register - 0xa8 + 4].height = bp_data.bits(10, 19) + 1;
+                render_state.texture_descriptors[bp_register - 0xa8 + 4].type   = cast(TextureType) bp_data.bits(20, 23);
                 break;
 
             case 0x10: .. case 0x1f:
-                log_hollywood("IND_CMD%x: %08x (tev indirect %d)", bp_register - 0x10, bp_data, bp_register - 0x10);
                 break;
             
             case 0x28: .. case 0x2f:
+                auto render_state = get_render_state_for_modification();
+                
                 int idx = (bp_register - 0x28);
-                tev_config.stages[idx * 2 + 0].texmap        = bp_data.bits(0, 2);
-                tev_config.stages[idx * 2 + 0].texcoord      = bp_data.bits(3, 5);
-                tev_config.stages[idx * 2 + 0].texmap_enable = bp_data.bit(6);
-                tev_config.stages[idx * 2 + 1].texmap        = bp_data.bits(12, 14);
-                tev_config.stages[idx * 2 + 1].texcoord      = bp_data.bits(15, 17);
-                tev_config.stages[idx * 2 + 1].texmap_enable = bp_data.bit(18);
-                log_hollywood("texmaps: %d %d %d", idx, tev_config.stages[idx * 2 + 0].texmap, tev_config.stages[idx * 2 + 1].texmap);
-
-                enabled_textures &= ~(3 << (idx * 2));
-                enabled_textures |= (bp_data.bit(6)) << (idx * 2);
-                enabled_textures |= (bp_data.bit(18)) << (idx * 2 + 1);
-
-                ras_color[bp_register - 0x28] = cast(RasChannelId) bp_data.bits(19, 21);
+                render_state.tev_config.stages[idx * 2 + 0].texmap        = bp_data.bits(0, 2);
+                render_state.tev_config.stages[idx * 2 + 0].texcoord      = bp_data.bits(3, 5);
+                render_state.tev_config.stages[idx * 2 + 0].texmap_enable = bp_data.bit(6);
+                render_state.tev_config.stages[idx * 2 + 0].ras_channel_id = bp_data.bits(7, 9);
+                render_state.tev_config.stages[idx * 2 + 1].texmap        = bp_data.bits(12, 14);
+                render_state.tev_config.stages[idx * 2 + 1].texcoord      = bp_data.bits(15, 17);
+                render_state.tev_config.stages[idx * 2 + 1].texmap_enable = bp_data.bit(18);
+                render_state.tev_config.stages[idx * 2 + 1].ras_channel_id = bp_data.bits(19, 21);
                 break;
             
             case 0xc0: .. case 0xdf:
+                auto render_state = get_render_state_for_modification();
+                
                 if (bp_register.bit(0)) {
                     log_hollywood("TEV_ALPHA_ENV_%x: %08x (tev op 1) at pc 0x%08x", bp_register - 0xc1, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc1) / 2;
                     
                     u32 bias = bp_data.bits(16, 17);
                     u32 scale = bp_data.bits(20, 21);
-                    tev_config.stages[idx].in_alfa_a = bp_data.bits(13, 15);
-                    tev_config.stages[idx].in_alfa_b = bp_data.bits(10, 12);
-                    tev_config.stages[idx].in_alfa_c = bp_data.bits(7, 9);
-                    tev_config.stages[idx].in_alfa_d = bp_data.bits(4, 6);
+                    render_state.tev_config.stages[idx].in_alfa_a = bp_data.bits(13, 15);
+                    render_state.tev_config.stages[idx].in_alfa_b = bp_data.bits(10, 12);
+                    render_state.tev_config.stages[idx].in_alfa_c = bp_data.bits(7, 9);
+                    render_state.tev_config.stages[idx].in_alfa_d = bp_data.bits(4, 6);
 
                     if (bias == 3) {
-                        tev_config.stages[idx].alfa_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
+                        render_state.tev_config.stages[idx].alfa_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
                     } else {
-                        tev_config.stages[idx].alfa_op = bp_data.bit(18);
+                        render_state.tev_config.stages[idx].alfa_op = bp_data.bit(18);
                     }
 
-                    tev_config.stages[idx].bias_alfa = 
+                    render_state.tev_config.stages[idx].bias_alfa = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
-                    tev_config.stages[idx].alfa_dest = bp_data.bits(22, 23);
-                    tev_config.stages[idx].clamp_alfa = bp_data.bit(19);
+                    render_state.tev_config.stages[idx].alfa_dest = bp_data.bits(22, 23);
+                    render_state.tev_config.stages[idx].clamp_alfa = bp_data.bit(19);
 
-                    tev_config.stages[idx].scale_alfa = 
+                    render_state.tev_config.stages[idx].scale_alfa = 
                         bp_data.bits(20, 21) == 0 ? 1 :
                         bp_data.bits(20, 21) == 1 ? 2 :
                         bp_data.bits(20, 21) == 2 ? 4 :
                         0.5;
 
                     log_hollywood("Set indices to %d %d", bp_data.bits(0, 1), bp_data.bits(2, 3));
-                    tev_config.stages[idx].ras_swap_table_index = bp_data.bits(0, 1);
-                    tev_config.stages[idx].tex_swap_table_index = bp_data.bits(2, 3);
+                    render_state.tev_config.stages[idx].ras_swap_table_index = bp_data.bits(0, 1);
+                    render_state.tev_config.stages[idx].tex_swap_table_index = bp_data.bits(2, 3);
                     break;
                 } else {
                     log_hollywood("%d TEV_COLOR_ENV_%x: %08x (tev op 0) at pc 0x%08x", shape_groups.length, bp_register - 0xc0, bp_data, mem.cpu.state.pc);
@@ -1820,25 +1964,25 @@ final class Hollywood {
 
                     u32 bias = bp_data.bits(16, 17);
                     u32 scale = bp_data.bits(20, 21);
-                    tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
-                    tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
-                    tev_config.stages[idx].in_color_c = bp_data.bits(4, 7);
-                    tev_config.stages[idx].in_color_d = bp_data.bits(0, 3);
+                    render_state.tev_config.stages[idx].in_color_a = bp_data.bits(12, 15);
+                    render_state.tev_config.stages[idx].in_color_b = bp_data.bits(8, 11);
+                    render_state.tev_config.stages[idx].in_color_c = bp_data.bits(4, 7);
+                    render_state.tev_config.stages[idx].in_color_d = bp_data.bits(0, 3);
 
                     if (bias == 3) {
-                        tev_config.stages[idx].color_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
+                        render_state.tev_config.stages[idx].color_op = 0x8 | (bp_data.bit(18)) | (scale << 1);
                     } else {
-                        tev_config.stages[idx].color_op = bp_data.bit(18);
+                        render_state.tev_config.stages[idx].color_op = bp_data.bit(18);
                     }
 
-                    tev_config.stages[idx].bias_color = 
+                    render_state.tev_config.stages[idx].bias_color = 
                         bp_data.bits(16, 17) == 0 ? 0 :
                         bp_data.bits(16, 17) == 1 ? 0.5 :
                         -0.5;
-                    tev_config.stages[idx].clamp_color = bp_data.bit(19);
-                    tev_config.stages[idx].color_dest = bp_data.bits(22, 23);
+                    render_state.tev_config.stages[idx].clamp_color = bp_data.bit(19);
+                    render_state.tev_config.stages[idx].color_dest = bp_data.bits(22, 23);
 
-                    tev_config.stages[idx].scale_color = 
+                    render_state.tev_config.stages[idx].scale_color = 
                         bp_data.bits(20, 21) == 0 ? 1 :
                         bp_data.bits(20, 21) == 1 ? 2 :
                         bp_data.bits(20, 21) == 2 ? 4 :
@@ -1847,6 +1991,8 @@ final class Hollywood {
                 break;
             
             case 0xe0: .. case 0xe7:
+                auto render_state = get_render_state_for_modification();
+                
                 log_hollywood("%d TEV_COLOR_REG_%x: %08x from pc %x lr %x", shape_groups.length, bp_register - 0xe0, bp_data, 
                     mem.cpu.state.pc, mem.cpu.state.lr);
                 if (bp_data.bit(23)) {
@@ -1854,39 +2000,39 @@ final class Hollywood {
                     if (bp_register.bit(0)) {
                         final switch (idx) {
                         case 0: 
-                            tev_config.k0[2] = bp_data.bits(0,   7) / 255.0f; 
-                            tev_config.k0[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k0[2] = bp_data.bits(0,   7) / 255.0f; 
+                            render_state.tev_config.k0[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 1:
-                            tev_config.k1[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k1[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k1[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k1[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 2:
-                            tev_config.k2[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k2[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k2[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k2[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 3:
-                            tev_config.k3[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k3[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k3[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k3[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         }
                     } else {
                         final switch (idx) {
                         case 0: 
-                            tev_config.k0[0] = bp_data.bits(0,   7) / 255.0f; 
-                            tev_config.k0[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k0[0] = bp_data.bits(0,   7) / 255.0f; 
+                            render_state.tev_config.k0[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 1:
-                            tev_config.k1[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k1[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k1[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k1[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 2:
-                            tev_config.k2[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k2[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k2[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k2[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 3:
-                            tev_config.k3[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.k3[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.k3[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.k3[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         }
                     }
@@ -1896,20 +2042,20 @@ final class Hollywood {
                         // i dont trust D's memory layout
                         final switch (idx) {
                         case 0: 
-                            tev_config.reg0[2] = bp_data.bits(0,   7) / 255.0f; 
-                            tev_config.reg0[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg0[2] = bp_data.bits(0,   7) / 255.0f; 
+                            render_state.tev_config.reg0[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 1:
-                            tev_config.reg1[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg1[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg1[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg1[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 2:
-                            tev_config.reg2[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg2[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg2[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg2[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 3:
-                            tev_config.reg3[2] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg3[1] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg3[2] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg3[1] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         }
                     } else {
@@ -1917,20 +2063,20 @@ final class Hollywood {
                         // i dont trust D's memory layout
                         final switch (idx) {
                         case 0: 
-                            tev_config.reg0[0] = bp_data.bits(0,   7) / 255.0f; 
-                            tev_config.reg0[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg0[0] = bp_data.bits(0,   7) / 255.0f; 
+                            render_state.tev_config.reg0[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 1:
-                            tev_config.reg1[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg1[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg1[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg1[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 2:
-                            tev_config.reg2[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg2[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg2[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg2[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         case 3:
-                            tev_config.reg3[0] = bp_data.bits(0,   7) / 255.0f;
-                            tev_config.reg3[3] = bp_data.bits(12, 19) / 255.0f;
+                            render_state.tev_config.reg3[0] = bp_data.bits(0,   7) / 255.0f;
+                            render_state.tev_config.reg3[3] = bp_data.bits(12, 19) / 255.0f;
                             break;
                         }
                     }
@@ -1942,13 +2088,14 @@ final class Hollywood {
                 break;
 
             case 0xf3:
-                log_hollywood("TEV_ALPHAFUNC: %08x", bp_data);
+                auto render_state = get_render_state_for_modification();
+                
                 blitting_processor.write_alpha_compare(bp_data);
-                tev_config.alpha_comp0 = blitting_processor.get_alpha_comp0();
-                tev_config.alpha_comp1 = blitting_processor.get_alpha_comp1();
-                tev_config.alpha_aop = blitting_processor.get_alpha_aop();
-                tev_config.alpha_ref0 = blitting_processor.get_alpha_ref0();
-                tev_config.alpha_ref1 = blitting_processor.get_alpha_ref1();
+                render_state.tev_config.alpha_comp0 = blitting_processor.get_alpha_comp0();
+                render_state.tev_config.alpha_comp1 = blitting_processor.get_alpha_comp1();
+                render_state.tev_config.alpha_aop = blitting_processor.get_alpha_aop();
+                render_state.tev_config.alpha_ref0 = blitting_processor.get_alpha_ref0();
+                render_state.tev_config.alpha_ref1 = blitting_processor.get_alpha_ref1();
                 break;
             
             case 0xf4: .. case 0xf5:
@@ -1956,13 +2103,17 @@ final class Hollywood {
                 break;
 
             case 0x80: .. case 0x83:
-                texture_descriptors[bp_register - 0x80].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
-                texture_descriptors[bp_register - 0x80].wrap_t = cast(TextureWrap) bp_data.bits(2, 3);
+                auto render_state = get_render_state_for_modification();
+                
+                render_state.texture_descriptors[bp_register - 0x80].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
+                render_state.texture_descriptors[bp_register - 0x80].wrap_t = cast(TextureWrap) bp_data.bits(2, 3);
                 break;
 
             case 0xa0: .. case 0xa3:
-                texture_descriptors[bp_register - 0xa0 + 4].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
-                texture_descriptors[bp_register - 0xa0 + 4].wrap_t = cast(TextureWrap) bp_data.bits(2, 3);
+                auto render_state = get_render_state_for_modification();
+                
+                render_state.texture_descriptors[bp_register - 0xa0 + 4].wrap_s = cast(TextureWrap) bp_data.bits(0, 1);
+                render_state.texture_descriptors[bp_register - 0xa0 + 4].wrap_t = cast(TextureWrap) bp_data.bits(2, 3);
                 break;
             
             case 0x45:
@@ -1984,21 +2135,18 @@ final class Hollywood {
             case 0xf8:
             case 0xfa:
             case 0xfc:
+                auto render_state = get_render_state_for_modification();
+                
                 log_texture("TEV_SWAP_MODE_TABLE_%02x: %08x", bp_register, bp_data);
                 int idx = (bp_register - 0xf6) / 2;
-                tev_config.swap_tables &= ~(0xf << (idx * 8));
-                tev_config.swap_tables |= value.bits(0, 3) << (idx * 8);
-                tev_config.stages[idx * 4 + 0].kcsel = value.bits(4, 8);
-                tev_config.stages[idx * 4 + 0].kasel = value.bits(9, 13);
-                tev_config.stages[idx * 4 + 1].kcsel = value.bits(14, 18);
-                tev_config.stages[idx * 4 + 1].kasel = value.bits(19, 23);
-                log_texture("set kcsel kasel %d %d %d %d", 
-                    tev_config.stages[idx * 4 + 0].kcsel,
-                    tev_config.stages[idx * 4 + 0].kasel,
-                    tev_config.stages[idx * 4 + 1].kcsel,
-                    tev_config.stages[idx * 4 + 1].kasel);
-                assert_texture(tev_config.stages[idx * 4 + 0].kasel != 12, "Invalid kcsel");
-                assert_texture(tev_config.stages[idx * 4 + 1].kasel != 12, "Invalid kcsel");
+                render_state.tev_config.swap_tables &= ~(0xf << (idx * 8));
+                render_state.tev_config.swap_tables |= value.bits(0, 3) << (idx * 8);
+                render_state.tev_config.stages[idx * 4 + 0].kcsel = value.bits(4, 8);
+                render_state.tev_config.stages[idx * 4 + 0].kasel = value.bits(9, 13);
+                render_state.tev_config.stages[idx * 4 + 1].kcsel = value.bits(14, 18);
+                render_state.tev_config.stages[idx * 4 + 1].kasel = value.bits(19, 23);
+                assert_texture(render_state.tev_config.stages[idx * 4 + 0].kasel != 12, "Invalid kcsel");
+                assert_texture(render_state.tev_config.stages[idx * 4 + 1].kasel != 12, "Invalid kcsel");
                 break;
 
             case 0xf7:
@@ -2006,20 +2154,16 @@ final class Hollywood {
             case 0xfb:
             case 0xfd:
                 log_texture("TEV_SWAP_MODE_TABLE_%02x: %08x", bp_register, bp_data);
+                auto render_state = get_render_state_for_modification();
                 int idx = (bp_register - 0xf6) / 2;
-                tev_config.swap_tables &= ~(0xf << (idx * 8 + 4));
-                tev_config.swap_tables |= value.bits(0, 3) << (idx * 8 + 4);
-                tev_config.stages[idx * 4 + 2].kcsel = value.bits(4, 8);
-                tev_config.stages[idx * 4 + 2].kasel = value.bits(9, 13);
-                tev_config.stages[idx * 4 + 3].kcsel = value.bits(14, 18);
-                tev_config.stages[idx * 4 + 3].kasel = value.bits(19, 23);
-                log_texture("set kcsel kasel %d %d %d %d", 
-                    tev_config.stages[idx * 4 + 2].kcsel,
-                    tev_config.stages[idx * 4 + 2].kasel,
-                    tev_config.stages[idx * 4 + 3].kcsel,
-                    tev_config.stages[idx * 4 + 3].kasel);
-                assert_texture(tev_config.stages[idx * 4 + 2].kasel != 12, "Invalid kcsel");
-                assert_texture(tev_config.stages[idx * 4 + 3].kasel != 12, "Invalid kcsel");
+                render_state.tev_config.swap_tables &= ~(0xf << (idx * 8 + 4));
+                render_state.tev_config.swap_tables |= bp_data.bits(0, 3) << (idx * 8 + 4);
+                render_state.tev_config.stages[idx * 4 + 2].kcsel = bp_data.bits(4, 8);
+                render_state.tev_config.stages[idx * 4 + 2].kasel = bp_data.bits(9, 13);
+                render_state.tev_config.stages[idx * 4 + 3].kcsel = bp_data.bits(14, 18);
+                render_state.tev_config.stages[idx * 4 + 3].kasel = bp_data.bits(19, 23);
+                assert_texture(render_state.tev_config.stages[idx * 4 + 2].kasel != 12, "Invalid kcsel");
+                assert_texture(render_state.tev_config.stages[idx * 4 + 3].kasel != 12, "Invalid kcsel");
                 break;
             
             case 0xfe:
@@ -2035,11 +2179,12 @@ final class Hollywood {
     void handle_new_cp_write(u8 register, u32 value) {
         switch (register) {
             case 0x30:
-                geometry_matrix_idx = value.bits(0, 5);
+                auto render_state = get_render_state_for_modification();
+                
+                render_state.geometry_matrix_idx = value.bits(0, 5);
                 break;
 
             case 0x50: .. case 0x57:
-                log_hollywood("Setting vertex descriptor %d: %08x", register - 0x50, value);
                 auto vcd = &vertex_descriptors[register - 0x50];
                 
                 vcd.position_normal_matrix_location = cast(VertexAttributeLocation) value.bit(0);
@@ -2056,6 +2201,9 @@ final class Hollywood {
                 vcd.color_location[0] = cast(VertexAttributeLocation) value.bits(13, 14);
                 vcd.color_location[1] = cast(VertexAttributeLocation) value.bits(15, 16);
                 log_hollywood("asdf Setting vertex descriptor %d: %s", register - 0x50, *vcd);
+                
+                auto render_state = get_render_state_for_modification();
+                render_state.uses_per_vertex_matrices = (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent);
 
                 break;
             
@@ -2070,7 +2218,6 @@ final class Hollywood {
                 vcd.texcoord_location[5] = cast(VertexAttributeLocation) value.bits(10, 11);
                 vcd.texcoord_location[6] = cast(VertexAttributeLocation) value.bits(12, 13);
                 vcd.texcoord_location[7] = cast(VertexAttributeLocation) value.bits(14, 15);
-                log_hollywood("asdf Setting vertex descriptor %d: %s", register - 0x60, *vcd);
                 break;
             
             case 0x70: .. case 0x77:
@@ -2089,7 +2236,6 @@ final class Hollywood {
                 vat.texcoord_format[0] = cast(CoordFormat) value.bits(22, 24);
                 vat.texcoord_shift[0] = value.bits(25, 29);
                 assert(value.bits(30, 31) == 0b01);
-                log_hollywood("asdf vat %d: %s", register - 0x70, *vat);
 
                 break;
             
@@ -2106,9 +2252,7 @@ final class Hollywood {
                 vat.texcoord_format[3] = cast(CoordFormat) value.bits(19, 21);
                 vat.texcoord_shift[3] = value.bits(22, 26);
                 vat.texcoord_count[4] = value.bit(27) ? 2 : 1;
-                vat.texcoord_format[4] = cast(CoordFormat) value.bits(28, 30);      
-                log_hollywood("asdf vat %d: %s", register - 0x80, *vat);          
-
+                vat.texcoord_format[4] = cast(CoordFormat) value.bits(28, 30);    
                 break;
             
             case 0x90: .. case 0x97:
@@ -2124,12 +2268,9 @@ final class Hollywood {
                 vat.texcoord_count[7] = value.bit(23) ? 2 : 1;
                 vat.texcoord_format[7] = cast(CoordFormat) value.bits(24, 26);
                 vat.texcoord_shift[7] = value.bits(27, 31);
-                log_hollywood("asdf vat %d: %s", register - 0x90, *vat);          
-          
                 break;
             
             case 0xa0: .. case 0xaf:
-                log_hollywood("array_base: %02x %08x", register, value);
                 array_bases[register - 0xa0] = value;
                 break;
 
@@ -2239,18 +2380,18 @@ final class Hollywood {
         switch (register) {
             case 0x1018:
                 log_hollywood("geometry_matrix: %08x", value);
-                geometry_matrix_idx = value.bits(0, 5);
-                texture_descriptors[0].tex_matrix_slot = value.bits(6, 11);
-                texture_descriptors[1].tex_matrix_slot = value.bits(12, 17);
-                texture_descriptors[2].tex_matrix_slot = value.bits(18, 23);
-                texture_descriptors[3].tex_matrix_slot = value.bits(24, 29);
+                get_render_state_for_modification().geometry_matrix_idx = value.bits(0, 5);
+                get_render_state_for_modification().texture_descriptors[0].tex_matrix_slot = value.bits(6, 11);
+                get_render_state_for_modification().texture_descriptors[1].tex_matrix_slot = value.bits(12, 17);
+                get_render_state_for_modification().texture_descriptors[2].tex_matrix_slot = value.bits(18, 23);
+                get_render_state_for_modification().texture_descriptors[3].tex_matrix_slot = value.bits(24, 29);
                 break;
 
             case 0x1019:
-                texture_descriptors[4].tex_matrix_slot = value.bits(0, 5);
-                texture_descriptors[5].tex_matrix_slot = value.bits(6, 11);
-                texture_descriptors[6].tex_matrix_slot = value.bits(12, 17);
-                texture_descriptors[7].tex_matrix_slot = value.bits(18, 23);
+                get_render_state_for_modification().texture_descriptors[4].tex_matrix_slot = value.bits(0, 5);
+                get_render_state_for_modification().texture_descriptors[5].tex_matrix_slot = value.bits(6, 11);
+                get_render_state_for_modification().texture_descriptors[6].tex_matrix_slot = value.bits(12, 17);
+                get_render_state_for_modification().texture_descriptors[7].tex_matrix_slot = value.bits(18, 23);
                 break;
 
             case 0x101a: viewport[0] = force_cast!float(value); update_gl_viewport(); break;
@@ -2279,9 +2420,9 @@ final class Hollywood {
                 int idx = register - 0x1040;
 
                 assert_hollywood(value.bits(7, 11) <= 12, "Invalid tex coord source");
-                texture_descriptors[idx].texmatrix_size  = cast(TexcoordSource) value.bit(1) ? 3 : 2;
-                texture_descriptors[idx].use_stq         = cast(TexcoordSource) value.bit(2);
-                texture_descriptors[idx].texcoord_source = cast(TexcoordSource) value.bits(7, 11);
+                get_render_state_for_modification().texture_descriptors[idx].texmatrix_size  = cast(TexcoordSource) value.bit(1) ? 3 : 2;
+                get_render_state_for_modification().texture_descriptors[idx].use_stq         = cast(TexcoordSource) value.bit(2);
+                get_render_state_for_modification().texture_descriptors[idx].texcoord_source = cast(TexcoordSource) value.bits(7, 11);
                 break;
 
             case 0x0000: .. case 0x00ff:
@@ -2295,8 +2436,8 @@ final class Hollywood {
             case 0x1050: .. case 0x1057:
                 int idx = register - 0x1050;
 
-                texture_descriptors[idx].dualtex_matrix_slot = value.bits(0, 5);
-                texture_descriptors[idx].normalize_before_dualtex = value.bit(7);
+                get_render_state_for_modification().texture_descriptors[idx].dualtex_matrix_slot = value.bits(0, 5);
+                get_render_state_for_modification().texture_descriptors[idx].normalize_before_dualtex = value.bit(7);
                 break;
             
             case 0x100c:
@@ -2337,10 +2478,11 @@ final class Hollywood {
 
     private void recalculate_projection_matrix() {
         alias p = projection_matrix_parameters;
+        auto render_state = get_render_state_for_modification();
     
         final switch (projection_mode) {
             case ProjectionMode.Perspective:
-                projection_matrix = [
+                render_state.projection_matrix = [
                     p[0], 0,    0,     0,
                     0,    p[2], 0,     0,
                     p[1], p[3], p[4], -1,
@@ -2349,7 +2491,7 @@ final class Hollywood {
                 break;
             
             case ProjectionMode.Orthographic:
-                projection_matrix = [
+                render_state.projection_matrix = [
                     p[0], 0,    0,    0,
                     0,    p[2], 0,    0,
                     0,    0,    p[4], 0,
@@ -2512,61 +2654,28 @@ final class Hollywood {
     }
 
     private void process_new_shape_from_data(ubyte* data, size_t data_length) {
+        update_texture_matrices();
+        
+        auto render_state = get_render_state_for_modification();
+        for (int i = 0; i < 8; i++) {
+            if (render_state.tev_config.stages[i].texmap_enable) {
+                auto j = render_state.tev_config.stages[i].texmap;
+                render_state.texture[j].texture_id = texture_manager.load_texture(render_state.texture_descriptors[j], mem, gl_object_manager);
+                render_state.enabled_textures_bitmap |= (1 << i);
+            }
+        }
+
         log_hollywood("process_new_shape_from_data %d %s %s %x %x", shape_groups.length, vats[current_vat], vertex_descriptors[0], data_length, number_of_expected_bytes_for_shape);
 
-        ShapeGroup* shape_group = shape_groups.allocate();
-        shape_group.shared_vertex_start = current_vertex_offset;
-        shape_group.shared_index_start = current_index_offset;
-
-        shape_group.textured = false;
-        shape_group.position_matrix = general_matrix_ram[shape_group.geometry_matrix_idx * 4 .. shape_group.geometry_matrix_idx * 4 + 12];
-        shape_group.projection_matrix = projection_matrix;
-
-        shape_group.depth_test_enabled = current_depth_test_enabled;
-        shape_group.depth_write_enabled = current_depth_write_enabled;
-        shape_group.depth_func = current_depth_func;
-
-        shape_group.cull_mode = current_cull_mode;
-
-        shape_group.alpha_update_enable = this.alpha_update_enable;
-        shape_group.color_update_enable = this.color_update_enable;
-        shape_group.dither_enable = pixel_engine.dither_enable;
-        shape_group.arithmetic_blending_enable = current_arithmetic_blending_enable;
-        shape_group.boolean_blending_enable = pixel_engine.boolean_blending_enable;
-        shape_group.blend_source = current_blend_source;
-        shape_group.blend_destination = current_blend_destination;
-        shape_group.subtractive_additive_toggle = current_subtractive_additive_toggle;
-        shape_group.blend_operator = pixel_engine.blend_operator;
-
-        int enabled_textures_bitmap;
-        for (int i = 0; i < 8; i++) {
-            if (tev_config.stages[i].texmap_enable) { 
-                int j = tev_config.stages[i].texmap;
-                log_texture("Loading texture %d for shape group %d", j, shape_groups.length - 1);
-                shape_group.texture[j].texture_id = texture_manager.load_texture(texture_descriptors[j], mem, gl_object_manager);
-                shape_group.texture[j].width = texture_descriptors[j].width;
-                shape_group.texture[j].height = texture_descriptors[j].height;
-                shape_group.texture[j].wrap_s = texture_descriptors[j].wrap_s;
-                shape_group.texture[j].wrap_t = texture_descriptors[j].wrap_t;
-                shape_group.texture[j].dualtex_matrix = 
-                    dt_texture_matrix_ram[texture_descriptors[j].dualtex_matrix_slot * 4 + 0 .. 
-                    texture_descriptors[j].dualtex_matrix_slot * 4 + 12];
-                shape_group.texture[j].tex_matrix = 
-                    general_matrix_ram[texture_descriptors[j].tex_matrix_slot * 4 + 0 ..
-                    texture_descriptors[j].tex_matrix_slot * 4 + 12];
-
-                shape_group.texture[j].normalize_before_dualtex = texture_descriptors[j].normalize_before_dualtex;
-
-                shape_group.textured = true;
-                enabled_textures_bitmap |= 1 << j;
-            }
+        if (accumulated_geometry.shared_index_count == 0) {
+            accumulated_geometry.shared_vertex_start = current_vertex_offset;
+            accumulated_geometry.shared_index_start = current_index_offset;
+            import std.stdio; writefln("Setting %d %d", accumulated_geometry.shared_vertex_start, accumulated_geometry.shared_index_start);
         }
 
         int offset = 0;
         auto vcd = &vertex_descriptors[0];
         auto vat = &vats[current_vat];
-
-        shape_group.uses_per_vertex_matrices = (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent);
 
         auto decode_vertex = () {
             Vertex v;
@@ -2576,7 +2685,7 @@ final class Hollywood {
                 offset += 1;
             } else {
                 v.position_matrix_index = -1;
-                shape_group.geometry_matrix_idx = geometry_matrix_idx;
+                // Don't modify render state here
             }
 
             for (int j = 0; j < 8; j++) {
@@ -2760,7 +2869,7 @@ final class Hollywood {
             int quad_count = 0;
             for (int i = 0; i < number_of_expected_vertices; i++) {
                 Vertex v = decode_vertex();
-                uint local_idx = cast(uint) (current_vertex_offset - shape_group.shared_vertex_start);
+                uint local_idx = cast(uint) (current_vertex_offset - accumulated_geometry.shared_vertex_start);
                 *next_vertex() = v;
                 quad_indices[quad_count++] = local_idx;
                 if (quad_count == 4) {
@@ -2781,7 +2890,7 @@ final class Hollywood {
             int tri_count = 0;
             for (int i = 0; i < number_of_expected_vertices; i++) {
                 Vertex v = decode_vertex();
-                uint local_idx = cast(uint) (current_vertex_offset - shape_group.shared_vertex_start);
+                uint local_idx = cast(uint) (current_vertex_offset - accumulated_geometry.shared_vertex_start);
                 *next_vertex() = v;
                 tri[tri_count++] = local_idx;
                 if (tri_count == 3) {
@@ -2799,7 +2908,7 @@ final class Hollywood {
             uint prev_idx = uint.max;
             for (int i = 0; i < number_of_expected_vertices; i++) {
                 Vertex v = decode_vertex();
-                uint local_idx = cast(uint) (current_vertex_offset - shape_group.shared_vertex_start);
+                uint local_idx = cast(uint) (current_vertex_offset - accumulated_geometry.shared_vertex_start);
                 *next_vertex() = v;
 
                 if (first_idx == uint.max) {
@@ -2821,7 +2930,7 @@ final class Hollywood {
             uint prev1 = uint.max;
             for (int i = 0; i < number_of_expected_vertices; i++) {
                 Vertex v = decode_vertex();
-                uint local_idx = cast(uint) (current_vertex_offset - shape_group.shared_vertex_start);
+                uint local_idx = cast(uint) (current_vertex_offset - accumulated_geometry.shared_vertex_start);
                 *next_vertex() = v;
 
                 if (prev0 == uint.max) {
@@ -2850,64 +2959,18 @@ final class Hollywood {
             error_hollywood("Unimplemented draw command: %s", current_draw_command);
         }
 
-        shape_group.shared_vertex_count = current_vertex_offset - shape_group.shared_vertex_start;
-        shape_group.shared_index_count = current_index_offset - shape_group.shared_index_start;
+        accumulated_geometry.shared_index_count  = current_index_offset  - accumulated_geometry.shared_index_start;
+        accumulated_geometry.shared_vertex_count = current_vertex_offset - accumulated_geometry.shared_vertex_start;
 
-        for (int i = 0; i < 8; i++) {
-            shape_group.vertex_config.tex_configs[i].tex_matrix = shape_group.texture[i].tex_matrix;
-            shape_group.vertex_config.tex_configs[i].dualtex_matrix = shape_group.texture[i].dualtex_matrix; 
-            shape_group.vertex_config.tex_configs[i].normalize_before_dualtex = shape_group.texture[i].normalize_before_dualtex;
-            shape_group.vertex_config.tex_configs[i].texcoord_source = cast(u32) texture_descriptors[i].texcoord_source;
-            shape_group.vertex_config.tex_configs[i].texmatrix_size = cast(u32) texture_descriptors[i].texmatrix_size;
-            shape_group.vertex_config.tex_configs[i].use_stq = cast(u32) texture_descriptors[i].use_stq;
-        }
-
-        shape_group.enabled_textures_bitmap = enabled_textures_bitmap;
-
-        shape_group.tev_config_offset = next_tev_config_offset();
-        *cast(TevConfig*) (cast(ubyte*) persistent_tev_ptr + shape_group.tev_config_offset) = tev_config;
-        
-        shape_group.vertex_config_offset = next_vertex_config_offset();
-        *cast(VertexConfig*) (cast(ubyte*) persistent_vertex_config_ptr + shape_group.vertex_config_offset) = shape_group.vertex_config;
-
-        if (shape_group.uses_per_vertex_matrices) {
-            draw();
+        if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+            flush_accumulated_batch();
         }
     }
 
     bool shit = false;
 
     public void draw() {
-        glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
-        
-        if (total_display_lists > 0) {
-            log_opengl("Display lists: %d total, %d draw-only, %d unique, max consecutive: %d", total_display_lists, draw_only_display_lists, display_list_vertices.length, max_consecutive_display_lists);
-            log_opengl("Display lists without indexing: %d", display_lists_without_indexing);
-            foreach (hash, vertices; display_list_vertices) {
-                // log_opengl("  Hash %016x: %d vertices", hash, vertices);
-            }
-        }
-
-        total_display_lists = 0;
-        draw_only_display_lists = 0;
-        display_lists_without_indexing = 0;
-        display_list_vertices.clear();
-        max_consecutive_display_lists = 0;
-        consecutive_display_lists = 0;
-        last_command_was_display_list = false;
-        debug_next_commands = false;
-        debug_commands_left = 0;
-        
-        glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
-        glFlushMappedBufferRange(GL_ARRAY_BUFFER, 0, current_vertex_offset * Vertex.sizeof);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
-        glFlushMappedBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, current_index_offset * uint.sizeof);
-        
-        auto shape_groups_array = shape_groups.all()[0 .. shape_groups.length];
-        total_coalescable_pairs += count_coalescable_shapegroups(shape_groups_array);
-        total_shape_groups += shape_groups_array.length;
-        
-        draw_shape_groups(shape_groups_array);
+        flush_accumulated_batch();
         this.shape_groups.reset();
     }
     
@@ -2933,40 +2996,15 @@ final class Hollywood {
         }
     }
 
-    private bool shapegroups_coalescable(const ref ShapeGroup a, const ref ShapeGroup b) {
-        return a.position_matrix == b.position_matrix &&
-               a.projection_matrix == b.projection_matrix &&
-               a.texture == b.texture &&
-               a.tev_config == b.tev_config &&
-               a.vertex_config == b.vertex_config &&
-               a.textured == b.textured &&
-               a.enabled_textures_bitmap == b.enabled_textures_bitmap &&
-               a.depth_test_enabled == b.depth_test_enabled &&
-               a.depth_write_enabled == b.depth_write_enabled &&
-               a.depth_func == b.depth_func &&
-               a.cull_mode == b.cull_mode &&
-               a.alpha_update_enable == b.alpha_update_enable &&
-               a.color_update_enable == b.color_update_enable &&
-               a.dither_enable == b.dither_enable &&
-               a.arithmetic_blending_enable == b.arithmetic_blending_enable &&
-               a.boolean_blending_enable == b.boolean_blending_enable &&
-               a.blend_source == b.blend_source &&
-               a.blend_destination == b.blend_destination &&
-               a.subtractive_additive_toggle == b.subtractive_additive_toggle &&
-               a.blend_operator == b.blend_operator;
-    }
+    // private bool shapegroups_coalescable(const ref ShapeGroup a, const ref ShapeGroup b) {
+    //     // This function is no longer needed - coalescing happens automatically
+    //     return false;
+    // }
 
-    private int count_coalescable_shapegroups(ShapeGroup[] shape_groups) {
-        int coalescable_pairs = 0;
-        
-        for (int i = 0; i + 1 < shape_groups.length; i++) {
-            if (shapegroups_coalescable(shape_groups[i], shape_groups[i + 1])) {
-                coalescable_pairs++;
-            }
-        }
-        
-        return coalescable_pairs;
-    }
+    // private int count_coalescable_shapegroups(ShapeGroup[] shape_groups) {
+    //     // No longer needed - coalescing happens automatically
+    //     return 0;
+    // }
 
     private uint gc_blend_factor_to_gl(int gc_factor) {
         final switch (gc_factor) {
@@ -3007,127 +3045,20 @@ final class Hollywood {
         this.shape_groups.reset();
     }
 
-    void draw_shape_groups_batched(ShapeGroup[] shape_groups) {
-        if (shape_groups.length == 0) {
-            return;
-        }
-
-        glUseProgram(gl_program);
-        glClearColor(
-            blitting_processor.get_copy_clear_color_red() / 255.0f,
-            blitting_processor.get_copy_clear_color_green() / 255.0f, 
-            blitting_processor.get_copy_clear_color_blue() / 255.0f,
-            blitting_processor.get_copy_clear_color_alpha() / 255.0f
-        ); 
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(GL_TRUE);
-        // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        // glEnable(GL_BLEND);
-        
-        gl_object_manager.deallocate_all_objects();
-
-        uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
-        uint vertex_buffer_object = gl_object_manager.allocate_vertex_buffer_object();
-        glBindVertexArray(vertex_array_object);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_object);
-
-        glEnableVertexAttribArray(position_attr_location);
-        glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) 0);
-        glEnableVertexAttribArray(normal_attr_location);
-        glVertexAttribPointer(normal_attr_location, 3, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (3 * float.sizeof));
-        glEnableVertexAttribArray(texcoord_attr_location);
-        glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (6 * float.sizeof));
-        glEnableVertexAttribArray(color_attr_location);
-        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, 30 * float.sizeof, cast(void*) (22 * float.sizeof));
-
-        foreach (i, shape_group; shape_groups) {
-            // draw_shape_group_batched_single(shape_group);
-        }
-
-        this.shape_groups.reset();
-        foreach (shape_group; shape_groups) {
-            shape_group.shared_vertex_start = 0;
-            shape_group.shared_vertex_count = 0;
-            shape_group.shared_index_start = 0;
-            shape_group.shared_index_count = 0;
-        }
-    }
-
     void draw_shape_group(ShapeGroup shape_group) {
-        if (shape_group.arithmetic_blending_enable) {
-            glEnable(GL_BLEND);
-
-            auto op1 = gc_blend_factor_to_gl(shape_group.blend_source);
-            auto op2 = gc_blend_factor_to_gl(shape_group.blend_destination);
-            glBlendFunc(op1, op2);
-            // assert_hollywood(op1 != GL_LINES && op2 != GL_LINES, "Invalid blend factors: %d %d", shape_group.blend_source, shape_group.blend_destination);
-        } else {
-            // error_hollywood("Boolean blending not implemented");
-            // glBlendFunc();
-            glDisable(GL_BLEND);
-        }
-
-        if (shape_group.textured) {
-            int enabled_textures_bitmap = shape_group.enabled_textures_bitmap;
-            while (enabled_textures_bitmap != 0) {
-                int i = cast(int) enabled_textures_bitmap.bfs;
-                enabled_textures_bitmap &= ~(1 << i);
-
-                // Give the image to OpenGL
-                // log_hollywood("projection color: %s", shape.texture[0]);
-                glActiveTexture(GL_TEXTURE0 + i);
-                glBindTexture(GL_TEXTURE_2D, shape_group.texture[i].texture_id);
-
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-                final switch (shape_group.texture[i].wrap_s) {
-                    case TextureWrap.Clamp:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                        break;
-                    
-                    case TextureWrap.Repeat:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                        break;
-                    
-                    case TextureWrap.Mirror:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-                        break;
-                }
-
-                final switch (shape_group.texture[i].wrap_t) {
-                    case TextureWrap.Clamp:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                        break;
-                    
-                    case TextureWrap.Repeat:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                        break;
-                    
-                    case TextureWrap.Mirror:
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-                        break;
-                }
-
-                glUniform1i(texture_uniform_locations[i], i);
-            }
-        } else {
-            return;
-        }
-    
-        submit_shape_group_to_opengl(shape_group);
+        apply_opengl_state(current_render_state);
+        submit_geometry_to_opengl(shape_group, current_render_state);
     }
 
-    void submit_shape_group_to_opengl(ShapeGroup shape_group) {
-        log_hollywood("swap_tables: %x %x", shape_group.tev_config.swap_tables, shape_group.tev_config.stages[0].ras_swap_table_index);
-        log_hollywood("Submitting shape group to OpenGL (%d vertices): %s", shape_group.shared_vertex_count, shape_group);
+    void submit_geometry_to_opengl(ShapeGroup geometry, RenderState render_state) {
+        log_hollywood("Submitting shape group to OpenGL (%d %d %d %d)", geometry.shared_vertex_count, geometry.shared_vertex_start, geometry.shared_index_count, geometry.shared_index_start);
 
         uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
         glBindVertexArray(vertex_array_object);
         glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
 
-        size_t base_offset = shape_group.shared_vertex_start * Vertex.sizeof;
+        size_t base_offset = geometry.shared_vertex_start * Vertex.sizeof;
         
         glEnableVertexAttribArray(position_attr_location);
         glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 0));
@@ -3144,66 +3075,23 @@ final class Hollywood {
         glEnableVertexAttribArray(matrix_index_attr_location);
         glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + 30 * float.sizeof));
             
-        if (shape_group.uses_per_vertex_matrices) {
+        if (render_state.uses_per_vertex_matrices) {
             glUniform1fv(matrix_data_uniform_location, 256, general_matrix_ram.ptr);
         } else {
-            glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, shape_group.position_matrix.ptr);
+            glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, render_state.position_matrix.ptr);
         }
 
-        glUniformMatrix4x3fv(texture_matrix_uniform_location,  1, GL_TRUE,  shape_group.texture[0].tex_matrix.ptr);
-        glUniformMatrix4fv  (mvp_uniform_location,             1, GL_FALSE, shape_group.projection_matrix.ptr);
+        glUniformMatrix4x3fv(texture_matrix_uniform_location,  1, GL_TRUE,  render_state.texture[0].tex_matrix.ptr);
+        glUniformMatrix4fv  (mvp_uniform_location,             1, GL_FALSE, render_state.projection_matrix.ptr);
 
-        log_hollywood("TevConfig: sizeof %d", TevConfig.sizeof);
         glUniformBlockBinding(gl_program, tev_config_block_index, 0);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 0, persistent_tev_buffer,
-                         shape_group.tev_config_offset, TevConfig.sizeof);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 0, persistent_tev_buffer);
 
         glUniformBlockBinding(gl_program, vertex_config_block_index, 1);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 1, persistent_vertex_config_buffer,
-                         shape_group.vertex_config_offset, VertexConfig.sizeof);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 1, persistent_vertex_config_buffer);
 
-        glColorMask(
-            shape_group.color_update_enable, 
-            shape_group.color_update_enable, 
-            shape_group.color_update_enable, 
-            shape_group.alpha_update_enable
-        );
-
-        if (shape_group.depth_test_enabled) {
-            glEnable(GL_DEPTH_TEST);
-        } else {
-            glDisable(GL_DEPTH_TEST);
-        }
-
-        if (shape_group.depth_write_enabled) {
-            glDepthMask(GL_TRUE);
-        } else {
-            glDepthMask(GL_FALSE);
-        }
-
-        log_hollywood("Setting depth func: %d", shape_group.depth_func);
-        glDepthFunc(shape_group.depth_func);
-
-        final switch (shape_group.cull_mode) {
-            case 0:
-                // glDisable(GL_CULL_FACE);
-                break;
-            case 1:
-                // glEnable(GL_CULL_FACE);
-                // glCullFace(GL_FRONT);
-                break;
-            case 2:
-                // glEnable(GL_CULL_FACE);
-                // glCullFace(GL_BACK);
-                break;
-            case 3:
-                // glEnable(GL_CULL_FACE);
-                // glCullFace(GL_FRONT_AND_BACK);
-                break;
-        }
-
-        glDrawElements(GL_TRIANGLES, cast(int) shape_group.shared_index_count, GL_UNSIGNED_INT,
-                       cast(void*) (shape_group.shared_index_start * uint.sizeof));
+        glDrawElements(GL_TRIANGLES, cast(int) geometry.shared_index_count, GL_UNSIGNED_INT,
+                       cast(void*) (geometry.shared_index_start * uint.sizeof));
 
         log_hollywood("Drawing shape");
     }
@@ -3344,7 +3232,7 @@ final class Hollywood {
     }
 
     void debug_draw_shape_group(ShapeGroup shape_group) {
-        submit_shape_group_to_opengl(shape_group);
+        submit_geometry_to_opengl(shape_group, current_render_state);
     }
 
     void debug_redraw(ShapeGroup[] shape_groups) {
@@ -3433,14 +3321,14 @@ final class Hollywood {
     }
 
     bool is_sussy() {
-        return tev_config.num_tev_stages == 2 &&
-            tev_config.stages[1].in_color_a == 2 &&
-            tev_config.stages[1].in_color_b == 0 &&
-            tev_config.stages[1].in_color_c == 8 &&
-            tev_config.stages[1].in_color_d == 15 &&
-            tev_config.stages[1].in_alfa_a == 1 &&
-            tev_config.stages[1].in_alfa_b == 2 &&
-            tev_config.stages[1].in_alfa_c == 6 &&
-            tev_config.stages[1].in_alfa_d == 7;
+        return current_render_state.tev_config.num_tev_stages == 2 &&
+            current_render_state.tev_config.stages[1].in_color_a == 2 &&
+            current_render_state.tev_config.stages[1].in_color_b == 0 &&
+            current_render_state.tev_config.stages[1].in_color_c == 8 &&
+            current_render_state.tev_config.stages[1].in_color_d == 15 &&
+            current_render_state.tev_config.stages[1].in_alfa_a == 1 &&
+            current_render_state.tev_config.stages[1].in_alfa_b == 2 &&
+            current_render_state.tev_config.stages[1].in_alfa_c == 6 &&
+            current_render_state.tev_config.stages[1].in_alfa_d == 7;
     }
 }
