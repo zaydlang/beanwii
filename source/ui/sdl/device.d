@@ -718,12 +718,13 @@ class SdlDevice : MultiMediaDevice, Window {
         uint[uint] seen_texture_ids;
         int dump_count = 0;
         
+        auto render_state = hollywood.get_current_render_state();
         foreach (shape_group; drawn_shape_groups) {
             for (int i = 0; i < 8; i++) {
-                uint texture_id = shape_group.texture[i].texture_id;
+                uint texture_id = render_state.texture[i].texture_id;
                 if (texture_id != 0 && texture_id !in seen_texture_ids) {
                     seen_texture_ids[texture_id] = 1;
-                    dump_texture_to_file(shape_group.texture[i], dump_count);
+                    dump_texture_to_file(render_state.texture[i], dump_count);
                     dump_count++;
                 }
             }
@@ -774,6 +775,7 @@ final class DebugTriWindow : Window {
     Widget[] widgets;
 
     ShapeGroup debug_shape;
+    Hollywood.RenderState debug_render_state;
 
     RenderedTextHandle tev_stage_title_handle;
     RenderedTextHandle[16] tev_stage_color_text_handles;
@@ -784,6 +786,7 @@ final class DebugTriWindow : Window {
     this(SdlDevice parent, int shape_index) {
         this.parent = parent;
         this.debug_shape = parent.drawn_shape_groups[shape_index];
+        this.debug_render_state = cast(Hollywood.RenderState) *parent.hollywood.get_current_render_state();
 
         SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
         window = SDL_CreateWindow("debug tri", 
@@ -805,7 +808,7 @@ final class DebugTriWindow : Window {
             // (void* _) { SDL_PumpEvents(); SDL_GL_DeleteContext(gl_context); SDL_DestroyRenderer(renderer); SDL_DestroyWindow(window); parent.on_window_close(this); }, (void* _) {}, (void* _) {}, null);
         // widgets ~= exit_button;
 
-        for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
+        for (int i = 0; i < debug_render_state.tev_config.num_tev_stages; i++) {
             tev_stage_color_text_handles[i] = parent.font_spm_small.obtain_text_handle();
             tev_stage_alfa_text_handles[i] = parent.font_spm_small.obtain_text_handle();
         }
@@ -852,14 +855,14 @@ final class DebugTriWindow : Window {
         
         GLint debug_texture_shader = load_shader("source/ui/sdl/shaders/debug_texture");
         texture_widgets = [
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[0], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[1], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[2], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[3], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[4], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[5], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[6], parent.font_spm_small),
-            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_shape.texture[7], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[0], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[1], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[2], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[3], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[4], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[5], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[6], parent.font_spm_small),
+            new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[7], parent.font_spm_small),
         ];
 
         TexGenViewer[8] texgen_viewers = new TexGenViewer[8];
@@ -867,7 +870,7 @@ final class DebugTriWindow : Window {
             texgen_viewers[i] = new TexGenViewer(
             640, 20, 
             DEBUG_TRI_WINDOW_WIDTH - 660, (DEBUG_TRI_WINDOW_HEIGHT - 300) / 2 - 40,  
-            debug_shape.texture[i], parent.widget_shader, 
+            debug_render_state.texture[i], parent.widget_shader, 
             from_hex(0x90e0ef),
             parent.font_spm_small, parent.font_roboto);
         }
@@ -943,13 +946,13 @@ final class DebugTriWindow : Window {
     }
 
     string calculate_color_tev_stage_text(int stage) {
-        string a = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_a);
-        string b = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_b);
-        string c = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_c);
-        string d = calculate_color_input_text(debug_shape.tev_config.stages[stage].in_color_d);
-        float bias_val = debug_shape.tev_config.stages[stage].bias_color;
-        float scale_val = debug_shape.tev_config.stages[stage].scale_color;
-        int dest = debug_shape.tev_config.stages[stage].color_dest;
+        string a = calculate_color_input_text(debug_render_state.tev_config.stages[stage].in_color_a);
+        string b = calculate_color_input_text(debug_render_state.tev_config.stages[stage].in_color_b);
+        string c = calculate_color_input_text(debug_render_state.tev_config.stages[stage].in_color_c);
+        string d = calculate_color_input_text(debug_render_state.tev_config.stages[stage].in_color_d);
+        float bias_val = debug_render_state.tev_config.stages[stage].bias_color;
+        float scale_val = debug_render_state.tev_config.stages[stage].scale_color;
+        int dest = debug_render_state.tev_config.stages[stage].color_dest;
 
         return generate_optimized_tev_equation(
             "r%d".format(dest), 
@@ -993,13 +996,13 @@ final class DebugTriWindow : Window {
     }
 
     string calculate_alfa_tev_stage_text(int stage) {
-        string a = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_a);
-        string b = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_b);
-        string c = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_c);
-        string d = calculate_alfa_input_text(debug_shape.tev_config.stages[stage].in_alfa_d);
-        float bias_val = debug_shape.tev_config.stages[stage].bias_alfa;
-        float scale_val = debug_shape.tev_config.stages[stage].scale_alfa;
-        int dest = debug_shape.tev_config.stages[stage].alfa_dest;
+        string a = calculate_alfa_input_text(debug_render_state.tev_config.stages[stage].in_alfa_a);
+        string b = calculate_alfa_input_text(debug_render_state.tev_config.stages[stage].in_alfa_b);
+        string c = calculate_alfa_input_text(debug_render_state.tev_config.stages[stage].in_alfa_c);
+        string d = calculate_alfa_input_text(debug_render_state.tev_config.stages[stage].in_alfa_d);
+        float bias_val = debug_render_state.tev_config.stages[stage].bias_alfa;
+        float scale_val = debug_render_state.tev_config.stages[stage].scale_alfa;
+        int dest = debug_render_state.tev_config.stages[stage].alfa_dest;
 
         return generate_optimized_tev_equation(
             "a%d".format(dest), 
@@ -1073,7 +1076,7 @@ final class DebugTriWindow : Window {
             widget.draw();
         }
 
-        for (int i = 0; i < debug_shape.tev_config.num_tev_stages; i++) {
+        for (int i = 0; i < debug_render_state.tev_config.num_tev_stages; i++) {
             parent.font_spm_small.set_string(
                 tev_stage_color_text_handles[i], from_hex(0x444444), Justify.Left,
                 calculate_color_tev_stage_text(i),
@@ -1108,7 +1111,7 @@ final class DebugTriWindow : Window {
             // parent.font_spm_small.set_string(
             //     tex_info_text_handles[i], from_hex(0x444444), Justify.Left,
             //     "Texture %d: Address: %08x, Format: %s".format(
-            //         i, debug_shape.texture_address[i], debug_shape.texture_format[i]
+            //         i, debug_render_state.texture_address[i], debug_render_state.texture_format[i]
             //     ),
             // );
         }
