@@ -194,8 +194,8 @@ vec3 get_parameter_for_color_stage(int idx, int stage) {
 		case 7: return color_regs[3].aaa;
 		case 8: return sample_texture(stage).rgb;
 		case 9: return sample_texture(stage).aaa;
-		case 10: return get_color_from_ras_channel_id(stages[idx].ras_channel_id, stage).rgb;
-		case 11: return get_color_from_ras_channel_id(stages[idx].ras_channel_id, stage).aaa;
+		case 10: return get_color_from_ras_channel_id(stages[stage].ras_channel_id, stage).rgb;
+		case 11: return get_color_from_ras_channel_id(stages[stage].ras_channel_id, stage).aaa;
 		case 12: return vec3(1.0, 1.0, 1.0);
 		case 13: return vec3(0.5, 0.5, 0.5);
 		case 14: return resolve_kcsel(stages[stage].kcsel);
@@ -210,7 +210,7 @@ vec3 get_parameter_for_alfa_stage(int idx, int stage) {
 		case 2: return color_regs[2].aaa;
 		case 3: return color_regs[3].aaa;
 		case 4: return sample_texture(stage).aaa;
-		case 5: return get_color_from_ras_channel_id(stages[idx].ras_channel_id, stage).aaa;
+		case 5: return get_color_from_ras_channel_id(stages[stage].ras_channel_id, stage).aaa;
 		case 6: return resolve_kasel(stages[stage].kasel);
 		case 7: return vec3(0.0);
 	}
