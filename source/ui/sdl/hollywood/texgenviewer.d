@@ -3,6 +3,7 @@ module ui.sdl.hollywood.texgenviewer;
 import bindbc.opengl;
 import bindbc.sdl;
 import emu.hw.hollywood.hollywood;
+import emu.hw.hollywood.hollywood_types : Texture;
 import ui.sdl.checkbox;
 import ui.sdl.color;
 import ui.sdl.font;
@@ -31,7 +32,7 @@ final class TexGenViewer : Widget {
     this(int x, int y, int w, int h, Texture texture, GLint shader, Color background, Font font, Font mat_font) {
         super(x, y, w, h);
 
-        this.tex_shader = tex_shader;
+        this.tex_shader = shader;
         this.font = font;
 
         mat_viewer_height = (h - 20 * 2 - 30 - 10 * 2) / 2;

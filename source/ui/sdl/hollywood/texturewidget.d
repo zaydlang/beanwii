@@ -3,6 +3,7 @@ module ui.sdl.hollywood.texturewidget;
 import bindbc.opengl;
 import bindbc.sdl;
 import emu.hw.hollywood.hollywood;
+import emu.hw.hollywood.hollywood_types : Texture;
 import ui.sdl.checkbox;
 import ui.sdl.color;
 import ui.sdl.font;
@@ -36,7 +37,7 @@ final class TextureWidget : Widget {
         // checkbox.draw();
         glUseProgram(tex_shader);
 
-        hollywood.debug_draw_texture(texture, x, y, w, h);
+        // hollywood.debug_draw_texture(texture, x, y, w, h);
     }
 
     override void update(int mouse_x, int mouse_y, int mouse_state, long mouse_wheel) {}

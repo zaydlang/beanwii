@@ -94,7 +94,7 @@ enum RasChannelId {
 }
 
 
-alias GLBool = u8;
+alias GLBool = u32;
 
 struct VertexDescriptor {
     VertexAttributeLocation    position_normal_matrix_location;
@@ -136,6 +136,7 @@ struct ColorConfig {
 struct GlAlignedFloat {
     float value;
     alias value this;
+
     void opAssign(float value) {
         this.value = value;
     }
@@ -168,11 +169,13 @@ struct TevStage {
     u32 clamp_alfa;
     u32 kcsel;
     u32 kasel;
+    u32[2] padding;
 }
 
 struct TevConfig {
     align(1):
     TevStage[16] stages;
+
     GlAlignedFloat[4] reg0;
     GlAlignedFloat[4] reg1;
     GlAlignedFloat[4] reg2;
@@ -181,14 +184,16 @@ struct TevConfig {
     GlAlignedFloat[4] k1;
     GlAlignedFloat[4] k2;
     GlAlignedFloat[4] k3;
+
     int num_tev_stages;
     int padding;
-    u64 swap_tables;
-    float alpha_ref0;
-    float alpha_ref1;
-    u32 alpha_comp0;
-    u32 alpha_comp1;
-    u32 alpha_aop;
+    u64 swap_tables; // 8 * 4 
+
+    int alpha_comp0;
+    int alpha_comp1;
+    int alpha_aop;
+    int alpha_ref0;
+    int alpha_ref1;
 }
 
 struct TexConfig {
@@ -222,10 +227,13 @@ struct Texture {
 struct RenderState {
     float[12] position_matrix;
     float[16] projection_matrix;
+    
     Texture[8] texture;
     TextureDescriptor[8] texture_descriptors;
+
     VertexConfig vertex_config;
     TevConfig tev_config;
+
     bool textured;
     int enabled_textures_bitmap;
     int geometry_matrix_idx;
@@ -240,6 +248,23 @@ struct RenderState {
     int blend_source;
     bool subtractive_additive_toggle;
     bool uses_per_vertex_matrices;
+    
+    u16 efb_src_x;
+    u16 efb_src_y;
+    u16 efb_src_w;
+    u16 efb_src_h;
+    u8 clear_color_red;
+    u8 clear_color_green;
+    u8 clear_color_blue;
+    u8 clear_color_alpha;
+    u32 clear_depth;
+    float[5] viewport;
+    
+    u8 alpha_comp0;
+    u8 alpha_comp1;
+    u8 alpha_aop;
+    u8 alpha_ref0;
+    u8 alpha_ref1;
 }
 
 struct ShapeGroup {
