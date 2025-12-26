@@ -205,7 +205,7 @@ class SdlDevice : MultiMediaDevice, Window {
     int hovered_shape = -1;
 
     ShapeGroup[] drawn_shape_groups;
-    DebugTriWindow[] debug_tri_windows;
+    // DebugTriWindow[] // debug_tri_windows;
 
     Window active_window;
     Window[SDL_Window*] window_map;
@@ -398,7 +398,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
             this.hollywood = wii.debug_get_hollywood();
             this.paused = false;
-            debug_tri_windows = [];
+            // debug_tri_windows = [];
 
             active_window = cast(Window) this;
             window_map[window] = cast(Window) this;
@@ -474,7 +474,7 @@ class SdlDevice : MultiMediaDevice, Window {
                     
                     for (int i = 0; i < drawn_shape_groups.length; i++) {
                         auto tri = new SdlButton(0, 0, DEBUGGER_PANEL_WIDTH, 30, from_hex(0x90e0ef), from_hex(0x0077b6), font_spm_medium, "Group #%d".format(i), widget_shader,
-                            (void* idx) { create_debug_tri_window(this, cast(int) idx); }, (void* idx) { hovered_shape = cast(int) idx; }, (void* idx) { if (hovered_shape == cast(int) idx) hovered_shape = -1; }, cast(void*) i);
+                            (void* idx) { /* create_debug_tri_window(this, cast(int) idx); */ }, (void* idx) { hovered_shape = cast(int) idx; }, (void* idx) { if (hovered_shape == cast(int) idx) hovered_shape = -1; }, cast(void*) i);
                         items ~= tri;
                     }
 
@@ -531,9 +531,9 @@ class SdlDevice : MultiMediaDevice, Window {
                     }
                 }
 
-                foreach (DebugTriWindow window; debug_tri_windows) {
-                    window.draw();
-                }
+                // foreach (DebugTriWindow window; // debug_tri_windows) {
+                //     window.draw();
+                // }
                 
                 SDL_GL_MakeCurrent(window, gl_context);
                 glUseProgram(widget_shader);
@@ -719,7 +719,7 @@ class SdlDevice : MultiMediaDevice, Window {
         uint[uint] seen_texture_ids;
         int dump_count = 0;
         
-        auto render_state = hollywood.get_current_render_state();
+        auto render_state = &hollywood.get_opengl_renderer().get_render_state();
         foreach (shape_group; drawn_shape_groups) {
             for (int i = 0; i < 8; i++) {
                 uint texture_id = render_state.texture[i].texture_id;
@@ -752,18 +752,18 @@ class SdlDevice : MultiMediaDevice, Window {
         log_frontend("Dumped texture %d (%dx%d) to %s", texture.texture_id, texture.width, texture.height, filename);
     }
 
-    void on_window_close(DebugTriWindow window) {
-        debug_tri_windows = debug_tri_windows.filter!(w => w !is window).array;
-    }
+    // void on_window_close(DebugTriWindow window) {
+    //     // debug_tri_windows = // debug_tri_windows.filter!(w => w !is window).array;
+    // }
 
-    void create_debug_tri_window(SdlDevice parent, int shape_index) {
-        auto window = new DebugTriWindow(parent, shape_index);
-        debug_tri_windows ~= window;
-        window_map[window.window] = window;
-    }
+    // void // create_debug_tri_window(SdlDevice parent, int shape_index) {
+    //     auto window = new DebugTriWindow(parent, shape_index);
+    //     // debug_tri_windows ~= window;
+    //     window_map[window.window] = window;
+    // }
 }
 
-final class DebugTriWindow : Window {
+/* final class DebugTriWindow : Window {
     enum DEBUG_TRI_WINDOW_WIDTH = 1000;
     enum DEBUG_TRI_WINDOW_HEIGHT = 900;
 
@@ -787,7 +787,7 @@ final class DebugTriWindow : Window {
     this(SdlDevice parent, int shape_index) {
         this.parent = parent;
         this.debug_shape = parent.drawn_shape_groups[shape_index];
-        // this.debug_render_state = cast(Hollywood.RenderState) *parent.hollywood.get_current_render_state();
+        // this.debug_render_state = cast(Hollywood.RenderState) *parent.hollywood.opengl_renderer.render_state;
 
         SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
         window = SDL_CreateWindow("debug tri", 
@@ -856,14 +856,14 @@ final class DebugTriWindow : Window {
         
         GLint debug_texture_shader = load_shader("source/ui/sdl/shaders/debug_texture");
         // texture_widgets = [
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[0], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[1], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[2], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[3], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[4], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[5], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[6], parent.font_spm_small),
-        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.texture[7], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[0], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[1], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[2], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[3], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[4], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[5], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[6], parent.font_spm_small),
+        //     new TextureWidget(50, 20, DEBUG_TRI_WINDOW_WIDTH - 470, DEBUG_TRI_WINDOW_HEIGHT - 540 + 40, parent.hollywood, parent.widget_shader, debug_texture_shader, from_hex(0x0077b6), debug_render_state.get_texture()[7], parent.font_spm_small),
         // ];
 
         // TexGenViewer[8] texgen_viewers = new TexGenViewer[8];
@@ -871,7 +871,7 @@ final class DebugTriWindow : Window {
         //     texgen_viewers[i] = new TexGenViewer(
         //     640, 20, 
         //     DEBUG_TRI_WINDOW_WIDTH - 660, (DEBUG_TRI_WINDOW_HEIGHT - 300) / 2 - 40,  
-        //     debug_render_state.texture[i], parent.widget_shader, 
+        //     debug_render_state.get_texture()[i], parent.widget_shader, 
         //     from_hex(0x90e0ef),
         //     parent.font_spm_small, parent.font_roboto);
         // }
@@ -1112,7 +1112,7 @@ final class DebugTriWindow : Window {
             // parent.font_spm_small.set_string(
             //     tex_info_text_handles[i], from_hex(0x444444), Justify.Left,
             //     "Texture %d: Address: %08x, Format: %s".format(
-            //         i, debug_render_state.texture_address[i], debug_render_state.texture_format[i]
+            //         i, debug_render_state.get_texture()_address[i], debug_render_state.get_texture()_format[i]
             //     ),
             // );
         }
@@ -1142,4 +1142,4 @@ final class DebugTriWindow : Window {
             widget.update(mouse_x, mouse_y, mouse_state, mouse_wheel);
         }
     }
-}
+} */
