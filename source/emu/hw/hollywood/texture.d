@@ -23,14 +23,9 @@ struct TextureDescriptor {
 
     TextureWrap wrap_s;
     TextureWrap wrap_t;
-    TexcoordSource texcoord_source;
 
     int dualtex_matrix_slot;
-    bool normalize_before_dualtex;
-
     int tex_matrix_slot;
-    int texmatrix_size;
-    int use_stq;
 }
 
 enum TextureType {

@@ -309,28 +309,28 @@ final class OpenGLRenderer {
             render_state.position_matrix = value;
         }
     }
-    
+
     void set_projection_matrix(float[16] value) {
         if (render_state.projection_matrix != value) {
             flush();
             render_state.projection_matrix = value;
         }
     }
-    
+
     void set_textured(bool value) {
         if (render_state.textured != value) {
             flush();
             render_state.textured = value;
         }
     }
-    
+
     void set_enabled_textures_bitmap(int value) {
         if (render_state.enabled_textures_bitmap != value) {
             flush();
             render_state.enabled_textures_bitmap = value;
         }
     }
-    
+
     void set_geometry_matrix_idx(int value) {
         if (render_state.geometry_matrix_idx != value) {
             flush();
@@ -584,35 +584,35 @@ final class OpenGLRenderer {
             render_state.vertex_config.tex_configs[config_idx].dualtex_matrix = value;
         }
     }
-    
+
     void set_tex_config_tex_matrix(int config_idx, float[12] value) {
         if (render_state.vertex_config.tex_configs[config_idx].tex_matrix != value) {
             flush();
             render_state.vertex_config.tex_configs[config_idx].tex_matrix = value;
         }
     }
-    
+
     void set_tex_config_normalize_before_dualtex(int config_idx, GLBool value) {
         if (render_state.vertex_config.tex_configs[config_idx].normalize_before_dualtex != value) {
             flush();
             render_state.vertex_config.tex_configs[config_idx].normalize_before_dualtex = value;
         }
     }
-    
+
     void set_tex_config_texcoord_source(int config_idx, u32 value) {
         if (render_state.vertex_config.tex_configs[config_idx].texcoord_source != value) {
             flush();
             render_state.vertex_config.tex_configs[config_idx].texcoord_source = value;
         }
     }
-    
+
     void set_tex_config_texmatrix_size(int config_idx, u32 value) {
         if (render_state.vertex_config.tex_configs[config_idx].texmatrix_size != value) {
             flush();
             render_state.vertex_config.tex_configs[config_idx].texmatrix_size = value;
         }
     }
-    
+
     void set_tex_config_use_stq(int config_idx, u32 value) {
         if (render_state.vertex_config.tex_configs[config_idx].use_stq != value) {
             flush();
@@ -627,42 +627,42 @@ final class OpenGLRenderer {
             render_state.tev_config.num_tev_stages = value;
         }
     }
-    
+
     void set_tev_swap_tables(u64 value) {
         if (render_state.tev_config.swap_tables != value) {
             flush();
             render_state.tev_config.swap_tables = value;
         }
     }
-    
+
     void set_tev_alpha_comp0(int value) {
         if (render_state.tev_config.alpha_comp0 != value) {
             flush();
             render_state.tev_config.alpha_comp0 = value;
         }
     }
-    
+
     void set_tev_alpha_comp1(int value) {
         if (render_state.tev_config.alpha_comp1 != value) {
             flush();
             render_state.tev_config.alpha_comp1 = value;
         }
     }
-    
+
     void set_tev_alpha_aop(int value) {
         if (render_state.tev_config.alpha_aop != value) {
             flush();
             render_state.tev_config.alpha_aop = value;
         }
     }
-    
+
     void set_tev_alpha_ref0(int value) {
         if (render_state.tev_config.alpha_ref0 != value) {
             flush();
             render_state.tev_config.alpha_ref0 = value;
         }
     }
-    
+
     void set_tev_alpha_ref1(int value) {
         if (render_state.tev_config.alpha_ref1 != value) {
             flush();
@@ -971,13 +971,6 @@ final class OpenGLRenderer {
         }
     }
     
-    void set_texture_descriptor_texcoord_source(int desc_idx, TexcoordSource value) {
-        if (render_state.texture_descriptors[desc_idx].texcoord_source != value) {
-            flush();
-            render_state.texture_descriptors[desc_idx].texcoord_source = value;
-        }
-    }
-    
     void set_texture_descriptor_dualtex_matrix_slot(int desc_idx, int value) {
         if (render_state.texture_descriptors[desc_idx].dualtex_matrix_slot != value) {
             flush();
@@ -985,31 +978,10 @@ final class OpenGLRenderer {
         }
     }
     
-    void set_texture_descriptor_normalize_before_dualtex(int desc_idx, bool value) {
-        if (render_state.texture_descriptors[desc_idx].normalize_before_dualtex != value) {
-            flush();
-            render_state.texture_descriptors[desc_idx].normalize_before_dualtex = value;
-        }
-    }
-    
     void set_texture_descriptor_tex_matrix_slot(int desc_idx, int value) {
         if (render_state.texture_descriptors[desc_idx].tex_matrix_slot != value) {
             flush();
             render_state.texture_descriptors[desc_idx].tex_matrix_slot = value;
-        }
-    }
-    
-    void set_texture_descriptor_texmatrix_size(int desc_idx, int value) {
-        if (render_state.texture_descriptors[desc_idx].texmatrix_size != value) {
-            flush();
-            render_state.texture_descriptors[desc_idx].texmatrix_size = value;
-        }
-    }
-    
-    void set_texture_descriptor_use_stq(int desc_idx, int value) {
-        if (render_state.texture_descriptors[desc_idx].use_stq != value) {
-            flush();
-            render_state.texture_descriptors[desc_idx].use_stq = value;
         }
     }
     
@@ -1231,9 +1203,8 @@ final class OpenGLRenderer {
         gl_object_manager.deallocate_all_objects();
         glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, render_state.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, render_state.projection_matrix.ptr);
+        
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
-
-        import std.stdio; writefln("num tev stages: %d", render_state.tev_config.num_tev_stages);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, TevConfig.sizeof, &render_state.tev_config);
         glBindBufferBase(GL_UNIFORM_BUFFER, 1, persistent_tev_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);

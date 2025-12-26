@@ -113,15 +113,6 @@ final class Hollywood {
         opengl_renderer.init_opengl();
     }
 
-    private void flush_accumulated_batch() {
-        if (opengl_renderer.get_uses_per_vertex_matrices()) {
-            opengl_renderer.set_general_matrix_ram(general_matrix_ram);
-        }
-        opengl_renderer.flush_accumulated_batch();
-    }
-
-    
-
     private void submit_shape_group(ShapeGroup geometry) {
         opengl_renderer.submit_shape_group(geometry);
     }
@@ -245,15 +236,16 @@ final class Hollywood {
     }
     
     void execute_efb_copy(u32 control_register, bool clear_efb) {
-        flush_accumulated_batch();
+        opengl_renderer.flush_accumulated_batch();
 
         bool is_display_copy = control_register.bit(14);
+
         if (is_display_copy) {
             opengl_renderer.efb_copy_to_xfb();
         } else {
             execute_efb_to_texture_copy(control_register.bit(9));
         }
-        
+
         if (clear_efb) {
             opengl_renderer.clear_efb();
         }
@@ -611,20 +603,17 @@ final class Hollywood {
         for (int i = 0; i < 8; i++) {
             int tex_slot = opengl_renderer.get_texture_descriptor(i).tex_matrix_slot;
             int dualtex_slot = opengl_renderer.get_texture_descriptor(i).dualtex_matrix_slot;
-            
+
             float[12] tex_matrix;
             float[12] dualtex_matrix;
+
             for (int j = 0; j < 12; j++) {
                 tex_matrix[j] = general_matrix_ram[tex_slot * 4 + j];
                 dualtex_matrix[j] = dt_texture_matrix_ram[dualtex_slot * 4 + j];
             }
-            
+
             opengl_renderer.set_tex_config_tex_matrix(i, tex_matrix);
             opengl_renderer.set_tex_config_dualtex_matrix(i, dualtex_matrix);
-            opengl_renderer.set_tex_config_normalize_before_dualtex(i, opengl_renderer.get_texture_descriptor(i).normalize_before_dualtex);
-            opengl_renderer.set_tex_config_texcoord_source(i, opengl_renderer.get_texture_descriptor(i).texcoord_source);
-            opengl_renderer.set_tex_config_texmatrix_size(i, opengl_renderer.get_texture_descriptor(i).texmatrix_size);
-            opengl_renderer.set_tex_config_use_stq(i, opengl_renderer.get_texture_descriptor(i).use_stq);
         }
 
         int matrix_idx = opengl_renderer.get_geometry_matrix_idx();
@@ -1693,9 +1682,9 @@ final class Hollywood {
                 int idx = register - 0x1040;
 
                 assert_hollywood(value.bits(7, 11) <= 12, "Invalid tex coord source");
-                opengl_renderer.set_texture_descriptor_texmatrix_size(idx, cast(TexcoordSource) value.bit(1) ? 3 : 2);
-                opengl_renderer.set_texture_descriptor_use_stq(idx, cast(TexcoordSource) value.bit(2));
-                opengl_renderer.set_texture_descriptor_texcoord_source(idx, cast(TexcoordSource) value.bits(7, 11));
+                opengl_renderer.set_tex_config_texmatrix_size(idx, cast(u32)(value.bit(1) ? 3 : 2));
+                opengl_renderer.set_tex_config_use_stq(idx, cast(u32)value.bit(2));
+                opengl_renderer.set_tex_config_texcoord_source(idx, cast(u32)value.bits(7, 11));
                 break;
 
             case 0x0000: .. case 0x00ff:
@@ -1710,7 +1699,7 @@ final class Hollywood {
                 int idx = register - 0x1050;
 
                 opengl_renderer.set_texture_descriptor_dualtex_matrix_slot(idx, value.bits(0, 5));
-                opengl_renderer.set_texture_descriptor_normalize_before_dualtex(idx, value.bit(7));
+                opengl_renderer.set_tex_config_normalize_before_dualtex(idx, value.bit(7));
                 break;
             
             case 0x100c:
@@ -2216,11 +2205,11 @@ final class Hollywood {
             error_hollywood("Unimplemented draw command: %s", current_draw_command);
         }
 
-        opengl_renderer.finalize_geometry();
-
-        if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
-            flush_accumulated_batch();
+        if (opengl_renderer.get_uses_per_vertex_matrices()) {
+            opengl_renderer.set_general_matrix_ram(general_matrix_ram);
         }
+
+        opengl_renderer.finalize_geometry();
     }
 
     public void render_xfb() {
