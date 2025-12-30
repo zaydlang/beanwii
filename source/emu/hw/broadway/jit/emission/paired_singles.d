@@ -828,7 +828,7 @@ void quantize(Code code, XMM src, R32 address, R32 gqr, R32 tmp1, R32 tmp2, XMM 
 
     code.movd(tmp_xmm, tmp1);
     code.mulss(tmp_xmm, src);
-    code.roundsd(tmp_xmm, tmp_xmm, 3);
+    code.roundss(tmp_xmm, tmp_xmm, 3);
     code.cvtss2si(tmp1, tmp_xmm);
 
     code.cmp(tmp2, 4);

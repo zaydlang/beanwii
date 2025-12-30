@@ -258,17 +258,30 @@ final class Hollywood {
         u16 height = opengl_renderer.get_efb_src_h();
         u32 dest_addr = xfb_addr;
         
-        opengl_renderer.efb_copy_to_texture(rgba_buffer.ptr);
+        opengl_renderer.efb_copy_to_texture(rgba_buffer.ptr, dest_addr, tex_copy_format);
         
+        bool has_nonzero_rgb = false;
+        for (int i = 0; i < width * height * 4; i += 4) {
+            if (rgba_buffer[i + 0] != 0 || rgba_buffer[i + 1] != 0 || rgba_buffer[i + 2] != 0) {
+                has_nonzero_rgb = true;
+                break;
+            }
+        }
+
         if (mipmap) {
             downsample_rgba_buffer_by_2(rgba_buffer.ptr, width, height);
             width /= 2;
             height /= 2;
         }
+
+        flip_image_vertically(rgba_buffer.ptr, width, height);
         
         u8 dest_format = tex_copy_format;
-        
+
         switch (dest_format) {
+            case 0x2:
+                write_ia4_tiled(rgba_buffer.ptr, dest_addr, width, height);
+                break;
             case 0x6:
                 write_rgba32_tiled(rgba_buffer.ptr, dest_addr, width, height);
                 break;
@@ -324,6 +337,21 @@ final class Hollywood {
             }
         }
     }
+
+    void flip_image_vertically(u8* buffer, u16 width, u16 height) {
+        for (int y = 0; y < height / 2; y++) {
+            for (int x = 0; x < width; x++) {
+                int top_offset = (y * width + x) * 4;
+                int bottom_offset = ((height - 1 - y) * width + x) * 4;
+                
+                for (int i = 0; i < 4; i++) {
+                    u8 temp = buffer[top_offset + i];
+                    buffer[top_offset + i] = buffer[bottom_offset + i];
+                    buffer[bottom_offset + i] = temp;
+                }
+            }
+        }
+    }
     
     void write_i8_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
         int tiles_x = div_roundup(cast(int) width, 8);
@@ -339,7 +367,6 @@ final class Hollywood {
                 
                 if (x < width && y < height) {
                     int src_offset = (y * width + x) * 4;
-                    // Convert RGB to luminance using standard weights
                     u8 r = src[src_offset + 0];
                     u8 g = src[src_offset + 1];
                     u8 b = src[src_offset + 2];
@@ -349,6 +376,7 @@ final class Hollywood {
                 } else {
                     mem.physical_write_u8(current_address, 0);
                 }
+
                 current_address += 1;
             }
             }
@@ -420,6 +448,37 @@ final class Hollywood {
         }
         return dst_idx;
     }
+
+    void write_ia4_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
+        int tiles_x = div_roundup(cast(int) width, 8);
+        int tiles_y = div_roundup(cast(int) height, 4);
+        
+        u32 current_address = dest_addr;
+        for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
+        for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
+            for (int fine_y = 0; fine_y < 4; fine_y++) {
+            for (int fine_x = 0; fine_x < 8; fine_x++) {
+                auto x = tile_x * 8 + fine_x;
+                auto y = tile_y * 4 + fine_y;
+
+                current_address += 1;
+
+                if (x >= width || y >= height) {
+                    continue;
+                }
+
+                u8 intensity = (src[(y * width + x) * 4 + 0] + src[(y * width + x) * 4 + 1] + src[(y * width + x) * 4 + 2]) / 3;
+                u8 alpha = src[(y * width + x) * 4 + 3];
+
+                intensity >>= 4;
+                alpha >>= 4;
+
+                mem.physical_write_u8(current_address, cast(u8) (intensity | (alpha << 4)));
+            }
+            }
+        }
+        }
+    }
     
     void write_rgba32_tiled(ubyte* src, u32 dest_addr, u16 width, u16 height) {
         int tiles_x = div_roundup(cast(int) width, 4);
@@ -428,8 +487,8 @@ final class Hollywood {
         u32 current_address = dest_addr;
         for (int tile_y = 0; tile_y < tiles_y; tile_y++) {
         for (int tile_x = 0; tile_x < tiles_x; tile_x++) {
-            u32 ra_address = current_address;
-            u32 gb_address = current_address + 32;
+            u32 ba_address = current_address;
+            u32 rg_address = current_address + 32;
             
             for (int fine_y = 0; fine_y < 4; fine_y++) {
             for (int fine_x = 0; fine_x < 4; fine_x++) {
@@ -443,14 +502,14 @@ final class Hollywood {
                     u8 b = src[src_offset + 2];
                     u8 a = src[src_offset + 3];
                     
-                    mem.physical_write_u8(ra_address + 0, a);
-                    mem.physical_write_u8(ra_address + 1, r);
-                    mem.physical_write_u8(gb_address + 0, g);
-                    mem.physical_write_u8(gb_address + 1, b);
+                    mem.physical_write_u8(rg_address + 1, r);
+                    mem.physical_write_u8(rg_address + 0, g);
+                    mem.physical_write_u8(ba_address + 1, b);
+                    mem.physical_write_u8(ba_address + 0, a);
                 }
                 
-                ra_address += 2;
-                gb_address += 2;
+                ba_address += 2;
+                rg_address += 2;
             }
             }
             
@@ -521,8 +580,8 @@ final class Hollywood {
                         pixel = cast(u16) ((a3 << 12) | (r4 << 8) | (g4 << 4) | b4);
                     }
                     
-                    mem.physical_write_u8(current_address + 0, cast(u8)(pixel >> 8));
-                    mem.physical_write_u8(current_address + 1, cast(u8)(pixel & 0xFF));
+                    mem.physical_write_u8(current_address + 0, cast(u8) (pixel >> 8));
+                    mem.physical_write_u8(current_address + 1, cast(u8) (pixel & 0xFF));
                 }
                 current_address += 2;
             }
@@ -1063,13 +1122,17 @@ final class Hollywood {
                 break;
             
             case 0x41:
-
                 opengl_renderer.set_color_update_enable(bp_data.bit(3));
                 opengl_renderer.set_alpha_update_enable(bp_data.bit(4));
                 opengl_renderer.set_arithmetic_blending_enable(bp_data.bit(0));
                 opengl_renderer.set_blend_destination(cast(int) bp_data.bits(5, 7));
                 opengl_renderer.set_blend_source(cast(int) bp_data.bits(8, 10));
                 opengl_renderer.set_subtractive_additive_toggle(bp_data.bit(11));
+                break;
+            
+            case 0x42:
+                opengl_renderer.set_is_alpha_forced(bp_data.bit(8));
+                opengl_renderer.set_forced_alpha(bp_data.bits(0, 7));
                 break;
 
             case 0x49:
@@ -1132,40 +1195,41 @@ final class Hollywood {
                 break;
             
             case 0x20:
+                opengl_renderer.set_scissor_top(bp_data.bits(0, 11) - 342);
+                opengl_renderer.set_scissor_left(bp_data.bits(12, 23) - 342);
                 break;
             
             case 0x21:
+                opengl_renderer.set_scissor_bottom(bp_data.bits(0, 11) - 342 + 1);
+                opengl_renderer.set_scissor_right(bp_data.bits(12, 23) - 342 + 1);
                 break;
-            
+
             case 0x59:
+                opengl_renderer.set_scissorbox_offset_x(bp_data.bits(0, 9) * 2 - 342);
+                opengl_renderer.set_scissorbox_offset_y(bp_data.bits(10, 19) * 2 - 342);
                 break;
             
             case 0x00:
-
                 opengl_renderer.set_tev_num_stages(bp_data.bits(10, 13) + 1);
                 opengl_renderer.set_cull_mode(bp_data.bits(14, 15));
                 log_hollywood("GEN_MODE: %08x", bp_data);
                 break;
 
             case 0x94: .. case 0x97:
-
                 opengl_renderer.set_texture_descriptor_base_address(bp_register - 0x94, bp_data << 5);
                 break;
             
             case 0xb4: .. case 0xb7:
-
                 opengl_renderer.set_texture_descriptor_base_address(bp_register - 0xb4 + 4, bp_data << 5);
                 break;
             
             case 0x88: .. case 0x8b:
-
                 opengl_renderer.set_texture_descriptor_width(bp_register - 0x88, bp_data.bits(0, 9) + 1);
                 opengl_renderer.set_texture_descriptor_height(bp_register - 0x88, bp_data.bits(10, 19) + 1);
                 opengl_renderer.set_texture_descriptor_type(bp_register - 0x88, cast(TextureType) bp_data.bits(20, 23));
                 break;
             
             case 0xa8: .. case 0xab:
-
                 opengl_renderer.set_texture_descriptor_width(bp_register - 0xa8 + 4, bp_data.bits(0, 9) + 1);
                 opengl_renderer.set_texture_descriptor_height(bp_register - 0xa8 + 4, bp_data.bits(10, 19) + 1);
                 opengl_renderer.set_texture_descriptor_type(bp_register - 0xa8 + 4, cast(TextureType) bp_data.bits(20, 23));
@@ -1175,7 +1239,6 @@ final class Hollywood {
                 break;
             
             case 0x28: .. case 0x2f:
-                
                 int idx = (bp_register - 0x28);
                 render_state.tev_config.stages[idx * 2 + 0].texmap        = bp_data.bits(0, 2);
                 render_state.tev_config.stages[idx * 2 + 0].texcoord      = bp_data.bits(3, 5);
@@ -1188,7 +1251,6 @@ final class Hollywood {
                 break;
             
             case 0xc0: .. case 0xdf:
-                
                 if (bp_register.bit(0)) {
                     log_hollywood("TEV_ALPHA_ENV_%x: %08x (tev op 1) at pc 0x%08x", bp_register - 0xc1, bp_data, mem.cpu.state.pc);
                     int idx = (bp_register - 0xc1) / 2;
@@ -1255,7 +1317,6 @@ final class Hollywood {
                 break;
             
             case 0xe0: .. case 0xe7:
-                
                 if (bp_data.bit(23)) {
                     int idx = (bp_register - 0xe0) / 2;
                     if (bp_register.bit(0)) {
@@ -1349,7 +1410,6 @@ final class Hollywood {
                 break;
 
             case 0xf3:
-                
                 opengl_renderer.set_alpha_comp0(cast(u8) bp_data.bits(16, 18));
                 opengl_renderer.set_alpha_comp1(cast(u8) bp_data.bits(19, 21));
                 opengl_renderer.set_alpha_aop(cast(u8) bp_data.bits(22, 23));
@@ -1367,13 +1427,11 @@ final class Hollywood {
                 break;
 
             case 0x80: .. case 0x83:
-                
                 opengl_renderer.set_texture_descriptor_wrap_s(bp_register - 0x80, cast(TextureWrap) bp_data.bits(0, 1));
                 opengl_renderer.set_texture_descriptor_wrap_t(bp_register - 0x80, cast(TextureWrap) bp_data.bits(2, 3));
                 break;
 
             case 0xa0: .. case 0xa3:
-                
                 opengl_renderer.set_texture_descriptor_wrap_s(bp_register - 0xa0 + 4, cast(TextureWrap) bp_data.bits(0, 1));
                 opengl_renderer.set_texture_descriptor_wrap_t(bp_register - 0xa0 + 4, cast(TextureWrap) bp_data.bits(2, 3));
                 break;
@@ -1397,7 +1455,6 @@ final class Hollywood {
             case 0xf8:
             case 0xfa:
             case 0xfc:
-                
                 log_texture("TEV_SWAP_MODE_TABLE_%02x: %08x", bp_register, bp_data);
                 int idx = (bp_register - 0xf6) / 2;
                 u64 current_swap = opengl_renderer.get_tev_config().swap_tables;
@@ -1901,6 +1958,7 @@ final class Hollywood {
         final switch (size) {
         case 1: return mem.physical_read_u8(array_offset);
         case 2: return mem.physical_read_u16(array_offset);
+        case 3: return mem.physical_read_u32(array_offset);
         case 4: return mem.physical_read_u32(array_offset);
         }
     }
@@ -1916,15 +1974,22 @@ final class Hollywood {
 
     private void process_new_shape_from_data(ubyte* data, size_t data_length) {
         update_texture_matrices();
-        
-        for (int i = 0; i < 8; i++) {
+
+        int enabled_textures = 0;
+        for (int i = 0; i < opengl_renderer.get_tev_num_stages(); i++) {
             if (opengl_renderer.get_tev_config().stages[i].texmap_enable) {
+                enabled_textures |= 1 << opengl_renderer.get_tev_config().stages[i].texmap;
+            }
+        }
+        
+        for (int i = 0; i < opengl_renderer.get_tev_num_stages(); i++) {
+            if (enabled_textures.bit(i)) {
                 auto j = opengl_renderer.get_tev_config().stages[i].texmap;
                 opengl_renderer.set_texture_id(j, texture_manager.load_texture(opengl_renderer.get_texture_descriptor(j), mem, gl_object_manager));
-                opengl_renderer.set_enabled_textures_bitmap(opengl_renderer.get_enabled_textures_bitmap() | (1 << i));
             }
         }
 
+        opengl_renderer.set_enabled_textures_bitmap(enabled_textures);
         opengl_renderer.init_geometry_tracking();
 
         int offset = 0;
@@ -2450,4 +2515,3 @@ final class Hollywood {
         }
     }
 }
-

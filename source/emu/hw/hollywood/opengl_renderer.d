@@ -7,8 +7,10 @@ import emu.hw.hollywood.texture;
 import util.bitop;
 import util.log;
 import util.number;
+import std.algorithm;
 import std.file;
 import std.string;
+import std.format;
 
 alias GLBool = u32;
 
@@ -74,6 +76,9 @@ final class OpenGLRenderer {
         int alpha_aop;
         int alpha_ref0;
         int alpha_ref1;
+
+        int forced_alpha;
+        int is_alpha_forced;
     }
 
     struct TexConfig {
@@ -144,6 +149,18 @@ final class OpenGLRenderer {
         u8 alpha_aop;
         u8 alpha_ref0;
         u8 alpha_ref1;
+
+        int viewport_width;
+        int viewport_height;
+        int viewport_x;
+        int viewport_y;
+
+        int scissor_top;
+        int scissor_bottom;
+        int scissor_left;
+        int scissor_right;
+        int scissorbox_offset_x;
+        int scissorbox_offset_y;
     }
 
     private RenderState render_state;
@@ -178,6 +195,7 @@ final class OpenGLRenderer {
     private GLuint xfb_shader_program;
     private GLuint xfb_vao;
     private GLuint xfb_vbo;
+    private u32[] tracked_efb_copy_addresses;
     
     private Vertex* persistent_vertex_ptr = null;
     private uint* persistent_index_ptr = null;
@@ -442,6 +460,48 @@ final class OpenGLRenderer {
             render_state.efb_src_h = value;
         }
     }
+
+    void set_scissor_top(int value) {
+        if (render_state.scissor_top != value) {
+            flush();
+            render_state.scissor_top = value;
+        }
+    }
+
+    void set_scissor_bottom(int value) {
+        if (render_state.scissor_bottom != value) {
+            flush();
+            render_state.scissor_bottom = value;
+        }
+    }
+
+    void set_scissor_left(int value) {
+        if (render_state.scissor_left != value) {
+            flush();
+            render_state.scissor_left = value;
+        }
+    }
+
+    void set_scissor_right(int value) {
+        if (render_state.scissor_right != value) {
+            flush();
+            render_state.scissor_right = value;
+        }
+    }
+
+    void set_scissorbox_offset_x(int value) {
+        if (render_state.scissorbox_offset_x != value) {
+            flush();
+            render_state.scissorbox_offset_x = value;
+        }
+    }
+
+    void set_scissorbox_offset_y(int value) {
+        if (render_state.scissorbox_offset_y != value) {
+            flush();
+            render_state.scissorbox_offset_y = value;
+        }
+    }
     
     void set_clear_color_red(u8 value) {
         if (render_state.clear_color_red != value) {
@@ -626,6 +686,10 @@ final class OpenGLRenderer {
             flush();
             render_state.tev_config.num_tev_stages = value;
         }
+    }
+
+    int get_tev_num_stages() {
+        return render_state.tev_config.num_tev_stages;
     }
 
     void set_tev_swap_tables(u64 value) {
@@ -912,6 +976,20 @@ final class OpenGLRenderer {
         }
     }
     
+    void set_forced_alpha(int forced_alpha) {
+        if (render_state.tev_config.forced_alpha != forced_alpha) {
+            flush();
+            render_state.tev_config.forced_alpha = forced_alpha;
+        }
+    }
+
+    void set_is_alpha_forced(bool is_alpha_forced) {
+        if (render_state.tev_config.is_alpha_forced != is_alpha_forced) {
+            flush();
+            render_state.tev_config.is_alpha_forced = is_alpha_forced;
+        }
+    }
+    
     // VertexConfig setters
     void set_vertex_config_end(int value) {
         if (render_state.vertex_config.end != value) {
@@ -1037,7 +1115,7 @@ final class OpenGLRenderer {
         glGenTextures(1, &xfb_color_texture);
         
         glBindTexture(GL_TEXTURE_2D, xfb_color_texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 640, 480, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 640, 528, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
@@ -1052,17 +1130,41 @@ final class OpenGLRenderer {
         string xfb_vertex_text = readText("source/emu/hw/hollywood/shaders/xfb_vertex.glsl");
         string xfb_fragment_text = readText("source/emu/hw/hollywood/shaders/xfb_fragment.glsl");
         
+        int compiled;
+
         GLuint xfb_vertex_shader = glCreateShader(GL_VERTEX_SHADER);
         auto xfb_vertex_src_ptr = xfb_vertex_text.ptr;
         auto xfb_vertex_src_len = cast(int)xfb_vertex_text.length;
         glShaderSource(xfb_vertex_shader, 1, &xfb_vertex_src_ptr, &xfb_vertex_src_len);
         glCompileShader(xfb_vertex_shader);
+        glGetShaderiv(xfb_vertex_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(xfb_vertex_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Vertex shader compilation error: %s", info_log.fromStringz);
+        } 
         
         GLuint xfb_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
         auto xfb_fragment_src_ptr = xfb_fragment_text.ptr;
         auto xfb_fragment_src_len = cast(int)xfb_fragment_text.length;
         glShaderSource(xfb_fragment_shader, 1, &xfb_fragment_src_ptr, &xfb_fragment_src_len);
         glCompileShader(xfb_fragment_shader);
+        glGetShaderiv(xfb_fragment_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(xfb_fragment_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Vertex shader compilation error in: %s", info_log.fromStringz);
+        } 
         
         xfb_shader_program = glCreateProgram();
         glAttachShader(xfb_shader_program, xfb_vertex_shader);
@@ -1103,15 +1205,39 @@ final class OpenGLRenderer {
         string vertex_text   = readText("source/emu/hw/hollywood/shaders/vertex.glsl");
         string fragment_text = readText("source/emu/hw/hollywood/shaders/fragment.glsl");
 
+        int compiled;
+
         auto vertex_src_ptr = vertex_text.ptr;
         auto vertex_src_len = cast(int)vertex_text.length;
         glShaderSource(vertex_shader, 1, &vertex_src_ptr, &vertex_src_len);
         glCompileShader(vertex_shader);
+        glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(vertex_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Vertex shader compilation error in: %s", info_log.fromStringz);
+        } 
 
         auto fragment_src_ptr = fragment_text.ptr;
         auto fragment_src_len = cast(int)fragment_text.length;
         glShaderSource(fragment_shader, 1, &fragment_src_ptr, &fragment_src_len);
         glCompileShader(fragment_shader);
+        glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
+        if (!compiled) {
+            import core.stdc.stdlib;
+            import std.string;
+            
+            char* info_log = cast(char*) malloc(10000000);
+            int info_log_length;
+
+            glGetShaderInfoLog(fragment_shader, 10000000, &info_log_length, cast(char*) info_log);
+            error_hollywood("Vertex shader compilation error in: %s", info_log.fromStringz);
+        } 
 
         gl_program = glCreateProgram();
         glAttachShader(gl_program, vertex_shader);
@@ -1130,11 +1256,17 @@ final class OpenGLRenderer {
         tev_config_block_index           = glGetUniformBlockIndex(gl_program, "TevConfig");
         vertex_config_block_index        = glGetUniformBlockIndex(gl_program, "VertexConfig");
 
-        for (int i = 0; i < 8; i++) {
-            import std.string;
-            auto texture_name = format("wiiscreen%d", i);
-            texture_uniform_locations[i] = glGetUniformLocation(gl_program, texture_name.ptr);
-        }
+        // cry about it
+        texture_uniform_locations = [
+            glGetUniformLocation(gl_program, "wiiscreen0"),
+            glGetUniformLocation(gl_program, "wiiscreen1"),
+            glGetUniformLocation(gl_program, "wiiscreen2"),
+            glGetUniformLocation(gl_program, "wiiscreen3"),
+            glGetUniformLocation(gl_program, "wiiscreen4"),
+            glGetUniformLocation(gl_program, "wiiscreen5"),
+            glGetUniformLocation(gl_program, "wiiscreen6"),
+            glGetUniformLocation(gl_program, "wiiscreen7"),
+        ];
 
         glDeleteShader(vertex_shader);
         glDeleteShader(fragment_shader);
@@ -1150,6 +1282,23 @@ final class OpenGLRenderer {
     GLuint get_xfb_color_texture() const { return xfb_color_texture; }
     GLuint get_xfb_shader_program() const { return xfb_shader_program; }
     GLuint get_xfb_vao() const { return xfb_vao; }
+    void track_efb_copy(u32 address) {
+        tracked_efb_copy_addresses ~= address;
+    }
+
+    void clear_tracked_efb_copies() {
+        tracked_efb_copy_addresses.length = 0;
+    }
+
+    bool is_tracked_efb_address(u32 address) const {
+        foreach (a; tracked_efb_copy_addresses) {
+            if (a == address) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
     
     uint get_current_vertex_offset() const { return current_vertex_offset; }
     uint get_current_index_offset() const { return current_index_offset; }
@@ -1183,8 +1332,8 @@ final class OpenGLRenderer {
             case 1: return GL_ONE;
             case 2: return GL_SRC_COLOR;
             case 3: return GL_ONE_MINUS_SRC_COLOR;
-            case 4: return GL_SRC_ALPHA;
-            case 5: return GL_ONE_MINUS_SRC_ALPHA;
+            case 4: return GL_SRC1_ALPHA;
+            case 5: return GL_ONE_MINUS_SRC1_ALPHA;
             case 6: return GL_DST_ALPHA;
             case 7: return GL_ONE_MINUS_DST_ALPHA;
         }
@@ -1216,10 +1365,23 @@ final class OpenGLRenderer {
 
             auto op1 = gc_blend_factor_to_gl(render_state.blend_source);
             auto op2 = gc_blend_factor_to_gl(render_state.blend_destination);
-            glBlendFunc(op1, op2);
+
+            if (render_state.tev_config.is_alpha_forced) {
+                glBlendFuncSeparate(op1, op2, GL_ONE, GL_ZERO);
+            } else {
+                glBlendFunc(op1, op2);
+            }
         } else {
-            glDisable(GL_BLEND);
+            glEnable(GL_BLEND);
+            glBlendFuncSeparate(GL_SRC1_ALPHA, GL_ZERO, GL_ONE, GL_ZERO);
         }
+
+        // Unbind all non-enabled texture slots
+        for (int i = 0; i < 8; i++) {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+
 
         while (render_state.enabled_textures_bitmap != 0) {
             int i = cast(int) render_state.enabled_textures_bitmap.bfs;
@@ -1289,7 +1451,21 @@ final class OpenGLRenderer {
                 // glEnable(GL_CULL_FACE);
                 // glCullFace(GL_BACK);
                 break;
+            case 3:
+                break;
         }
+
+        // the scissor is top-left origin on the wii
+        // so we need to convert it to bottom-left origin for opengl
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(
+            render_state.scissor_left + render_state.scissorbox_offset_x,
+            528 - render_state.scissor_bottom + render_state.scissorbox_offset_y,
+            render_state.scissor_right - render_state.scissor_left,
+            render_state.scissor_bottom - render_state.scissor_top
+        );
+
+        glViewport(render_state.viewport_x, 528 - render_state.viewport_y - render_state.viewport_height, render_state.viewport_width, render_state.viewport_height);
     }
     
     void submit_geometry_to_opengl(ShapeGroup geometry, RenderState render_state) {
@@ -1322,6 +1498,17 @@ final class OpenGLRenderer {
         glBindBufferBase(GL_UNIFORM_BUFFER, 1, persistent_tev_buffer);
         glUniformBlockBinding(gl_program, vertex_config_block_index, 0);
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, persistent_vertex_config_buffer);
+
+        for (int i = 0; i < 8; i++) {
+            if (render_state.enabled_textures_bitmap & (1 << i)) {
+                auto desc = render_state.texture_descriptors[i];
+
+                if (is_tracked_efb_address(desc.base_address)) {
+                    gl_debug_marker("Draw uses EFB copy texture addr=0x%x slot=%d", desc.base_address, i);
+                }
+            }
+        }
+
         glDrawElements(GL_TRIANGLES, cast(int) geometry.shared_index_count, GL_UNSIGNED_INT,
                        cast(void*) (geometry.shared_index_start * uint.sizeof));
     }
@@ -1341,23 +1528,72 @@ final class OpenGLRenderer {
     
     void debug_draw_texture(Texture texture, int x, int y, int w, int h) {
     }
+
+    // Emit a GL debug marker via KHR_debug; shows up in RenderDoc when a debug context is active.
+    void gl_debug_marker(T...)(string fmt, T args) {
+        import std.format : format;
+        string msg = format(fmt, args);
+        glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION,
+                             GL_DEBUG_TYPE_MARKER,
+                             0,
+                             GL_DEBUG_SEVERITY_NOTIFICATION,
+                             cast(GLsizei) msg.length,
+                             msg.ptr);
+    }
     
     void efb_copy_to_xfb() {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, xfb_fbo);
 
         glColorMask(true, true, true, true);
-        glBlitFramebuffer(render_state.efb_src_x, render_state.efb_src_y, render_state.efb_src_x + render_state.efb_src_w, render_state.efb_src_y + render_state.efb_src_h, render_state.efb_src_x, render_state.efb_src_y, render_state.efb_src_x + render_state.efb_src_w, render_state.efb_src_y + render_state.efb_src_h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBlitFramebuffer(
+            render_state.efb_src_x, 
+            528 - (render_state.efb_src_y + render_state.efb_src_h),
+            render_state.efb_src_x + render_state.efb_src_w, 
+            528 - (render_state.efb_src_y + render_state.efb_src_h) + render_state.efb_src_h, 
+            render_state.efb_src_x,
+            528 - (render_state.efb_src_y + render_state.efb_src_h),
+            render_state.efb_src_x + render_state.efb_src_w, 
+            528 - (render_state.efb_src_y + render_state.efb_src_h) + render_state.efb_src_h, 
+            GL_COLOR_BUFFER_BIT, GL_LINEAR
+        );
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         xfb_has_data = true;
+        clear_tracked_efb_copies();
     }
-    
-    void efb_copy_to_texture(u8* buffer) {
+
+    void efb_copy_to_texture(u8* buffer, u32 copy_addr, u8 copy_format) {
+        apply_opengl_state(render_state);
+
+        // glColorMask(true, true, true, true);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
-        glReadPixels(render_state.efb_src_x, render_state.efb_src_y, render_state.efb_src_w, render_state.efb_src_h, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+        gl_debug_marker("EFB copy to texture addr=0x%x fmt=%d from (%d, %d) to (%d %d) {%d %d} to {%d %d} [%d]", 
+            copy_addr, copy_format, 
+            render_state.efb_src_x, 
+            render_state.viewport_height - render_state.efb_src_y - render_state.efb_src_h, 
+            render_state.efb_src_x + render_state.efb_src_w, 
+            render_state.viewport_height - render_state.efb_src_y,
+            render_state.efb_src_x, 
+            render_state.efb_src_y, 
+            render_state.efb_src_w, 
+            render_state.efb_src_h,
+            render_state.viewport_height);
+
+        track_efb_copy(copy_addr);
+        glReadPixels(
+            render_state.efb_src_x, 
+            528 - render_state.efb_src_y - render_state.efb_src_h, 
+            render_state.efb_src_w, 
+            render_state.efb_src_h, 
+            GL_RGBA, GL_UNSIGNED_BYTE, buffer
+        );
     }
     
     void clear_efb() {
+        apply_opengl_state(render_state);
+
         glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
         glClearColor(
             render_state.clear_color_red / 255.0f,
@@ -1370,7 +1606,14 @@ final class OpenGLRenderer {
     }
     
     void update_gl_viewport(int gl_x, int gl_y, int gl_width, int gl_height) {
-        glViewport(gl_x, gl_y, gl_width, gl_height);
+        if (render_state.viewport_width != gl_width || render_state.viewport_height != gl_height) {
+            flush();
+        }
+
+        render_state.viewport_width = gl_width;
+        render_state.viewport_height = gl_height;
+        render_state.viewport_x = gl_x;
+        render_state.viewport_y = gl_y;
     }
     
     void render_xfb() {
@@ -1381,6 +1624,7 @@ final class OpenGLRenderer {
             glDisable(GL_DEPTH_TEST);
             glDisable(GL_BLEND);
             glDisable(GL_SCISSOR_TEST);
+            glViewport(0, 0, 640, 528);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, xfb_color_texture);
             glUseProgram(xfb_shader_program);

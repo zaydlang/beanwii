@@ -1,7 +1,8 @@
 #version 420
 #extension GL_ARB_gpu_shader_int64 : require
 
-out vec4 out_Color;
+layout(location = 0, index = 0) out vec4 out_Color0;
+layout(location = 0, index = 1) out vec4 out_Color1;
 
 in vec3 UV[8];
 in vec4 frag_color;
@@ -63,6 +64,8 @@ layout (std140, binding = 1) uniform TevConfig {
 	uniform int alpha_aop;
 	uniform int alpha_ref0;
 	uniform int alpha_ref1;
+	uniform int forced_alpha;
+	uniform int is_alpha_forced;
 };
 
 vec4 color_regs[4];
@@ -305,7 +308,8 @@ void main(void) {
 		discard;
 	}
 
-	out_Color = vec4(last_color_dest, last_alfa_dest);
+	out_Color0 = vec4(last_color_dest, is_alpha_forced != 0 ? forced_alpha / 255 : last_alfa_dest);
+	out_Color1 = vec4(0, 0, 0, last_alfa_dest);
 	// out_Color = vec4(UV[0],UV[1],0,1);
 
 	// if (stages[0].in_alfa_a == 7 && stages[0].in_alfa_b == 7 && stages[0].in_alfa_c == 7 && stages[0].in_alfa_d == 6) {

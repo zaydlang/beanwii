@@ -2327,6 +2327,7 @@ import std.stdio;
     /* ====== SSE ====== */
 
     auto roundsd(RM)(XMM dst, RM src, ubyte imm8) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0x66, 0x0f, 0x3a, 0x0b, dst, src, imm8);
+    auto roundss(RM)(XMM dst, RM src, ubyte imm8) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0x66, 0x0f, 0x3a, 0x0a, dst, src, imm8);
     auto xorpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x57, dst, src);
     auto addpd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x58, dst, src);
     auto addps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x58, dst, src);

@@ -123,12 +123,12 @@ final class Wii {
             BroadwayReturnValue broadway_return_value = this.broadway.cycle(num_cycles);
             num_cycles -= broadway_return_value.num_cycles_ran;
 
-// version (release) {
-// } else {
+version (release) {
+} else {
             if (gdb_stub.needs_handling()) {
                 gdb_stub.enter();
             }
-// }
+}
         } while (num_cycles > 0);
 
         this.video_interface.scanout();

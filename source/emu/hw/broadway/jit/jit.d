@@ -463,7 +463,7 @@ final class Jit {
                                 entry.num_instructions, entry.id, entry.func_size);
         });
         
-        entries.sort!((a, b) => a.num_times_executed < b.num_times_executed);
+        entries.sort!((a, b) => a.num_times_executed > b.num_times_executed);
         
         writeln("=== JIT Entries Dump (sorted by execution count ascending) ===");
         writefln("Total entries: %d", entries.length);

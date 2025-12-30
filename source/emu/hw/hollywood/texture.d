@@ -572,7 +572,7 @@ final class TextureManager {
         
         glBindTexture(GL_TEXTURE_2D, texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.height, cast(int) descriptor.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
-        dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
+        // dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
         return cast(int) texture_id;
     }
     

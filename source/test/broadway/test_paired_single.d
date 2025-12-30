@@ -33,8 +33,24 @@ class PairedSingleTester {
         return 0xE0000000 | (frD << 21) | (rA << 16) | (W << 15) | (I << 12) | (d & 0xFFF);
     }
 
+    u32 encode_psq_lu(int frD, int rA, int W, int I, int d) {
+        return 0xE4000000 | (frD << 21) | (rA << 16) | (W << 15) | (I << 12) | (d & 0xFFF);
+    }
+
+    u32 encode_psq_lx(int frD, int rA, int rB, int W, int I) {
+        return 0x10000000 | (frD << 21) | (rA << 16) | (rB << 11) | (W << 10) | (I << 7) | 0x0D;
+    }
+
     u32 encode_psq_st(int frS, int rA, int W, int I, int d) {
         return 0xF0000000 | (frS << 21) | (rA << 16) | (W << 15) | (I << 12) | (d & 0xFFF);
+    }
+
+    u32 encode_psq_stu(int frS, int rA, int W, int I, int d) {
+        return 0xF4000000 | (frS << 21) | (rA << 16) | (W << 15) | (I << 12) | (d & 0xFFF);
+    }
+
+    u32 encode_psq_stx(int frS, int rA, int rB, int W, int I) {
+        return 0x10000000 | (frS << 21) | (rA << 16) | (rB << 11) | (W << 10) | (I << 7) | 0x0E;
     }
 
     u32 encode_ps_abs(int frD, int frB, bool rc = false) {
@@ -51,6 +67,12 @@ class PairedSingleTester {
     void write_test_data(u32 address, u8[] data) {
         for (int i = 0; i < data.length; i++) {
             mem.cpu_write_u8(address + i, data[i]);
+        }
+    }
+
+    void clear_memory(u32 address, size_t len, u8 value = 0) {
+        for (size_t i = 0; i < len; i++) {
+            mem.cpu_write_u8(address + cast(u32) i, value);
         }
     }
 
@@ -79,6 +101,16 @@ class PairedSingleTester {
             }
         }
         writefln("PASS %s: memory contents match", test_name);
+    }
+
+    void verify_gpr(int reg, u32 expected, string test_name) {
+        u32 actual = broadway.state.gprs[reg];
+        if (actual != expected) {
+            writefln("FAIL %s: r%d expected 0x%08x, got 0x%08x", test_name, reg, expected, actual);
+            assert(false);
+        } else {
+            writefln("PASS %s: r%d = 0x%08x", test_name, reg, actual);
+        }
     }
 
     void execute_instruction(u32 instruction) {

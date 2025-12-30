@@ -149,45 +149,17 @@ final class Broadway {
         size_t num_fast_forwarded = 0;
         while (elapsed < num_cycles) {
             exception_raised = false;
-
-        // if (state.pc == 0x80245b40) {
-        //     writefln("bad function %x %x %x from %x\n", state.gprs[3], state.gprs[4], state.gprs[5], state.lr);
-        // }
-
-
-        // for (int i = 0; i < 32; i++) {
-        //     // if (state.gprs[i] == 0x90a2) {
-        //     //     import std.stdio;
-        //     //     writefln("sussy gpr %d at %x from %x\n", i, state.pc, state.lr);
-        //     //     log_state(&state);
-        //     // }
-
-        //     double ps0 = force_cast!double(state.ps[i].ps0);
-        //     double ps1 = force_cast!double(state.ps[i].ps1);
-        //     double diff_ps0 = (ps0 - 5.49717);
-        //     double diff_ps1 = (ps1 - 5.49717);
-        //     double diff_ps0_abs = diff_ps0 < 0 ? -diff_ps0 : diff_ps0;
-        //     double diff_ps1_abs = diff_ps1 < 0 ? -diff_ps1 : diff_ps1;
-        //     if (diff_ps1_abs < 0.00001 || diff_ps0_abs < 0.00001) {
-        //         import std.stdio;
-        //         writefln("sussy ps %d at %x from %x\n", i, state.pc, state.lr);
-        //         log_state(&state);
-        //     }
-        // }
-
-        // if (state.pc >= 0x80007268 && state.pc <= 0x80007268) {
-            // writefln("sussy fp %x from %x\n", state.pc, state.lr);
-                // log_state(&state);
-        // }
-
-        bool was =(state.pc >= 0x805b86f0 && state.pc <= 0x805b8cd4);
+            
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
 
+version (release) {
+} else {
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
                 gdb_stub.breakpoint_hit(state.pc);
                 return BroadwayReturnValue(elapsed, true);
             }
+}
 
             if (jit_return_value.block_return_value.value == BlockReturnValue.FloatingPointUnavailable) {
                 raise_exception(ExceptionType.FloatingPointUnavailable);

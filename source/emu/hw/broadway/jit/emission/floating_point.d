@@ -333,7 +333,7 @@ EmissionAction emit_fsub(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm1);
 
     code.subsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -412,7 +412,6 @@ EmissionAction emit_fsubsx(Code code, u32 opcode) {
     return EmissionAction.Continue;
 }
 
-// 1111 11 00010 00000 00010 0000001111 0
 EmissionAction emit_fctiwzx(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
     
@@ -434,8 +433,6 @@ EmissionAction emit_fctiwzx(Code code, u32 opcode) {
 
 EmissionAction emit_frspx(Code code, u32 opcode) {
     check_fp_enabled_or_jump(code);
-    
-    // what in the holy fuck
 
     auto guest_rd = opcode.bits(21, 25).to_fpr;
     auto guest_rb = opcode.bits(11, 15).to_fpr;
@@ -447,8 +444,8 @@ EmissionAction emit_frspx(Code code, u32 opcode) {
     code.movq(xmm0, rb);
     code.cvtsd2ss(xmm0, xmm0);
     code.cvtss2sd(xmm0, xmm0);
-    code.movq(rb, xmm0);
-    code.set_fpr(guest_rd, rb);
+    code.vpbroadcastq(xmm0, xmm0);
+    code.set_ps(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -514,7 +511,7 @@ EmissionAction emit_faddx(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm1);
 
     code.addsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -606,7 +603,7 @@ EmissionAction emit_fdivx(Code code, u32 opcode) {
     code.get_ps(guest_ra, xmm0);
 
     code.divsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }
@@ -624,7 +621,7 @@ EmissionAction emit_fmulx(Code code, u32 opcode) {
     code.get_ps(guest_rb, xmm1);
 
     code.mulsd(xmm0, xmm1);
-    code.set_ps(guest_rd, xmm0);
+    code.set_fpr(guest_rd, xmm0);
 
     return EmissionAction.Continue;
 }

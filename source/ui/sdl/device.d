@@ -279,13 +279,29 @@ class SdlDevice : MultiMediaDevice, Window {
         log_frontend("OpenGL Version: %s", fromStringz(gl_version));
         log_frontend("OpenGL Vendor: %s", fromStringz(gl_vendor));
         log_frontend("OpenGL Renderer: %s", fromStringz(gl_renderer));
-        
+
         int gl_major, gl_minor, gl_profile, gl_flags;
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &gl_major);
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &gl_minor);
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &gl_profile);
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &gl_flags);
         log_frontend("SDL Context: %d.%d, Profile: %d, Flags: %d", gl_major, gl_minor, gl_profile, gl_flags);
+
+        // Enable KHR_debug so RenderDoc / driver logs pick up GL messages.
+        GLint ctx_flags = 0;
+        glGetIntegerv(GL_CONTEXT_FLAGS, &ctx_flags);
+        if ((ctx_flags & GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
+            log_frontend("Debug flag not present on context; attempting KHR_debug anyway");
+        }
+        
+        if (glDebugMessageControl is null) {
+            log_frontend("KHR_debug entry points missing; skipping debug output setup");
+        } else {
+            glEnable(GL_DEBUG_OUTPUT);
+            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, null, GL_TRUE);
+            log_frontend("KHR_debug enabled");
+        }
 
         int num_audio_drivers = SDL_GetNumAudioDrivers();
         log_frontend("Available audio drivers: %d", num_audio_drivers);
