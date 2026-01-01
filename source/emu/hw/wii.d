@@ -1,5 +1,6 @@
 module emu.hw.wii;
 
+import config;
 import emu.encryption.partition;
 import emu.encryption.ticket;
 import emu.hw.broadway.cpu;
@@ -123,8 +124,7 @@ final class Wii {
             BroadwayReturnValue broadway_return_value = this.broadway.cycle(num_cycles);
             num_cycles -= broadway_return_value.num_cycles_ran;
 
-version (release) {
-} else {
+static if (config_enable_debugger) {
             if (gdb_stub.needs_handling()) {
                 gdb_stub.enter();
             }
@@ -203,9 +203,9 @@ version (release) {
         log_apploader("Apploader init() returned.");
 
         do {
-            this.broadway.set_gpr(3, 0x8000_4000);
-            this.broadway.set_gpr(4, 0x8000_4004);
-            this.broadway.set_gpr(5, 0x8000_4008);
+            this.broadway.set_gpr(3, 0x8130_0000);
+            this.broadway.set_gpr(4, 0x8130_0004);
+            this.broadway.set_gpr(5, 0x8130_0008);
             this.broadway.set_pc(main_ptr);
             this.broadway.run_until_return();
 
@@ -216,9 +216,9 @@ version (release) {
             // and found something that contradicted the documentation
             // i'm not even kidding
 
-            u32 disk_read_dest   = cast(u32) this.mem.cpu_read_u32(0x8000_4000);
-            u32 disk_read_size   = cast(u32) this.mem.cpu_read_u32(0x8000_4004);
-            u32 disk_read_offset = cast(u32) this.mem.cpu_read_u32(0x8000_4008) << 2;
+            u32 disk_read_dest   = cast(u32) this.mem.cpu_read_u32(0x8130_0000);
+            u32 disk_read_size   = cast(u32) this.mem.cpu_read_u32(0x8130_0004);
+            u32 disk_read_offset = cast(u32) this.mem.cpu_read_u32(0x8130_0008) << 2;
             log_apploader("Apploader main() read request: dest = %08x, size = %08x, offset = %08x", disk_read_dest, disk_read_size, disk_read_offset);
             for (int i = 0; i < disk_read_size; i++) {
                 this.mem.cpu_write_u8(disk_read_dest + i, wii_disk_data[disk_read_offset + i]);

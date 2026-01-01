@@ -11,11 +11,14 @@ final class GlObjectManager {
     int uniform_buffer_objects_count;
     uint[] texture_objects;
     int texture_objects_count;
+    uint[] efb_texture_objects;
+    int efb_texture_objects_count;
 
     void deallocate_all_objects() {
         vertex_array_objects_count = 0;
         vertex_buffer_objects_count = 0;
         uniform_buffer_objects_count = 0;
+        // efb_texture_objects_count = 0;
     }
 
     uint allocate_vertex_array_object() {
@@ -24,6 +27,7 @@ final class GlObjectManager {
             glGenVertexArrays(1, &new_vertex_array_object);
             vertex_array_objects ~= new_vertex_array_object;
 
+            vertex_array_objects_count++;
             return new_vertex_array_object;
         }
 
@@ -36,6 +40,7 @@ final class GlObjectManager {
             glGenBuffers(1, &new_vertex_buffer_object);
             vertex_buffer_objects ~= new_vertex_buffer_object;
 
+            vertex_buffer_objects_count++;
             return new_vertex_buffer_object;
         }
 
@@ -48,6 +53,7 @@ final class GlObjectManager {
             glGenBuffers(1, &new_uniform_buffer_object);
             uniform_buffer_objects ~= new_uniform_buffer_object;
 
+            uniform_buffer_objects_count++;
             return new_uniform_buffer_object;
         }
 
@@ -60,9 +66,26 @@ final class GlObjectManager {
             glGenTextures(1, &new_texture_object);
             texture_objects ~= new_texture_object;
 
+            texture_objects_count++;
             return new_texture_object;
         }
 
         return texture_objects[texture_objects_count++];
+    }
+    
+    uint allocate_efb_object() {
+        if (efb_texture_objects_count == efb_texture_objects.length) {
+            uint new_efb_texture_object;
+            glGenTextures(1, &new_efb_texture_object);
+            efb_texture_objects ~= new_efb_texture_object;
+
+            efb_texture_objects_count++;
+            return new_efb_texture_object;
+        }
+
+
+        import std.stdio;
+        writefln("Allocated existing EFB texture: %s %s %s", efb_texture_objects[efb_texture_objects_count], efb_texture_objects, efb_texture_objects_count);
+        return efb_texture_objects[efb_texture_objects_count++];
     }
 }

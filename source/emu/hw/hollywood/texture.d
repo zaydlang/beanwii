@@ -12,6 +12,7 @@ import util.log;
 import util.lru;
 import util.number;
 import util.page_allocator;
+import util.perfect_bloom_filter_dict;
 
 struct TextureDescriptor {
     size_t width;
@@ -78,10 +79,12 @@ final class TextureManager {
     TextureCache texture_cache;
     PageAllocator!(Color, false) texture_allocator;
     uint[256] gl_texture_ids;
+    PerfectBloomFilterDict!GLuint gpu_texture_cache;
     
     this() {
         glGenTextures(256, gl_texture_ids.ptr);
         log_texture("Pre-allocated 256 GL texture objects");
+        gpu_texture_cache = new PerfectBloomFilterDict!GLuint();
     }
 
     size_t size_of_texture(TextureDescriptor descriptor) {
@@ -533,6 +536,11 @@ final class TextureManager {
             texture_allocator = PageAllocator!(Color, false)(0);
         }
 
+        u32 cached_texture_id;
+        if (gpu_texture_cache.get(cast(u64) descriptor.base_address, cached_texture_id)) {
+            return cached_texture_id;
+        }
+
         u64 hash = calculate_texture_hash(descriptor, mem);
         long cached_index = texture_cache.lookup(hash);
         if (cached_index != -1) {
@@ -584,6 +592,11 @@ final class TextureManager {
                 log_texture("Invalidated texture cache at address 0x%08x", address);
             }
         }
+    }
+
+    void cache_gpu_texture(u32 address, GLuint texture_id) {
+        gpu_texture_cache.set(address, texture_id);
+        log_texture("Cached GPU texture %d at address 0x%08x", texture_id, address);
     }
 }
     

@@ -45,10 +45,12 @@ enum Whitelist = [
     // LogSource.TEXTURE,
     // LogSource.TMP,
     // LogSource.USB,
+    // LogSource.VI,
     // LogSource.WBFS,
     // LogSource.WII,
     // LogSource.WIIMOTE,
-    LogSource.NONE
+
+    LogSource.GPERF
 ];
 
 enum LogSource {
@@ -89,8 +91,7 @@ enum LogSource {
     TEXTURE,
     OPENGL,
     TMP,
-
-    NONE // dummy
+    GPERF,
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

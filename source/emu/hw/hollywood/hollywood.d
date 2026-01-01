@@ -5,7 +5,7 @@ import emu.hw.cp.cp;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.gxfifo_ringbuffer;
 import emu.hw.hollywood.hollywood_types;
-import emu.hw.hollywood.opengl_renderer;
+import emu.hw.hollywood.opengl.opengl_renderer;
 import emu.hw.hollywood.texture;
 import emu.hw.pe.pe;
 import emu.hw.memory.strategy.memstrategy;
@@ -72,7 +72,7 @@ final class Hollywood {
     private u32 display_list_size;
     
     private OpenGLRenderer opengl_renderer;
-
+    
     u32[16] array_bases;
     u32[16] array_strides;
 
@@ -258,15 +258,14 @@ final class Hollywood {
         u16 height = opengl_renderer.get_efb_src_h();
         u32 dest_addr = xfb_addr;
         
-        opengl_renderer.efb_copy_to_texture(rgba_buffer.ptr, dest_addr, tex_copy_format);
+        GLuint result_texture = opengl_renderer.copy_efb_to_texture(tex_copy_format, mipmap);
         
-        bool has_nonzero_rgb = false;
-        for (int i = 0; i < width * height * 4; i += 4) {
-            if (rgba_buffer[i + 0] != 0 || rgba_buffer[i + 1] != 0 || rgba_buffer[i + 2] != 0) {
-                has_nonzero_rgb = true;
-                break;
-            }
-        }
+        texture_manager.invalidate_texture_at_address(dest_addr);
+        texture_manager.cache_gpu_texture(dest_addr, result_texture);
+        
+        // Skip CPU-based processing since we're keeping texture on GPU
+        
+        return;
 
         if (mipmap) {
             downsample_rgba_buffer_by_2(rgba_buffer.ptr, width, height);
@@ -2004,7 +2003,6 @@ final class Hollywood {
                 offset += 1;
             } else {
                 v.position_matrix_index = -1;
-                // Don't modify render state here
             }
 
             for (int j = 0; j < 8; j++) {

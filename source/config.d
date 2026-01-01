@@ -1,0 +1,21 @@
+module config;
+
+enum MemStrategy {
+    SoftwareMem,
+    HardwareAcceleratedMem,
+}
+
+// chosen configs - free to modify
+enum MemStrategy config_chosen_mem_strategy        = MemStrategy.HardwareAcceleratedMem;
+enum bool        config_enable_basic_block_linking = true;
+enum bool        config_enable_debugger            = false;
+enum bool        config_always_efb_copy_to_ram     = false;
+enum bool        config_cache_display_lists        = true;
+
+// constraint enforcement
+bool implies(bool a, bool b) {
+    return !a || b;
+}
+
+static assert(config_always_efb_copy_to_ram.implies(config_chosen_mem_strategy == MemStrategy.HardwareAcceleratedMem));
+static assert(config_cache_display_lists.implies(config_chosen_mem_strategy == MemStrategy.HardwareAcceleratedMem));

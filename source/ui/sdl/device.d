@@ -32,6 +32,8 @@ import ui.sdl.window;
 import util.bitop;
 import util.log;
 import util.number;
+
+import gperftools_d.profiler;
 import std.concurrency;
 import std.math;
 import std.stdio;
@@ -201,6 +203,7 @@ class SdlDevice : MultiMediaDevice, Window {
     bool paused;
     bool running;
     bool wireframe_mode;
+    bool profiling_active;
 
     int hovered_shape = -1;
 
@@ -421,6 +424,31 @@ class SdlDevice : MultiMediaDevice, Window {
         }
 
         running = true;
+        profiling_active = false;
+    }
+
+    void start_profiling() {
+        if (!profiling_active) {
+            ProfilerStart();
+            profiling_active = true;
+            log_gperf("Profiling started");
+        }
+    }
+
+    void stop_profiling() {
+        if (profiling_active) {
+            ProfilerStop();
+            profiling_active = false;
+            log_gperf("Profiling stopped");
+        }
+    }
+
+    void toggle_profiling() {
+        if (profiling_active) {
+            stop_profiling();
+        } else {
+            start_profiling();
+        }
     }
     
     override {
@@ -512,7 +540,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
                 SDL_GL_SwapWindow(window);
 
-                Color clear_color = from_hex(0x0077b6);
+                auto clear_color = from_hex(0x0077b6);
                 glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
 
                 glEnable(GL_SCISSOR_TEST);
@@ -689,6 +717,17 @@ class SdlDevice : MultiMediaDevice, Window {
             }
             
             quit_key_pressed = quit_key_current;
+
+            static bool profiling_toggle_key_pressed = false;
+            bool shift_pressed = keyboard_state[SDL_SCANCODE_LSHIFT] != 0 || keyboard_state[SDL_SCANCODE_RSHIFT] != 0;
+            bool g_pressed = keyboard_state[SDL_SCANCODE_G] != 0;
+            bool profiling_toggle_key_current = ctrl_pressed && shift_pressed && g_pressed;
+            
+            if (profiling_toggle_key_current && !profiling_toggle_key_pressed) {
+                toggle_profiling();
+            }
+            
+            profiling_toggle_key_pressed = profiling_toggle_key_current;
 
             foreach (wiimote_key, host_key; KeyMapping) {
                 wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);

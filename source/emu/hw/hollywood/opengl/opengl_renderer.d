@@ -1,6 +1,7 @@
-module emu.hw.hollywood.opengl_renderer;
+module emu.hw.hollywood.opengl.opengl_renderer;
 
 import bindbc.opengl;
+import emu.hw.hollywood.opengl.efb;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.hollywood_types;
 import emu.hw.hollywood.texture;
@@ -9,8 +10,10 @@ import util.log;
 import util.number;
 import std.algorithm;
 import std.file;
+import std.stdio;
 import std.string;
 import std.format;
+import std.math;
 
 alias GLBool = u32;
 
@@ -167,6 +170,7 @@ final class OpenGLRenderer {
     private ShapeGroup accumulated_geometry;
     
     private GlObjectManager gl_object_manager;
+    private EFBCopyOptimizer efb_optimizer;
     
     private GLuint gl_program;
     private int[8] texture_uniform_locations;
@@ -199,12 +203,14 @@ final class OpenGLRenderer {
     
     private Vertex* persistent_vertex_ptr = null;
     private uint* persistent_index_ptr = null;
+    private int[] draw_call_vertex_counts;
     
     static immutable size_t MAX_VERTICES = 1024 * 1024;
     static immutable size_t MAX_INDICES = MAX_VERTICES * 6;
     
     this(GlObjectManager gl_object_manager) {
         this.gl_object_manager = gl_object_manager;
+        this.efb_optimizer = new EFBCopyOptimizer(gl_object_manager);
         render_state = RenderState();
     }
     
@@ -1278,6 +1284,12 @@ final class OpenGLRenderer {
     }
     
     GLuint get_efb_fbo() const { return efb_fbo; }
+    GLuint get_efb_color_texture() const { return efb_color_texture; }
+    
+    GLuint copy_efb_to_texture(u8 format, bool mipmap) {
+        return efb_optimizer.copy_efb_to_texture(efb_color_texture, get_efb_src_x(), get_efb_src_y(), get_efb_src_w(), get_efb_src_h(), format, mipmap);
+    }
+    
     GLuint get_xfb_fbo() const { return xfb_fbo; }
     GLuint get_xfb_color_texture() const { return xfb_color_texture; }
     GLuint get_xfb_shader_program() const { return xfb_shader_program; }
@@ -1349,7 +1361,6 @@ final class OpenGLRenderer {
             render_state.clear_color_alpha / 255.0f
         ); 
         
-        gl_object_manager.deallocate_all_objects();
         glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, render_state.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, render_state.projection_matrix.ptr);
         
@@ -1519,6 +1530,8 @@ final class OpenGLRenderer {
         converted_geometry.shared_vertex_count = geometry.shared_vertex_count;
         converted_geometry.shared_index_start  = geometry.shared_index_start;
         converted_geometry.shared_index_count  = geometry.shared_index_count;
+
+        record_draw_call_stats(converted_geometry);
         
         glBindFramebuffer(GL_FRAMEBUFFER, efb_fbo);
         
@@ -1557,9 +1570,14 @@ final class OpenGLRenderer {
             528 - (render_state.efb_src_y + render_state.efb_src_h) + render_state.efb_src_h, 
             GL_COLOR_BUFFER_BIT, GL_LINEAR
         );
+        
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         xfb_has_data = true;
         clear_tracked_efb_copies();
+        
+        gl_object_manager.deallocate_all_objects();
+
+        log_and_reset_draw_call_stats();
     }
 
     void efb_copy_to_texture(u8* buffer, u32 copy_addr, u8 copy_format) {
@@ -1633,5 +1651,61 @@ final class OpenGLRenderer {
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0);
         }
+    }
+
+    private void record_draw_call_stats(ShapeGroup geometry) {
+        draw_call_vertex_counts ~= cast(int) geometry.shared_vertex_count;
+    }
+
+    private void log_and_reset_draw_call_stats() {
+        scope(exit) draw_call_vertex_counts.length = 0;
+
+        auto count = draw_call_vertex_counts.length;
+        if (count == 0) {
+            writefln("Draw call stats: none this frame");
+            return;
+        }
+
+        double sum = 0;
+        int min_value = int.max;
+        int max_value = int.min;
+        int[int] frequency;
+
+        foreach (value; draw_call_vertex_counts) {
+            sum += value;
+            min_value = value < min_value ? value : min_value;
+            max_value = value > max_value ? value : max_value;
+            frequency[value] += 1;
+        }
+
+        double mean = sum / cast(double) count;
+
+        double variance = 0;
+        foreach (value; draw_call_vertex_counts) {
+            double diff = value - mean;
+            variance += diff * diff;
+        }
+        variance /= cast(double) count;
+        double stddev = sqrt(variance);
+
+        auto sorted = draw_call_vertex_counts.dup;
+        sort(sorted);
+        double median = (count % 2)
+            ? cast(double) sorted[count / 2]
+            : (cast(double) (sorted[count / 2 - 1] + sorted[count / 2])) / 2.0;
+
+        int mode_value = sorted[0];
+        int mode_count = 0;
+        foreach (key, freq; frequency) {
+            if (freq > mode_count || (freq == mode_count && key < mode_value)) {
+                mode_count = freq;
+                mode_value = key;
+            }
+        }
+
+        int range = max_value - min_value;
+
+        writefln("Draw call stats: count=%d mean=%.2f median=%.2f mode=%d range=%d stddev=%.2f",
+                 count, mean, median, mode_value, range, stddev);
     }
 }

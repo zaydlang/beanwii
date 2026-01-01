@@ -14,6 +14,7 @@ import emu.hw.broadway.jit.emission.opcode;
 import emu.hw.broadway.jit.emission.return_value;
 import emu.hw.broadway.jit.jit;
 import emu.hw.broadway.state;
+import emu.hw.memory.strategy.hardware_accelerated_mem.hardware_accelerated_mem;
 import std.stdio;
 import util.array;
 import util.log;
@@ -140,9 +141,19 @@ final class VirtualMemoryManager {
             assert(0);
         }
     }
+
+    void protect_range(VirtualMemorySpace* space, u64 address, u64 size, int prot_flags) {
+        void* host_address = this.to_host_address(space, address);
+        int result = mprotect(host_address, size, prot_flags);
+        
+        if (result < 0) {
+            error_memory("Failed to protect memory range");
+        }
+    }
 }
 
 __gshared VirtualMemoryManager _virtual_memory_manager;
+__gshared HardwareAcceleratedMem _hardware_accelerated_mem;
 
 extern(C)
 BlockReturnValue fastmem_mmio_fallback(BroadwayState* state) {
@@ -237,6 +248,24 @@ private void virtual_memory_segfault_handler(int signum, siginfo_t* info, void* 
                 
                 uctx.uc_mcontext.gregs[REG_RIP] = cast(u64) &fastmem_mmio_fallback;
             } else {
+                if (_hardware_accelerated_mem !is null) {
+                    for (size_t j = 0; j < _hardware_accelerated_mem.callback_regions.length; j++) {
+                        auto region = &_hardware_accelerated_mem.callback_regions[j];
+                        if (guest_addr >= region.start_address && guest_addr < region.start_address + region.length) {
+                            region.callback(region.context);
+                            
+                            u32 start_page = region.start_address & ~0xFFF;
+                            u32 end_page = (region.start_address + region.length + 0xFFF) & ~0xFFF;
+                            u32 page_size = end_page - start_page;
+                            
+                            _virtual_memory_manager.protect_range(space, start_page, page_size, PROT_READ | PROT_WRITE);
+                            
+                            _hardware_accelerated_mem.callback_regions = _hardware_accelerated_mem.callback_regions[0..j] ~ _hardware_accelerated_mem.callback_regions[j+1..$];
+                            return;
+                        }
+                    }
+                }
+                
                 error_memory("Invalid memory access at guest 0x%08X", guest_addr);
             }
 

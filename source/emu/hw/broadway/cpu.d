@@ -1,5 +1,6 @@
 module emu.hw.broadway.cpu;
 
+import config;
 import core.bitop;
 import emu.hw.broadway.exception_type;
 import emu.hw.broadway.gdb;
@@ -153,8 +154,7 @@ final class Broadway {
             JitReturnValue jit_return_value = jit.run(&state);
             auto delta = jit_return_value.num_instructions_executed * 2;
 
-version (release) {
-} else {
+static if (config_enable_debugger) {
             if (in_single_step_mode || jit_return_value.block_return_value.breakpoint_hit) {
                 gdb_stub.breakpoint_hit(state.pc);
                 return BroadwayReturnValue(elapsed, true);

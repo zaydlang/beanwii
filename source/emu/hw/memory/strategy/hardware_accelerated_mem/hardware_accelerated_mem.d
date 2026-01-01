@@ -1,21 +1,22 @@
 module emu.hw.memory.strategy.hardware_accelerated_mem.hardware_accelerated_mem;
 
+import core.sys.posix.sys.mman;
+import emu.hw.ai.ai;
+import emu.hw.broadway.cpu;
 import emu.hw.broadway.hle;
 import emu.hw.broadway.interrupt;
 import emu.hw.cp.cp;
-import emu.hw.dsp.dsp;
-import emu.hw.broadway.cpu;
+import emu.hw.di.di;
 import emu.hw.disk.dol;
+import emu.hw.dsp.dsp;
+import emu.hw.exi.exi;
 import emu.hw.hollywood.hollywood;
+import emu.hw.ipc.ipc;
 import emu.hw.memory.spec;
-import emu.hw.memory.strategy.memstrategy;
 import emu.hw.memory.strategy.hardware_accelerated_mem.jit_memory_access;
 import emu.hw.memory.strategy.hardware_accelerated_mem.mmio_spec;
 import emu.hw.memory.strategy.hardware_accelerated_mem.virtualmemory;
-import emu.hw.ai.ai;
-import emu.hw.di.di;
-import emu.hw.exi.exi;
-import emu.hw.ipc.ipc;
+import emu.hw.memory.strategy.memstrategy;
 import emu.hw.pe.pe;
 import emu.hw.si.si;
 import emu.hw.vi.vi;
@@ -23,6 +24,15 @@ import util.array;
 import util.bitop;
 import util.log;
 import util.number;
+
+alias MemoryAccessCallback = void function(void* context);
+
+struct MemoryCallbackRegion {
+    u32 start_address;
+    u32 length;
+    MemoryAccessCallback callback;
+    void* context;
+}
 
 final class HardwareAcceleratedMem {
     enum HLE_TRAMPOLINE_SIZE = HLE_MAX_FUNCS * 4;
@@ -42,6 +52,8 @@ final class HardwareAcceleratedMem {
 
     public Mmio mmio;
     public Broadway cpu;
+    
+    public MemoryCallbackRegion[] callback_regions;
     
     this() {
         this.mem1 = new u8[MEM1_SIZE];
@@ -75,6 +87,8 @@ final class HardwareAcceleratedMem {
         
         set_physical_memory_base(get_physical_memory_base());
         set_virtual_memory_base(get_virtual_memory_base());
+
+        _hardware_accelerated_mem = this;
     }
 
     private bool is_mmio(u32 address) {
@@ -436,5 +450,16 @@ final class HardwareAcceleratedMem {
         }
         
         return cast(u8*) virtual_memory_manager.to_host_address(physical_memory_space, address);
+    }
+
+    public void register_memory_callback(u32 address, u32 length, MemoryAccessCallback callback, void* context) {
+        u32 start_page = address & ~0xFFF;
+        u32 end_page = (address + length + 0xFFF) & ~0xFFF;
+        u32 page_size = end_page - start_page;
+        
+        callback_regions ~= MemoryCallbackRegion(address, length, callback, context);
+        
+        virtual_memory_manager.protect_range(physical_memory_space, start_page, page_size, PROT_NONE);
+        virtual_memory_manager.protect_range(virtual_memory_space, start_page, page_size, PROT_NONE);
     }
 }

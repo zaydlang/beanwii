@@ -16,6 +16,8 @@ import util.log;
 import util.number;
 import util.signal;
 
+import gperftools_d.profiler;
+
 __gshared u32 g_fastmem_start_addr = 0x80000000;
 __gshared u32 g_fastmem_end_addr = 0x80200000;
 

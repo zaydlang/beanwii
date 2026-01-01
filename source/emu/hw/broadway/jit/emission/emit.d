@@ -1,5 +1,6 @@
 module emu.hw.broadway.jit.emission.emit;
 
+import config;
 import emu.hw.broadway.jit.emission.code;
 import emu.hw.broadway.jit.emission.emission_action;
 import emu.hw.broadway.jit.emission.flags;
@@ -20,7 +21,6 @@ import util.number;
 
 __gshared bool instrument = false; 
 __gshared bool dicksinmyass = false; 
-enum ENABLE_BASIC_BLOCK_LINKING = true;
 
 private EmissionAction emit_addcx(Code code, u32 opcode) {
     code.reserve_register(ecx);
@@ -2200,7 +2200,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                     code.set_reg(GuestReg.PC, action.get_direct_branch_target());
                     
                     if (!in_idle_loop) {
-                        if (ENABLE_BASIC_BLOCK_LINKING) {
+                        if (config_enable_basic_block_linking) {
                             if (jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
                                 log_jit("Direct linking: 0x%08x -> 0x%08x (target exists)", original_address, action.get_direct_branch_target());
                                 jit.add_dependent(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
@@ -2272,7 +2272,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                     code.set_reg(GuestReg.PC, action.get_direct_branch_target());
 
                     if (!in_idle_loop) {
-                        if (ENABLE_BASIC_BLOCK_LINKING && jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
+                        if (config_enable_basic_block_linking && jit.has_code_for(action.get_direct_branch_target(), mmu_enabled)) {
                             jit.add_dependent(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
                                               jit.create_jit_key_from_address(original_address, mmu_enabled));
                             u64 target = jit.get_address_for_code(action.get_direct_branch_target(), mmu_enabled);
@@ -2287,7 +2287,7 @@ public size_t emit(Jit jit, Code code, Mem mem, u32 address, bool mmu_enabled) {
                         code.label(exit);
                             code.mov(rax, BlockReturnValue.GuestBlockEnd);
                         } else {
-                            if (ENABLE_BASIC_BLOCK_LINKING) {
+                            if (config_enable_basic_block_linking) {
                                 jit.submit_basic_block_link_patch_point(jit.create_jit_key_from_address(action.get_direct_branch_target(), mmu_enabled), 
                                                                          jit.create_jit_key_from_address(original_address, mmu_enabled), code.current_offset());
                                 for (int i = 0; i < 25; i++) {

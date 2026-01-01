@@ -3,8 +3,8 @@ module emu.hw.hollywood.hollywood_types;
 import util.number;
 
 // Re-export from opengl_renderer and texture modules
-public import emu.hw.hollywood.opengl_renderer : OpenGLRenderer;
-public import emu.hw.hollywood.texture : TextureWrap, TextureType, TextureDescriptor, TexcoordSource;
+public import emu.hw.hollywood.opengl.opengl_renderer;
+public import emu.hw.hollywood.texture;
 
 alias Texture = OpenGLRenderer.Texture;
 alias RenderState = OpenGLRenderer.RenderState;
