@@ -13,10 +13,11 @@ import emu.hw.disk.dol;
 import emu.hw.disk.layout;
 import emu.hw.disk.readers.filereader;
 import emu.hw.disk.readers.wbfs;
+import emu.hw.hollywood.hollywood;
+import emu.hw.ipc.usb.extensions.nunchuk;
 import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.spec;
 import emu.hw.memory.strategy.memstrategy;
-import emu.hw.hollywood.hollywood;
 import emu.hw.ai.ai;
 import emu.hw.di.di;
 import emu.hw.dsp.dsp;
@@ -336,6 +337,10 @@ static if (config_enable_debugger) {
 
     public Wiimote get_wiimote() {
         return this.wiimote;
+    }
+
+    public void set_nunchuk_state(NunchukState state) {
+        this.wiimote.set_nunchuk_state(state);
     }
 
     public void hang_in_gdb_at_start() {

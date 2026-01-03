@@ -33,6 +33,15 @@ extern(C) {
     int get_wiimote_ir_dot_x(wiimote_t* wm, int dot);
     int get_wiimote_ir_dot_y(wiimote_t* wm, int dot);
     int get_wiimote_ir_dot_size(wiimote_t* wm, int dot);
+
+    int get_wiimote_expansion_type(wiimote_t* wm);
+    ubyte get_nunchuk_stick_x_raw(wiimote_t* wm);
+    ubyte get_nunchuk_stick_y_raw(wiimote_t* wm);
+    ubyte get_nunchuk_accel_x(wiimote_t* wm);
+    ubyte get_nunchuk_accel_y(wiimote_t* wm);
+    ubyte get_nunchuk_accel_z(wiimote_t* wm);
+    int get_nunchuk_button_c(wiimote_t* wm);
+    int get_nunchuk_button_z(wiimote_t* wm);
 }
 
 private enum WiimoteButton : ushort {
@@ -61,6 +70,16 @@ struct HardwareWiimoteState {
     float roll, pitch, yaw;
     float battery;
     bool connected;
+
+    // Nunchuk (raw readings)
+    bool has_nunchuk;
+    ubyte nunchuk_stick_x;
+    ubyte nunchuk_stick_y;
+    ubyte nunchuk_accel_x;
+    ubyte nunchuk_accel_y;
+    ubyte nunchuk_accel_z;
+    bool nunchuk_c;
+    bool nunchuk_z;
 }
 
 class HardwareWiimote {
@@ -130,6 +149,19 @@ class HardwareWiimote {
         
         state.battery = get_wiimote_battery_level(wm);
         state.connected = true;
+
+        // Expansion (nunchuk) raw readings for debugging and passthrough.
+        enum EXP_NUNCHUK = 1;
+        state.has_nunchuk = get_wiimote_expansion_type(wm) == EXP_NUNCHUK;
+        if (state.has_nunchuk) {
+            state.nunchuk_stick_x = get_nunchuk_stick_x_raw(wm);
+            state.nunchuk_stick_y = get_nunchuk_stick_y_raw(wm);
+            state.nunchuk_accel_x = get_nunchuk_accel_x(wm);
+            state.nunchuk_accel_y = get_nunchuk_accel_y(wm);
+            state.nunchuk_accel_z = get_nunchuk_accel_z(wm);
+            state.nunchuk_c = get_nunchuk_button_c(wm) != 0;
+            state.nunchuk_z = get_nunchuk_button_z(wm) != 0;
+        }
         
         return state;
     }
@@ -149,4 +181,3 @@ class HardwareWiimote {
         return _count;
     }
 }
-

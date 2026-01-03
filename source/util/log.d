@@ -28,7 +28,7 @@ enum Whitelist = [
     // LogSource.CP,
     // LogSource.DISK,
     // LogSource.DSP,
-    // LogSource.FRONTEND,
+    LogSource.FRONTEND,
     // LogSource.INTERRUPT,
     // LogSource.FUNCTION,
     // LogSource.GDB,

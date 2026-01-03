@@ -9,6 +9,7 @@ import core.time;
 import config;
 import emu.hw.hollywood.hollywood;
 import emu.hw.hollywood.hollywood_types;
+import emu.hw.ipc.usb.extensions.nunchuk;
 import emu.hw.ipc.usb.wiimote;
 import emu.hw.wii;
 import std.algorithm;
@@ -744,6 +745,27 @@ class SdlDevice : MultiMediaDevice, Window {
                                 WiimoteButton.Plus, WiimoteButton.Minus, WiimoteButton.Home,
                                 WiimoteButton.Up, WiimoteButton.Down, WiimoteButton.Left, WiimoteButton.Right]) {
                     wii.set_wiimote_button(button, (state.buttons_held & button) != 0);
+                }
+
+                if (state.has_nunchuk) {
+                    wii.set_nunchuk_state(NunchukState(
+                        state.nunchuk_stick_x,
+                        state.nunchuk_stick_y,
+                        state.nunchuk_accel_x | (state.nunchuk_accel_x << 2), // expand 8-bit to ~10-bit range
+                        state.nunchuk_accel_y | (state.nunchuk_accel_y << 2),
+                        state.nunchuk_accel_z | (state.nunchuk_accel_z << 2),
+                        state.nunchuk_c,
+                        state.nunchuk_z
+                    ));
+
+                    log_frontend("Nunchuk raw: stick=(%d,%d) accel=(%d,%d,%d) C=%d Z=%d",
+                        state.nunchuk_stick_x,
+                        state.nunchuk_stick_y,
+                        state.nunchuk_accel_x,
+                        state.nunchuk_accel_y,
+                        state.nunchuk_accel_z,
+                        state.nunchuk_c,
+                        state.nunchuk_z);
                 }
             }
 

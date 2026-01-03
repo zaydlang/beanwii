@@ -2,6 +2,7 @@ module emu.hw.ipc.usb.wiimote;
 
 import emu.hw.ipc.usb.bluetooth;
 import emu.hw.ipc.usb.extensions.extension;
+import emu.hw.ipc.usb.extensions.nunchuk;
 import emu.hw.ipc.usb.l2cap;
 import emu.hw.ipc.usb.extensions.extension;
 import emu.scheduler;
@@ -584,5 +585,14 @@ final class Wiimote {
     void set_button(WiimoteButton button, bool pressed) {
         button_state &= ~cast(u16) button;
         button_state |= cast(u16) (pressed ? button : 0);
+    }
+
+    void set_nunchuk_state(NunchukState state) {
+        auto nunchuk = cast(NunchukExtension) extension;
+        if (nunchuk is null) {
+            return;
+        }
+
+        nunchuk.set_state(state);
     }
 }

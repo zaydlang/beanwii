@@ -104,3 +104,55 @@ int get_wiimote_ir_dot_size(struct wiimote_t* wm, int dot) {
     if (dot < 0 || dot >= 4) return 0;
     return wm->ir.dot[dot].size;
 }
+
+/* Expansion helpers */
+int get_wiimote_expansion_type(struct wiimote_t* wm) {
+    return wm->exp.type;
+}
+
+static unsigned char clamp_u8_int(int v) {
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return (unsigned char) v;
+}
+
+static unsigned char joystick_raw_from_normalized(float norm, unsigned char center, unsigned char min, unsigned char max) {
+    float range = (norm >= 0.0f) ? (max - center) : (center - min);
+    float raw = center + norm * range;
+    int rounded = (int) (raw + (raw >= 0 ? 0.5f : -0.5f));
+    return clamp_u8_int(rounded);
+}
+
+unsigned char get_nunchuk_stick_x_raw(struct wiimote_t* wm) {
+    return joystick_raw_from_normalized(wm->exp.nunchuk.js.x,
+                                        wm->exp.nunchuk.js.center.x,
+                                        wm->exp.nunchuk.js.min.x,
+                                        wm->exp.nunchuk.js.max.x);
+}
+
+unsigned char get_nunchuk_stick_y_raw(struct wiimote_t* wm) {
+    return joystick_raw_from_normalized(wm->exp.nunchuk.js.y,
+                                        wm->exp.nunchuk.js.center.y,
+                                        wm->exp.nunchuk.js.min.y,
+                                        wm->exp.nunchuk.js.max.y);
+}
+
+unsigned char get_nunchuk_accel_x(struct wiimote_t* wm) {
+    return wm->exp.nunchuk.accel.x;
+}
+
+unsigned char get_nunchuk_accel_y(struct wiimote_t* wm) {
+    return wm->exp.nunchuk.accel.y;
+}
+
+unsigned char get_nunchuk_accel_z(struct wiimote_t* wm) {
+    return wm->exp.nunchuk.accel.z;
+}
+
+int get_nunchuk_button_c(struct wiimote_t* wm) {
+    return (wm->exp.nunchuk.btns_held & NUNCHUK_BUTTON_C) != 0;
+}
+
+int get_nunchuk_button_z(struct wiimote_t* wm) {
+    return (wm->exp.nunchuk.btns_held & NUNCHUK_BUTTON_Z) != 0;
+}
