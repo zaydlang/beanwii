@@ -92,6 +92,7 @@ enum LogSource {
     OPENGL,
     TMP,
     GPERF,
+    VERTEX_JIT
 }
 
 static immutable ulong logsource_padding = get_largest_logsource_length!();

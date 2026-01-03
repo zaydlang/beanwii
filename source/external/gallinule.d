@@ -660,7 +660,7 @@ public:
         branches = [];
     }
 
-    template emit(ubyte OP, ubyte SELECTOR = M, ubyte SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0, bool cursed = false)
+    template emit(ubyte OP, ubyte SELECTOR = M, ubyte SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0, bool cursed = false, bool imsolost = false)
     {
         size_t emit(ARGS...)(ARGS args)
         {
@@ -797,6 +797,13 @@ public:
                     hasRex |= dst.register >= 8;
                     w |= is(DST == Address!64);
                     b |= dst.register >= 8;
+                }
+
+                // i dont know whats going on anymore
+                static if (imsolost) {
+                    bool ass = r;
+                    r = b;
+                    b = ass;
                 }
 
                 import std.stdio;
@@ -1343,17 +1350,21 @@ import std.stdio;
 
             auto branch_address = labels[branch[1]];
             auto next_instruction_address = branch[0];
-            import std.stdio;
-            //("%s: rel = %x - %x = %x", branch[1], branch_address, next_instruction_address, branch_address - next_instruction_address);
             auto rel = branch_address - next_instruction_address;
 
             bool isRel8 = rel <= byte.max && rel >= byte.min;
             bool isRel16 = rel <= short.max && rel >= short.min;
-            //("rel8: %x rel16: %x", isRel8, isRel16);
+            auto opcode = branchMap[branch[2]~(isRel8 ? '1' : isRel16 ? '2' : '4')];
+
+            // For backward branches, subtract the size of the encoded instruction (opcode + disp)
+            // so the jump lands on the target instead of overshooting by its own length.
+            if (branch_address < next_instruction_address) {
+                auto disp_size = (isRel8 ? 1 : isRel16 ? 2 : 4);
+                rel -= (opcode.length + disp_size);
+            }
 
             ubyte[] jmp_buffer;
-            jmp_buffer ~= branchMap[branch[2]~(isRel8 ? '1' : isRel16 ? '2' : '4')];
-            // //("branch[2] %s", branch[2]);
+            jmp_buffer ~= opcode;
 
             if (isRel8)
                 jmp_buffer ~= cast(ubyte)rel;
@@ -1362,10 +1373,8 @@ import std.stdio;
             else
                 jmp_buffer ~= (cast(ubyte*)&rel)[0..4];
 
-            //("Inserting %s at %x", jmp_buffer, branch[0]);
             this.buffer.insert_at(branch[0], jmp_buffer);
-            // buffer = buffer[0..branch[0]]~jmp_buffer~buffer[branch[0]..$];
-            // fixup all the remaining addresses
+
             foreach (ref label; labels) {
                 if (label >= branch[0]) {
                     label += jmp_buffer.length;
@@ -1691,6 +1700,11 @@ import std.stdio;
 
     auto andn(RM)(R32 dst, R32 src, RM stor) if (valid!(RM, 32)) => emit!(0, VEXI, 128, F38, 0)(0xf2, dst, src, stor);
     auto andn(RM)(R64 dst, R64 src, RM stor) if (valid!(RM, 64)) => emit!(0, VEXI, 128, F38, 0)(0xf2, dst, src, stor);
+
+    /* ====== BMI2 ====== */
+
+    auto pdep(RM)(R32 dst, R32 src, RM mask) if (valid!(RM, 32)) => emit!(0, VEXI, 128, F38, 0)(0xf5, dst, src, mask);
+    auto pdep(RM)(R64 dst, R64 src, RM mask) if (valid!(RM, 64)) => emit!(0, VEXI, 128, F38, 0)(0xf5, dst, src, mask);
 
     /* ====== SGX ====== */
 
@@ -2368,7 +2382,7 @@ import std.stdio;
     auto rcpss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE)(0xf3, 0x0f, 0x53, dst, src);
     /* ====== SSE2 ====== */
 
-    auto punpcklqdq(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x6c, dst, src);
+    auto punpcklqdq(XMM dst, XMM src) => emit!(0, SSE, 128, DEFAULT, 0, false, true)(0x66, 0x0f, 0x6c, dst, src);
     auto unpcklpd(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x14, dst, src);
     auto shufps(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x0f, 0xc6, dst, src, imm8);
     auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x66, 0x0f, 0xc6, dst, src, imm8);
@@ -2388,6 +2402,16 @@ import std.stdio;
 
     auto movupd(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x10, dst, src);
     auto movupd(RM)(RM dst, XMM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x66, 0x0f, 0x11, src, dst);
+    auto movups(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x10, dst, src);
+    auto movups(RM)(RM dst, XMM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x11, src, dst);
+    auto movdqu(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0xf3, 0x0f, 0x6f, dst, src);
+    auto movdqu(RM)(RM dst, XMM src) if (valid!(RM, 128)) => emit!(0, SSE)(0xf3, 0x0f, 0x7f, src, dst);
+    auto pshufb(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE, 128, DEFAULT, 0, false, true)(0x66, 0x0f, 0x38, 0x00, dst, src);
+    auto cvtdq2ps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, SSE)(0x0f, 0x5b, dst, src);
+    auto pmovzxwd(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE, 128, F38, 0x66)(0x33, dst, src);
+    auto pmovsxwd(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE, 128, F38, 0x66)(0x23, dst, src);
+    auto pmovzxbd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE, 128, F38, 0x66)(0x31, dst, src);
+    auto pmovsxbd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE, 128, F38, 0x66)(0x21, dst, src);
 
     auto rsqrtss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf3, 0x0f, 0x52, dst, src);
     /* ====== SSE3 ====== */
@@ -2406,6 +2430,7 @@ import std.stdio;
     auto vshufpd(XMM dst, XMM src1, XMM src2, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src1, src2, imm8);
     auto vpbroadcastq(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x59, dst, src);
     auto vpbroadcastd(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x58, dst, src);
+    auto vbroadcastss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, VEX, 128, F38, 0x66)(0x18, dst, src);
     auto vaddpd(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x58, dst, src, stor);
     auto vaddpd(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x58, dst, src, stor);
      
@@ -4158,4 +4183,29 @@ unittest
         "660FDBDA" ~
         "660FEBDA" ~
         "660FC2DA0D");
+}
+
+@("gallinule_pshufb_high_xmm_regs")
+unittest
+{
+    Block!true block;
+    with (block) {
+        pshufb(xmm1, xmm0);  // 660F3800 C8
+        pshufb(xmm0, xmm1);  // 660F3800 C1
+        pshufb(xmm8, xmm0);  // 66440F3800 C0
+        pshufb(xmm0, xmm8);  // 66410F3800 C0
+        pshufb(xmm8, xmm9);  // 66450F3800 C1
+        pshufb(xmm9, xmm8);  // 66450F3800 C8
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString ==
+        "660F3800C8" ~
+        "660F3800C1" ~
+        "66440F3800C0" ~
+        "66410F3800C0" ~
+        "66450F3800C1" ~
+        "66450F3800C8");
 }

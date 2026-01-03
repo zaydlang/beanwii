@@ -6,6 +6,7 @@ import bindbc.sdl;
 import core.sync.mutex;
 import core.thread;
 import core.time;
+import config;
 import emu.hw.hollywood.hollywood;
 import emu.hw.hollywood.hollywood_types;
 import emu.hw.ipc.usb.wiimote;
@@ -242,7 +243,9 @@ class SdlDevice : MultiMediaDevice, Window {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, 1); // Force core profile
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+        if (config_enable_gl_debug_output) {
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+        }
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         
         // Verify what we actually set
@@ -291,19 +294,21 @@ class SdlDevice : MultiMediaDevice, Window {
         log_frontend("SDL Context: %d.%d, Profile: %d, Flags: %d", gl_major, gl_minor, gl_profile, gl_flags);
 
         // Enable KHR_debug so RenderDoc / driver logs pick up GL messages.
-        GLint ctx_flags = 0;
-        glGetIntegerv(GL_CONTEXT_FLAGS, &ctx_flags);
-        if ((ctx_flags & GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
-            log_frontend("Debug flag not present on context; attempting KHR_debug anyway");
-        }
-        
-        if (glDebugMessageControl is null) {
-            log_frontend("KHR_debug entry points missing; skipping debug output setup");
-        } else {
-            glEnable(GL_DEBUG_OUTPUT);
-            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, null, GL_TRUE);
-            log_frontend("KHR_debug enabled");
+        if (config_enable_gl_debug_output) {
+            GLint ctx_flags = 0;
+            glGetIntegerv(GL_CONTEXT_FLAGS, &ctx_flags);
+            if ((ctx_flags & GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
+                log_frontend("Debug flag not present on context; attempting KHR_debug anyway");
+            }
+            
+            if (glDebugMessageControl is null) {
+                log_frontend("KHR_debug entry points missing; skipping debug output setup");
+            } else {
+                glEnable(GL_DEBUG_OUTPUT);
+                glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+                glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, null, GL_TRUE);
+                log_frontend("KHR_debug enabled");
+            }
         }
 
         int num_audio_drivers = SDL_GetNumAudioDrivers();

@@ -39,9 +39,6 @@ final class Code {
     }
 
     public bool force_slow_access(u32 pc) {
-        return true;
-        import app : g_fastmem_start_addr, g_fastmem_end_addr;
-        
         pc &= 0x1fff_ffff;
 
         u32 bit_index = pc >> 2;

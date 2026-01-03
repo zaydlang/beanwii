@@ -72,6 +72,8 @@ final class PageTable(T) {
     }
 
     void remove(u32 address) {
+        import std.stdio;
+        
         if (has(address)) {
             auto l1 = address.bits(22, 28);
             auto l2 = address.bits(15, 21);

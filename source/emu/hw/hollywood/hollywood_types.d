@@ -100,6 +100,8 @@ enum RasChannelId {
 
 
 struct VertexDescriptor {
+    u32                        raw_vcd_lo;
+    u32                        raw_vcd_hi;
     VertexAttributeLocation    position_normal_matrix_location;
     VertexAttributeLocation[8] texcoord_matrix_location;
     VertexAttributeLocation    position_location;
@@ -109,6 +111,10 @@ struct VertexDescriptor {
 }
 
 struct VertexAttributeTable {
+    u32 raw_vat_a;
+    u32 raw_vat_b;
+    u32 raw_vat_c;
+
     CoordFormat position_format;
     int position_count;
     int position_shift;
@@ -150,4 +156,17 @@ struct Shape {
 struct FifoDebugValue {
     u64 value;
     State state;
+}
+
+size_t coord_format_to_bytes(CoordFormat format) {
+    final switch (format) {
+        case CoordFormat.U8:
+        case CoordFormat.S8:
+            return 1;
+        case CoordFormat.U16:
+        case CoordFormat.S16:
+            return 2;
+        case CoordFormat.F32:
+            return 4;
+    }
 }

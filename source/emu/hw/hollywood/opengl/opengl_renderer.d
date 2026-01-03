@@ -1,6 +1,7 @@
 module emu.hw.hollywood.opengl.opengl_renderer;
 
 import bindbc.opengl;
+import config;
 import emu.hw.hollywood.opengl.efb;
 import emu.hw.hollywood.gl_objects;
 import emu.hw.hollywood.hollywood_types;
@@ -10,9 +11,9 @@ import util.log;
 import util.number;
 import std.algorithm;
 import std.file;
+import std.format;
 import std.stdio;
 import std.string;
-import std.format;
 import std.math;
 
 alias GLBool = u32;
@@ -200,6 +201,7 @@ final class OpenGLRenderer {
     private GLuint xfb_vao;
     private GLuint xfb_vbo;
     private u32[] tracked_efb_copy_addresses;
+    private size_t efb_copy_count;
     
     private Vertex* persistent_vertex_ptr = null;
     private uint* persistent_index_ptr = null;
@@ -228,9 +230,31 @@ final class OpenGLRenderer {
     Vertex* next_vertex() {
         return allocate_vertex();
     }
+
+    Vertex* next_vertices(size_t count) {
+        if (current_vertex_offset + count > MAX_VERTICES) {
+            import std.stdio;
+            writefln("[OpenGLRenderer] Vertex buffer overflow (%s vertices requested, %s available). Resetting offset.", count, MAX_VERTICES - current_vertex_offset);
+            current_vertex_offset = 0;
+        }
+
+        auto ptr = persistent_vertex_ptr + current_vertex_offset;
+        current_vertex_offset += cast(uint) count;
+        return ptr;
+    }
     
     uint* next_index() {
         return allocate_index();
+    }
+
+    uint* next_indices(size_t count) {
+        if (current_index_offset + count > MAX_INDICES) {
+            current_index_offset = 0;
+        }
+
+        auto ptr = persistent_index_ptr + current_index_offset;
+        current_index_offset += cast(uint) count;
+        return ptr;
     }
     
     void flush_accumulated_batch() {
@@ -1287,6 +1311,8 @@ final class OpenGLRenderer {
     GLuint get_efb_color_texture() const { return efb_color_texture; }
     
     GLuint copy_efb_to_texture(u8 format, bool mipmap) {
+        efb_copy_count++;
+        
         return efb_optimizer.copy_efb_to_texture(efb_color_texture, get_efb_src_x(), get_efb_src_y(), get_efb_src_w(), get_efb_src_h(), format, mipmap);
     }
     
@@ -1325,6 +1351,8 @@ final class OpenGLRenderer {
     Vertex* allocate_vertex() {
         if (current_vertex_offset >= MAX_VERTICES) {
             current_vertex_offset = 0;
+            import std.stdio;
+            writefln("[Hollywood] Warning: Vertex buffer overflow, wrapping around.");
         }
         
         return &persistent_vertex_ptr[current_vertex_offset++];
@@ -1333,6 +1361,8 @@ final class OpenGLRenderer {
     uint* allocate_index() {
         if (current_index_offset >= MAX_INDICES) {
             current_index_offset = 0;
+            import std.stdio;
+            writefln("[Hollywood] Warning: Index buffer overflow, wrapping around.");
         }
         
         return &persistent_index_ptr[current_index_offset++];
@@ -1403,7 +1433,7 @@ final class OpenGLRenderer {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-            final switch (render_state.texture[i].wrap_s) {
+            final switch (render_state.texture_descriptors[i].wrap_s) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     break;
@@ -1417,7 +1447,7 @@ final class OpenGLRenderer {
                     break;
             }
 
-            final switch (render_state.texture[i].wrap_t) {
+            final switch (render_state.texture_descriptors[i].wrap_t) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     break;
@@ -1544,7 +1574,10 @@ final class OpenGLRenderer {
 
     // Emit a GL debug marker via KHR_debug; shows up in RenderDoc when a debug context is active.
     void gl_debug_marker(T...)(string fmt, T args) {
-        import std.format : format;
+        if (!config_enable_gl_debug_output) {
+            return;
+        }
+
         string msg = format(fmt, args);
         glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION,
                              GL_DEBUG_TYPE_MARKER,
@@ -1654,58 +1687,69 @@ final class OpenGLRenderer {
     }
 
     private void record_draw_call_stats(ShapeGroup geometry) {
-        draw_call_vertex_counts ~= cast(int) geometry.shared_vertex_count;
+        static if (config_enable_gpu_draw_stats) {
+            draw_call_vertex_counts ~= cast(int) geometry.shared_vertex_count;
+        }
     }
 
     private void log_and_reset_draw_call_stats() {
-        scope(exit) draw_call_vertex_counts.length = 0;
-
-        auto count = draw_call_vertex_counts.length;
-        if (count == 0) {
-            writefln("Draw call stats: none this frame");
-            return;
-        }
-
-        double sum = 0;
-        int min_value = int.max;
-        int max_value = int.min;
-        int[int] frequency;
-
-        foreach (value; draw_call_vertex_counts) {
-            sum += value;
-            min_value = value < min_value ? value : min_value;
-            max_value = value > max_value ? value : max_value;
-            frequency[value] += 1;
-        }
-
-        double mean = sum / cast(double) count;
-
-        double variance = 0;
-        foreach (value; draw_call_vertex_counts) {
-            double diff = value - mean;
-            variance += diff * diff;
-        }
-        variance /= cast(double) count;
-        double stddev = sqrt(variance);
-
-        auto sorted = draw_call_vertex_counts.dup;
-        sort(sorted);
-        double median = (count % 2)
-            ? cast(double) sorted[count / 2]
-            : (cast(double) (sorted[count / 2 - 1] + sorted[count / 2])) / 2.0;
-
-        int mode_value = sorted[0];
-        int mode_count = 0;
-        foreach (key, freq; frequency) {
-            if (freq > mode_count || (freq == mode_count && key < mode_value)) {
-                mode_count = freq;
-                mode_value = key;
+        static if (config_enable_gpu_draw_stats) {
+            scope(exit) {
+                draw_call_vertex_counts.length = 0;
+                efb_copy_count = 0;
             }
+
+            auto draw_call_count = draw_call_vertex_counts.length;
+            auto efb_copies = efb_copy_count;
+
+            if (draw_call_count == 0) {
+                if (efb_copies) {
+                    writefln("Draw call stats: none this frame, efb_copies=%d", efb_copies);
+                }
+                return;
+            }
+
+            double sum = 0;
+            int min_value = int.max;
+            int max_value = int.min;
+            int[int] frequency;
+
+            foreach (value; draw_call_vertex_counts) {
+                sum += value;
+                min_value = value < min_value ? value : min_value;
+                max_value = value > max_value ? value : max_value;
+                frequency[value] += 1;
+            }
+
+            double mean = sum / cast(double) draw_call_count;
+
+            double variance = 0;
+            foreach (value; draw_call_vertex_counts) {
+                double diff = value - mean;
+                variance += diff * diff;
+            }
+            variance /= cast(double) draw_call_count;
+            double stddev = sqrt(variance);
+
+            auto sorted = draw_call_vertex_counts.dup;
+            sort(sorted);
+            double median = (draw_call_count % 2)
+                ? cast(double) sorted[draw_call_count / 2]
+                : (cast(double) (sorted[draw_call_count / 2 - 1] + sorted[draw_call_count / 2])) / 2.0;
+
+            int mode_value = sorted[0];
+            int mode_count = 0;
+            foreach (key, freq; frequency) {
+                if (freq > mode_count || (freq == mode_count && key < mode_value)) {
+                    mode_count = freq;
+                    mode_value = key;
+                }
+            }
+
+            int range = max_value - min_value;
+
+            writefln("Draw call stats: count=%d mean=%.2f median=%.2f mode=%d range=%d stddev=%.2f efb_copies=%d",
+                     draw_call_count, mean, median, mode_value, range, stddev, efb_copies);
         }
-
-        int range = max_value - min_value;
-
-        writefln("Draw call stats: count=%d mean=%.2f median=%.2f mode=%d range=%d stddev=%.2f",
-                 count, mean, median, mode_value, range, stddev);
     }
 }

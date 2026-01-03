@@ -7,6 +7,8 @@ import emu.hw.hollywood.gxfifo_ringbuffer;
 import emu.hw.hollywood.hollywood_types;
 import emu.hw.hollywood.opengl.opengl_renderer;
 import emu.hw.hollywood.texture;
+import emu.hw.hollywood.vertexdecoder.decoder;
+import emu.hw.hollywood.vertexdecoder.types;
 import emu.hw.pe.pe;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
@@ -20,15 +22,10 @@ import util.page_allocator;
 import util.ringbuffer;
 
 final class Hollywood {
-    VertexAttributeTable[8] vats;
-    ColorConfig[2] color_configs;
-
     int next_bp_mask = 0x00ff_ffff;
     u32[256] bp_registers;
 
     ProjectionMode projection_mode;
-
-    VertexDescriptor[8] vertex_descriptors;
 
     private State state;
     private size_t cached_bytes_needed = 1;
@@ -42,21 +39,20 @@ final class Hollywood {
     private u16 xf_data_remaining;
 
     private GXFifoCommand current_draw_command;
-    private int current_vat;
-    private int number_of_expected_vertices;
     private int number_of_expected_bytes_for_shape;
     private int number_of_received_bytes_for_shape;
     
     private int bazinga;
 
     private GLfloat[6]  projection_matrix_parameters;
+
+    bool general_matrix_dirty = true;
     private float[256] general_matrix_ram;
+    bool dt_texture_matrix_dirty = true;
     private float[256] dt_texture_matrix_ram;
 
     private u32[4] load_mtx_idx_values;
     private int current_load_mtx_idx;
-
-    private float[4][2] color_global;
 
     private GlObjectManager gl_object_manager;
     private TextureManager texture_manager;
@@ -72,9 +68,10 @@ final class Hollywood {
     private u32 display_list_size;
     
     private OpenGLRenderer opengl_renderer;
-    
-    u32[16] array_bases;
-    u32[16] array_strides;
+    VertexDecodeState vertex_decode_state;
+    VertexDecoder vertex_decoder;
+
+    private int num_texgens;
 
     GLint uniform_buffer_alignment;
     
@@ -102,6 +99,7 @@ final class Hollywood {
     this() {
         pending_fifo_data = new GXFifoRingBuffer(256);
         fifo_debug_history = new RingBuffer!FifoDebugValue(100);
+        vertex_decoder = new VertexDecoder();
     }
 
     void init_opengl() {
@@ -658,25 +656,32 @@ final class Hollywood {
     }
 
     private void update_texture_matrices() {
-        for (int i = 0; i < 8; i++) {
-            int tex_slot = opengl_renderer.get_texture_descriptor(i).tex_matrix_slot;
-            int dualtex_slot = opengl_renderer.get_texture_descriptor(i).dualtex_matrix_slot;
+        if (general_matrix_dirty || dt_texture_matrix_dirty) {
+            for (int i = 0; i < num_texgens; i++) {
+                int tex_slot = opengl_renderer.get_texture_descriptor(i).tex_matrix_slot;
+                int dualtex_slot = opengl_renderer.get_texture_descriptor(i).dualtex_matrix_slot;
 
-            float[12] tex_matrix;
-            float[12] dualtex_matrix;
+                float[12] tex_matrix;
+                float[12] dualtex_matrix;
 
-            for (int j = 0; j < 12; j++) {
-                tex_matrix[j] = general_matrix_ram[tex_slot * 4 + j];
-                dualtex_matrix[j] = dt_texture_matrix_ram[dualtex_slot * 4 + j];
+                for (int j = 0; j < 12; j++) {
+                    tex_matrix[j] = general_matrix_ram[tex_slot * 4 + j];
+                    dualtex_matrix[j] = dt_texture_matrix_ram[dualtex_slot * 4 + j];
+                }
+
+                opengl_renderer.set_tex_config_tex_matrix(i, tex_matrix);
+                opengl_renderer.set_tex_config_dualtex_matrix(i, dualtex_matrix);
             }
-
-            opengl_renderer.set_tex_config_tex_matrix(i, tex_matrix);
-            opengl_renderer.set_tex_config_dualtex_matrix(i, dualtex_matrix);
         }
 
-        int matrix_idx = opengl_renderer.get_geometry_matrix_idx();
-        float[12] new_matrix = general_matrix_ram[matrix_idx * 4 .. matrix_idx * 4 + 12];
-        opengl_renderer.set_position_matrix(new_matrix);
+        if (general_matrix_dirty) {
+            int matrix_idx = opengl_renderer.get_geometry_matrix_idx();
+            float[12] new_matrix = general_matrix_ram[matrix_idx * 4 .. matrix_idx * 4 + 12];
+            opengl_renderer.set_position_matrix(new_matrix);
+        }
+
+        general_matrix_dirty = false;
+        dt_texture_matrix_dirty = false;
     }
     
     public GLuint get_xfb_texture() {
@@ -689,7 +694,9 @@ final class Hollywood {
 
     Mem mem;
     void connect_mem(Mem mem) {
+        // todo: bad
         this.mem = mem;
+        this.vertex_decode_state.mem = mem;
     }
 
     // hank do not abbreviate CommandProcessor, haaankkkkkkkk!!!!!!
@@ -870,13 +877,14 @@ final class Hollywood {
                             int size    = param.bits(12, 15) + 1;
                             int mtxidx  = param.bits(16, 31);
 
-                            u32 src_addr = array_bases[12 + current_load_mtx_idx] + (array_strides[12 + current_load_mtx_idx] * mtxidx);
+                            u32 src_addr = vertex_decode_state.array_bases[12 + current_load_mtx_idx] + (vertex_decode_state.array_strides[12 + current_load_mtx_idx] * mtxidx);
 
                             for (int i = 0; i < size; i++) {
                                 u32 float_bits = mem.physical_read_u32(src_addr + i * 4);
                                 
                                 // TODO: fixme
                                 if (address + i <= 0xff) {
+                                    general_matrix_dirty = true;
                                     general_matrix_ram[address + i] = force_cast!float(float_bits);
                                 }
                             }
@@ -892,13 +900,14 @@ final class Hollywood {
                 case State.WaitingForNumberOfVertices:
                     if (offset + 2 <= length) {
                         u16 data_value = read_from_fifo_data!u16(data, offset);
-                        number_of_expected_vertices = data_value;
-                        number_of_expected_bytes_for_shape = size_of_incoming_vertex(current_vat) * number_of_expected_vertices;
+                        vertex_decode_state.number_of_expected_vertices = data_value;
+                        vertex_decode_state.bytes_per_vertex = size_of_incoming_vertex(vertex_decode_state.current_vat);
+                        number_of_expected_bytes_for_shape = vertex_decode_state.bytes_per_vertex * vertex_decode_state.number_of_expected_vertices;
                         state = State.WaitingForVertexData;
                         cached_bytes_needed = number_of_expected_bytes_for_shape;
-                        log_hollywood("vat: %s", vats[current_vat]);
-                        log_hollywood("vcd: %s", vertex_descriptors[0]);
-                        log_hollywood("Number of vertices: %d", number_of_expected_vertices);
+                        log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                        log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
+                        log_hollywood("Number of vertices: %d", vertex_decode_state.number_of_expected_vertices);
                         log_hollywood("Number of expected bytes for shape: %d", number_of_expected_bytes_for_shape);
                         handled = true;
                     }
@@ -1022,9 +1031,9 @@ final class Hollywood {
             
             case GXFifoCommand.DrawQuads | 0: .. case GXFifoCommand.DrawQuads | 7:         
                 current_draw_command = GXFifoCommand.DrawQuads;
-                current_vat = (cast(int) command).bits(0, 2);
-                log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[0]);
+                vertex_decode_state.current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1032,9 +1041,9 @@ final class Hollywood {
             
             case GXFifoCommand.DrawTriangles | 0: .. case GXFifoCommand.DrawTriangles | 7:
                 current_draw_command = GXFifoCommand.DrawTriangles;
-                current_vat = (cast(int) command).bits(0, 2);
-                log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[0]);
+                vertex_decode_state.current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1042,9 +1051,9 @@ final class Hollywood {
             
             case GXFifoCommand.DrawTriangleFan | 0: .. case GXFifoCommand.DrawTriangleFan | 7:
                 current_draw_command = GXFifoCommand.DrawTriangleFan;
-                current_vat = (cast(int) command).bits(0, 2);
-                log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[0]);
+                vertex_decode_state.current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1052,9 +1061,9 @@ final class Hollywood {
             
             case GXFifoCommand.DrawTriangleStrip | 0: .. case GXFifoCommand.DrawTriangleStrip | 7:
                 current_draw_command = GXFifoCommand.DrawTriangleStrip;
-                current_vat = (cast(int) command).bits(0, 2);
-                log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[0]);
+                vertex_decode_state.current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1062,9 +1071,9 @@ final class Hollywood {
             
             case GXFifoCommand.DrawLines | 0: .. case GXFifoCommand.DrawLines | 7:
                 current_draw_command = GXFifoCommand.DrawLines;
-                current_vat = (cast(int) command).bits(0, 2);
-                log_hollywood("vat: %s", vats[current_vat]);
-                log_hollywood("vcd: %s", vertex_descriptors[0]);
+                vertex_decode_state.current_vat = (cast(int) command).bits(0, 2);
+                log_hollywood("vat: %s", vertex_decode_state.vats[vertex_decode_state.current_vat]);
+                log_hollywood("vcd: %s", vertex_decode_state.vertex_descriptors[0]);
 
                 state = State.WaitingForNumberOfVertices;
                 cached_bytes_needed = 2;
@@ -1504,8 +1513,9 @@ final class Hollywood {
                 break;
 
             case 0x50: .. case 0x57:
-                auto vcd = &vertex_descriptors[register - 0x50];
-                
+                auto vcd = &vertex_decode_state.vertex_descriptors[register - 0x50];
+                vcd.raw_vcd_lo = value;
+
                 vcd.position_normal_matrix_location = cast(VertexAttributeLocation) value.bit(0);
                 vcd.texcoord_matrix_location[0] = cast(VertexAttributeLocation) value.bit(1);
                 vcd.texcoord_matrix_location[1] = cast(VertexAttributeLocation) value.bit(2);
@@ -1526,7 +1536,8 @@ final class Hollywood {
                 break;
             
             case 0x60: .. case 0x67:
-                auto vcd = &vertex_descriptors[register - 0x60];
+                auto vcd = &vertex_decode_state.vertex_descriptors[register - 0x60];
+                vcd.raw_vcd_hi = value;
 
                 vcd.texcoord_location[0] = cast(VertexAttributeLocation) value.bits(0, 1);
                 vcd.texcoord_location[1] = cast(VertexAttributeLocation) value.bits(2, 3);
@@ -1539,7 +1550,8 @@ final class Hollywood {
                 break;
             
             case 0x70: .. case 0x77:
-                auto vat = &vats[register - 0x70];
+                auto vat = &vertex_decode_state.vats[register - 0x70];
+                vat.raw_vat_a = value;
 
                 vat.position_count = value.bit(0) ? 3 : 2;
                 vat.position_format = cast(CoordFormat) value.bits(1, 3);
@@ -1558,7 +1570,8 @@ final class Hollywood {
                 break;
             
             case 0x80: .. case 0x87:
-                auto vat = &vats[register - 0x80];
+                auto vat = &vertex_decode_state.vats[register - 0x80];
+                vat.raw_vat_b = value;
                 
                 vat.texcoord_count[1] = value.bit(0) ? 2 : 1;
                 vat.texcoord_format[1] = cast(CoordFormat) value.bits(1, 3);
@@ -1574,7 +1587,8 @@ final class Hollywood {
                 break;
             
             case 0x90: .. case 0x97:
-                auto vat = &vats[register - 0x90];
+                auto vat = &vertex_decode_state.vats[register - 0x90];
+                vat.raw_vat_c = value;
                 
                 vat.texcoord_shift[4] = value.bits(0, 4);
                 vat.texcoord_count[5] = value.bit(5) ? 2 : 1;
@@ -1589,11 +1603,11 @@ final class Hollywood {
                 break;
             
             case 0xa0: .. case 0xaf:
-                array_bases[register - 0xa0] = value;
+                vertex_decode_state.array_bases[register - 0xa0] = value;
                 break;
 
             case 0xb0: .. case 0xbf:
-                array_strides[register - 0xb0] = value;
+                vertex_decode_state.array_strides[register - 0xb0] = value;
                 break;
 
             default:
@@ -1603,8 +1617,8 @@ final class Hollywood {
     }
 
     private int size_of_incoming_vertex(int vat_idx) {
-        auto vcd = &vertex_descriptors[0];
-        auto vat = &vats[vat_idx];
+        auto vcd = &vertex_decode_state.vertex_descriptors[0];
+        auto vat = &vertex_decode_state.vats[vat_idx];
 
         int size = 0;
 
@@ -1744,10 +1758,12 @@ final class Hollywood {
                 break;
 
             case 0x0000: .. case 0x00ff:
+                general_matrix_dirty = true;
                 general_matrix_ram[register] = force_cast!float(value);
                 break;
             
             case 0x0500: .. case 0x05ff:
+                dt_texture_matrix_dirty = true;
                 dt_texture_matrix_ram[register - 0x500] = force_cast!float(value);
                 break;
             
@@ -1759,7 +1775,7 @@ final class Hollywood {
                 break;
             
             case 0x100c:
-                color_global[0] = [
+                vertex_decode_state.color_global[0] = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
@@ -1768,7 +1784,7 @@ final class Hollywood {
                 break;
             
             case 0x100d:
-                color_global[1] = [
+                vertex_decode_state.color_global[1] = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
@@ -1777,15 +1793,15 @@ final class Hollywood {
                 break;
             
             case 0x100e:
-                this.color_configs[0].material_src = cast(MaterialSource) value.bit(0);
+                vertex_decode_state.color_configs[0].material_src = cast(MaterialSource) value.bit(0);
                 break;
             
             case 0x100f:
-                this.color_configs[1].material_src = cast(MaterialSource) value.bit(0);
+                vertex_decode_state.color_configs[1].material_src = cast(MaterialSource) value.bit(0);
                 break;
             
             case 0x103f:
-                // num texgens, who cares
+                num_texgens = cast(int) value.bits(0, 3);
                 break;
 
             default:
@@ -1950,8 +1966,8 @@ final class Hollywood {
     }
 
     private u32 read_from_indexed_array(int array_num, int idx, int offset, size_t size) {
-        u32 array_addr = array_bases[array_num];
-        u32 array_stride = array_strides[array_num];
+        u32 array_addr = vertex_decode_state.array_bases[array_num];
+        u32 array_stride = vertex_decode_state.array_strides[array_num];
         u32 array_offset = array_addr + (array_stride * idx) + (offset * cast(int) size);
 
         final switch (size) {
@@ -1991,277 +2007,84 @@ final class Hollywood {
         opengl_renderer.set_enabled_textures_bitmap(enabled_textures);
         opengl_renderer.init_geometry_tracking();
 
-        int offset = 0;
-        auto vcd = &vertex_descriptors[0];
-        auto vat = &vats[current_vat];
+        auto first_vertex_index = opengl_renderer.get_local_vertex_index();
 
-        auto decode_vertex = () {
-            Vertex v;
+        auto decode_target = opengl_renderer.next_vertices(vertex_decode_state.number_of_expected_vertices);
+        auto decode_result = vertex_decoder.decode_vertices(data, data_length, vertex_decode_state, decode_target, vertex_decode_state.number_of_expected_vertices);
 
-            if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
-                v.position_matrix_index = read_from_shape_data_buffer_direct(data, offset, 1);
-                offset += 1;
-            } else {
-                v.position_matrix_index = -1;
-            }
-
-            for (int j = 0; j < 8; j++) {
-                if (vcd.texcoord_matrix_location[j] != VertexAttributeLocation.NotPresent) {
-                    offset += 1;
-                }
-            }
-            
-            final switch (vcd.position_location) {
-            case VertexAttributeLocation.Direct:
-                for (int j = 0; j < vat.position_count; j++) {
-                    v.position[j] = dequantize_coord(
-                        read_from_shape_data_buffer_direct(data, offset, calculate_expected_size_of_coord(vat.position_format)),
-                        vat.position_format, vat.position_shift);
-                    offset += calculate_expected_size_of_coord(vat.position_format);
-                }
-                break;
-            case VertexAttributeLocation.Indexed8Bit:
-                auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
-                for (int j = 0; j < vat.position_count; j++) {
-                    size_t size = calculate_expected_size_of_coord(vat.position_format);
-                    log_hollywood("processing position with size %d", size);
-                    u32 vertex_data = read_from_indexed_array(0, array_offset, j, size);
-                    v.position[j] = dequantize_coord(vertex_data, vat.position_format, vat.position_shift);
-                }
-                offset += 1;
-                break;
-            case VertexAttributeLocation.Indexed16Bit:
-                auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
-                for (int j = 0; j < vat.position_count; j++) {
-                    size_t size = calculate_expected_size_of_coord(vat.position_format);
-                    log_hollywood("processing position with size %d", size);
-                    u32 vertex_data = read_from_indexed_array(0, array_offset, j, size);
-                    v.position[j] = dequantize_coord(vertex_data, vat.position_format, vat.position_shift);
-                }
-                offset += 2;
-                break;
-            case VertexAttributeLocation.NotPresent:
-                break;
-            }
-
-            if (vat.position_count == 2) {
-                v.position[2] = 0.0;
-            }
-
-            final switch (vcd.normal_location) {
-            case VertexAttributeLocation.Direct:
-                size_t size = calculate_expected_size_of_normal(vat.normal_format);
-                for (int j = 0; j < vat.normal_count; j++) {
-                    read_from_shape_data_buffer_direct(data, offset, size);
-                    offset += size;
-                }
-                break;
-            case VertexAttributeLocation.Indexed8Bit:
-                read_from_shape_data_buffer_direct(data, offset, 1);
-                offset += 1;
-                break;
-            case VertexAttributeLocation.Indexed16Bit:
-                read_from_shape_data_buffer_direct(data, offset, 2);
-                offset += 2;
-                break;
-            case VertexAttributeLocation.NotPresent:
-                break;
-            }
-
-            for (int j = 0; j < 2; j++) {
-                float[4] color;
-
-                final switch (vcd.color_location[j]) {
-                case VertexAttributeLocation.Direct:
-                    size_t size = calculate_expected_size_of_color(vat.color_format[j]);
-                    log_hollywood("processing color with size %d", size);
-                    u32 color_data = get_vertex_attribute_from_data(vcd.color_location[j], data, offset, size, j + 2);
-                    color = dequantize_color(color_data, vat.color_format[j], j);
-
-                    if (vat.color_count[j] == 3) {
-                        color[3] = 1.0;
-                    }
-
-                    offset += get_size_of_vertex_attribute_in_stream(vcd.color_location[j], size);
-                    break;
-                
-                case VertexAttributeLocation.Indexed8Bit:
-                        auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
-                    size_t size = calculate_expected_size_of_color(vat.color_format[j]);
-                    log_hollywood("processing color with size %d", size);
-
-                    u32 color_data = read_from_indexed_array(j + 2, array_offset, 0, size);
-                    color = dequantize_color(color_data, vat.color_format[j], j);
-
-                    if (vat.color_count[j] == 3) {
-                        color[3] = 1.0;
-                    }
-
-                    offset += 1;
-                    break;
-                
-                case VertexAttributeLocation.Indexed16Bit:
-                        auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
-                    size_t size = calculate_expected_size_of_color(vat.color_format[j]);
-                    log_hollywood("processing color with size %d", size);
-
-                    u32 color_data = read_from_indexed_array(j + 2, array_offset, 0, size);
-                    color = dequantize_color(color_data, vat.color_format[j], j);
-
-                    if (vat.color_count[j] == 3) {
-                        color[3] = 1.0;
-                    }
-
-                    offset += 2;
-                    break;
-                
-                case VertexAttributeLocation.NotPresent:
-                    color = [1.0, 1.0, 1.0, 1.0];
-                    break;
-                }
-
-                final switch (this.color_configs[j].material_src) {
-                    case MaterialSource.FromGlobal:
-                        v.color[j] = color_global[j];
-                        break;
-                    case MaterialSource.FromVertex:
-                        v.color[j] = color;
-                        break;
-                }
-            }
-
-            for (int j = 0; j < 8; j++) {
-                final switch (vcd.texcoord_location[j]) {
-                case VertexAttributeLocation.Direct:
-                    log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
-                    for (int k = 0; k < vat.texcoord_count[j]; k++) {
-                        size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        u32 texcoord = get_vertex_attribute_from_data(vcd.texcoord_location[j], data, offset, size, j + 4);
-                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
-                        offset += get_size_of_vertex_attribute_in_stream(vcd.texcoord_location[j], size);
-                    }
-                    break;
-                
-                case VertexAttributeLocation.Indexed8Bit:
-                        auto array_offset = read_from_shape_data_buffer_direct(data, offset, 1);
-                    log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
-                    for (int k = 0; k < vat.texcoord_count[j]; k++) {
-                        size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        u32 texcoord = read_from_indexed_array(j + 4, array_offset, k, size);
-                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
-                    }
-                    offset += 1;
-                    break;
-
-                case VertexAttributeLocation.Indexed16Bit:
-                        auto array_offset = read_from_shape_data_buffer_direct(data, offset, 2);
-                    log_hollywood("processing texcoord with size %d", vat.texcoord_count[j]);
-                    for (int k = 0; k < vat.texcoord_count[j]; k++) {
-                        size_t size = calculate_expected_size_of_coord(vat.texcoord_format[j]);
-                        u32 texcoord = read_from_indexed_array(j + 4, array_offset, k, size);
-                        v.texcoord[j][k] = dequantize_coord(texcoord, vat.texcoord_format[j], vat.texcoord_shift[j]);
-                    }
-                    offset += 2;
-                    break;
-
-                case VertexAttributeLocation.NotPresent:
-                    break;
-                }
-            }
-
-            return v;
-        };
+        auto current_vertex_index = first_vertex_index;
 
         switch (current_draw_command) {
         case GXFifoCommand.DrawQuads: {
-            uint[4] quad_indices;
-            int quad_count = 0;
-            for (int i = 0; i < number_of_expected_vertices; i++) {
-                Vertex v = decode_vertex();
-                uint local_idx = opengl_renderer.get_local_vertex_index();
-                *next_vertex() = v;
-                quad_indices[quad_count++] = local_idx;
-                if (quad_count == 4) {
-                    *next_index() = quad_indices[0];
-                    *next_index() = quad_indices[1];
-                    *next_index() = quad_indices[2];
-                    *next_index() = quad_indices[0];
-                    *next_index() = quad_indices[2];
-                    *next_index() = quad_indices[3];
-                    quad_count = 0;
-                }
+            auto next_indices = opengl_renderer.next_indices(6 * decode_result.vertices_emitted / 4);
+            
+            for (int i = 0; i < decode_result.vertices_emitted / 4; i++) {
+                *next_indices++ = current_vertex_index + 0;
+                *next_indices++ = current_vertex_index + 1;
+                *next_indices++ = current_vertex_index + 2;
+                *next_indices++ = current_vertex_index + 0;
+                *next_indices++ = current_vertex_index + 2;
+                *next_indices++ = current_vertex_index + 3;
+            
+                current_vertex_index += 4;
             }
+
             break;
         }
 
         case GXFifoCommand.DrawTriangles: {
-            uint[3] tri;
-            int tri_count = 0;
-            for (int i = 0; i < number_of_expected_vertices; i++) {
-                Vertex v = decode_vertex();
-                uint local_idx = opengl_renderer.get_local_vertex_index();
-                *next_vertex() = v;
-                tri[tri_count++] = local_idx;
-                if (tri_count == 3) {
-                    *next_index() = tri[0];
-                    *next_index() = tri[1];
-                    *next_index() = tri[2];
-                    tri_count = 0;
-                }
+            auto next_indices = opengl_renderer.next_indices(decode_result.vertices_emitted);
+
+            for (int i = 0; i < decode_result.vertices_emitted; i++) {
+                *next_indices++ = current_vertex_index + i;
             }
+            
             break;
         }
 
         case GXFifoCommand.DrawTriangleFan: {
-            uint first_idx = uint.max;
-            uint prev_idx = uint.max;
-            for (int i = 0; i < number_of_expected_vertices; i++) {
-                Vertex v = decode_vertex();
-                uint local_idx = opengl_renderer.get_local_vertex_index();
-                *next_vertex() = v;
+            if (decode_result.vertices_emitted >= 3) {
+                auto next_indices = opengl_renderer.next_indices(3 * (decode_result.vertices_emitted - 2));
+                uint first_idx = current_vertex_index + 0;
+                uint prev_idx = current_vertex_index + 1;
 
-                if (first_idx == uint.max) {
-                    first_idx = local_idx;
-                } else if (prev_idx == uint.max) {
-                    prev_idx = local_idx;
-                } else {
-                    *next_index() = first_idx;
-                    *next_index() = prev_idx;
-                    *next_index() = local_idx;
+                for (int i = 2; i < decode_result.vertices_emitted; i++) {
+                    uint local_idx = current_vertex_index + cast(uint) i;
+                    *next_indices++ = first_idx;
+                    *next_indices++ = prev_idx;
+                    *next_indices++ = local_idx;
                     prev_idx = local_idx;
                 }
+
+                current_vertex_index += decode_result.vertices_emitted;
             }
+
             break;
         }
 
         case GXFifoCommand.DrawTriangleStrip: {
-            uint prev0 = uint.max;
-            uint prev1 = uint.max;
-            for (int i = 0; i < number_of_expected_vertices; i++) {
-                Vertex v = decode_vertex();
-                uint local_idx = opengl_renderer.get_local_vertex_index();
-                *next_vertex() = v;
+            if (decode_result.vertices_emitted >= 3) {
+                auto next_indices = opengl_renderer.next_indices(3 * (decode_result.vertices_emitted - 2));
+                uint prev0 = current_vertex_index + 0;
+                uint prev1 = current_vertex_index + 1;
 
-                if (prev0 == uint.max) {
-                    prev0 = local_idx;
-                } else if (prev1 == uint.max) {
-                    prev1 = local_idx;
-                } else {
-                    *next_index() = prev0;
-                    *next_index() = prev1;
-                    *next_index() = local_idx;
+                for (int i = 2; i < decode_result.vertices_emitted; i++) {
+                    uint local_idx = current_vertex_index + cast(uint) i;
+                    *next_indices++ = prev0;
+                    *next_indices++ = prev1;
+                    *next_indices++ = local_idx;
                     prev0 = prev1;
                     prev1 = local_idx;
                 }
+
+                current_vertex_index += decode_result.vertices_emitted;
             }
+
             break;
         }
 
         case GXFifoCommand.DrawLines:
-            for (int i = 0; i < number_of_expected_vertices; i++) {
-                Vertex v = decode_vertex();
-                *next_vertex() = v;
-            }
+            // Vertices already decoded; indices unnecessary for lines in this path
             break;
 
         default:

@@ -72,8 +72,8 @@ R32 calculate_indexed_address(Code code, GuestReg ra, GuestReg rb) {
     return calculate_effective_address_indexed(code, ra, rb);
 }
 
-void emit_memory_read(Code code, R32 result_reg, R32 address_reg, MemorySize size, Extension extension, ByteOrder byte_order) {
-    if (code.force_slow_access(code.get_guest_pc())) {
+void emit_memory_read(Code code, R32 result_reg, R32 address_reg, MemorySize size, Extension extension, ByteOrder byte_order, bool force_slow = false)  {
+    if (force_slow || code.force_slow_access(code.get_guest_pc())) {
         if (code.get_mmu_enabled()) {
             emit_virtual_memory_read_slow(code, result_reg, address_reg, size, extension, byte_order);
         } else {
@@ -353,8 +353,8 @@ void emit_virtual_memory_read_slow(Code code, R32 result_reg, R32 address_reg, M
     code.mov(result_reg.cvt64(), rax);
 }
 
-void emit_memory_write(Code code, R32 address_reg, R64 value_reg, MemorySize size, ByteOrder byte_order) {
-    if (code.force_slow_access(code.get_guest_pc())) {
+void emit_memory_write(Code code, R32 address_reg, R64 value_reg, MemorySize size, ByteOrder byte_order, bool force_slow = false) {
+    if (force_slow || code.force_slow_access(code.get_guest_pc())) {
         if (code.get_mmu_enabled()) {
             emit_virtual_memory_write_slow(code, address_reg, value_reg, size, byte_order);
         } else {
@@ -799,7 +799,7 @@ void raw_read8(Code code, R32 address, R32 dest) {
     code.reserve_register(esi);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_read(code, dest, address, MemorySize.Byte, Extension.Zero, ByteOrder.BigEndian);
+    emit_memory_read(code, dest, address, MemorySize.Byte, Extension.Zero, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers_except(dest.cvt64());
 }
 
@@ -807,7 +807,7 @@ void raw_read16(Code code, R32 address, R32 dest) {
     code.reserve_register(esi);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_read(code, dest, address, MemorySize.HalfWord, Extension.Zero, ByteOrder.BigEndian);
+    emit_memory_read(code, dest, address, MemorySize.HalfWord, Extension.Zero, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers_except(dest.cvt64());
 }
 
@@ -815,7 +815,7 @@ void raw_read32(Code code, R32 address, R32 dest) {
     code.reserve_register(esi);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_read(code, dest, address, MemorySize.Word, Extension.Zero, ByteOrder.BigEndian);
+    emit_memory_read(code, dest, address, MemorySize.Word, Extension.Zero, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers_except(dest.cvt64());
 }
 
@@ -823,7 +823,7 @@ void raw_read64(Code code, R32 address, R64 dest) {
     code.reserve_register(esi);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_read(code, dest.cvt32(), address, MemorySize.DoubleWord, Extension.Zero, ByteOrder.BigEndian);
+    emit_memory_read(code, dest.cvt32(), address, MemorySize.DoubleWord, Extension.Zero, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers_except(dest);
 }
 
@@ -833,7 +833,7 @@ void raw_write8(Code code, R32 address, R32 value) {
     code.reserve_register(edx);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_write(code, address, value.cvt64(), MemorySize.Byte, ByteOrder.BigEndian);
+    emit_memory_write(code, address, value.cvt64(), MemorySize.Byte, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers();
 }
 
@@ -843,7 +843,7 @@ void raw_write16(Code code, R32 address, R32 value) {
     code.reserve_register(edx);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_write(code, address, value.cvt64(), MemorySize.HalfWord, ByteOrder.BigEndian);
+    emit_memory_write(code, address, value.cvt64(), MemorySize.HalfWord, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers();
 }
 
@@ -853,7 +853,7 @@ void raw_write32(Code code, R32 address, R32 value) {
     code.reserve_register(edx);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_write(code, address, value.cvt64(), MemorySize.Word, ByteOrder.BigEndian);
+    emit_memory_write(code, address, value.cvt64(), MemorySize.Word, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers();
 }
 
@@ -863,7 +863,7 @@ void raw_write64(Code code, R32 address, R64 value) {
     code.reserve_register(edx);
     code.reserve_register(eax);
     code.push_caller_saved_registers();
-    emit_memory_write(code, address, value, MemorySize.DoubleWord, ByteOrder.BigEndian);
+    emit_memory_write(code, address, value, MemorySize.DoubleWord, ByteOrder.BigEndian, true);
     code.pop_caller_saved_registers();
 }
 

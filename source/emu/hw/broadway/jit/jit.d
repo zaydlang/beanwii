@@ -269,7 +269,8 @@ final class Jit {
     }
 
     void invalidate(u32 address) {
-        log_jit("Invalidating block at 0x%08x", address);
+        import std.stdio;
+        // writefln("Invalidating block at 0x%08x", address);
         
         basic_block_link_requests.remove(address);
         
@@ -283,7 +284,8 @@ final class Jit {
     }
 
     void invalidate_no_clear_slowmem(u32 address) {
-        log_jit("Invalidating block at 0x%08x without clearing slowmem", address);
+        import std.stdio;
+        // writefln("Invalidating noclear block at 0x%08x without clearing slowmem", address);
         
         basic_block_link_requests.remove(address);
 
@@ -296,7 +298,7 @@ final class Jit {
 
     void invalidate_key(u32 jit_key) {
         if (code_page_table.has(jit_key)) {
-            log_jit("Block exists in page table (key=0x%08x), removing and invalidating dependents", jit_key);
+            // import std.stdio; writefln("Block exists in page table (key=0x%08x), removing and invalidating dependents", jit_key);
             code_page_table.remove(jit_key);
 
             if (jit_key in dependents) {

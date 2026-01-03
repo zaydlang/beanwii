@@ -99,7 +99,12 @@ final class EFBCopyOptimizer {
         glEnableVertexAttribArray(0);
         
         glBindVertexArray(0);
+
+        glGenFramebuffers(1, &menezes_output_fbo);
     }
+
+    GLuint menezes_output_fbo;
+    // int menezes_fbo_index = 0;
 
     GLuint copy_efb_to_texture(GLuint efb_color_texture, u32 src_x, u32 src_y, u32 width, u32 height, u8 format, bool mipmap) {
         int[4] channel_mask = get_channel_mask(format);
@@ -118,15 +123,16 @@ final class EFBCopyOptimizer {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        GLuint output_fbo;
-        glGenFramebuffers(1, &output_fbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, output_fbo);
+        // GLuint output_fbo = menezes_output_fbo[menezes_fbo_index++];
+        // menezes_fbo_index %= 64;
+        // glGenFramebuffers(1, &output_fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, menezes_output_fbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture, 0);
         
         update_ubo(params);
-        render_to_fbo(efb_color_texture, output_fbo, output_width, output_height);
+        render_to_fbo(efb_color_texture, menezes_output_fbo, output_width, output_height);
         
-        glDeleteFramebuffers(1, &output_fbo);
+        // glDeleteFramebuffers(1, &output_fbo);
         
         return output_texture;
     }
