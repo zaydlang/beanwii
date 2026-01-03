@@ -23,8 +23,8 @@ final class NunchukExtension : WiimoteExtension {
 
     void set_state(NunchukState new_state) {
         state = NunchukState(
-            clamp(new_state.stick_x, 0, 255),
-            clamp(new_state.stick_y, 0, 255),
+            clamp(new_state.stick_x, 31, 221),
+            clamp(new_state.stick_y, 31, 221),
             clamp(new_state.accel_x, 0, 1023),
             clamp(new_state.accel_y, 0, 1023),
             clamp(new_state.accel_z, 0, 1023),
@@ -49,7 +49,6 @@ final class NunchukExtension : WiimoteExtension {
         u8 ay_low = cast(u8) (ay & 0x3);
         u8 az_low = cast(u8) (az & 0x3);
 
-        // Buttons are 0 when pressed.
         u8 c_bit = cast(u8) (state.c_pressed ? 0 : 1);
         u8 z_bit = cast(u8) (state.z_pressed ? 0 : 1);
 
@@ -59,6 +58,14 @@ final class NunchukExtension : WiimoteExtension {
             (ax_low << 2) |
             (c_bit << 1)  |
             (z_bit << 0)
+        );
+
+        import std.stdio;
+        writefln("sx: %d, sy: %d, ax: %d, ay: %d, az: %d, c: %s, z: %s => bytes: [%02X %02X %02X %02X %02X %02X]",
+            sx, sy, ax, ay, az,
+            state.c_pressed ? "pressed" : "released",
+            state.z_pressed ? "pressed" : "released",
+            sx, sy, byte2, byte3, byte4, byte5
         );
 
         return [sx, sy, byte2, byte3, byte4, byte5];

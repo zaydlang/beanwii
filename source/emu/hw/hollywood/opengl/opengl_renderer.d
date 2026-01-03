@@ -18,6 +18,96 @@ import std.math;
 
 alias GLBool = u32;
 
+template SegmentedPersistentBuffer(T) {
+    final class SegmentedPersistentBuffer {
+        private {
+            GLuint buffer = 0;
+            T* mapped_ptr = null;
+            size_t element_count;
+            size_t segment_count;
+            size_t segment_size; // in elements
+            size_t current_segment = 0;
+            size_t used_in_segment = 0;
+            GLsync[] fences;
+            GLenum target;
+        }
+
+        this(GLenum target, size_t element_count, size_t segment_count) {
+            this.target = target;
+            this.element_count = element_count;
+            this.segment_count = segment_count;
+            this.segment_size = element_count / segment_count;
+            fences.length = segment_count;
+            fences[] = null;
+
+            glGenBuffers(1, &buffer);
+            glBindBuffer(target, buffer);
+            glBufferStorage(target, element_count * T.sizeof, null,
+                            GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
+            mapped_ptr = cast(T*) glMapBufferRange(target, 0, element_count * T.sizeof,
+                                                  GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
+        }
+
+        T* acquire(size_t count) {
+            if (count > segment_size) {
+                error_opengl("SegmentedPersistentBuffer request too large: %d > segment_size %d", count, segment_size);
+            }
+
+            if (fences[current_segment] !is null && used_in_segment == 0) {
+                glClientWaitSync(fences[current_segment], GL_SYNC_FLUSH_COMMANDS_BIT, GLuint.max);
+                glDeleteSync(fences[current_segment]);
+                fences[current_segment] = null;
+            }
+
+            if (used_in_segment + count > segment_size) {
+                advance_segment();
+            }
+
+            size_t offset = (current_segment * segment_size) + used_in_segment;
+            used_in_segment += count;
+            return mapped_ptr + offset;
+        }
+
+        size_t get_current_offset() const {
+            return (current_segment * segment_size) + used_in_segment;
+        }
+
+        size_t get_segment_size() const {
+            return segment_size;
+        }
+
+        void mark_segment_submitted() {
+            if (used_in_segment == 0) {
+                return;
+            }
+
+            if (fences[current_segment] !is null) {
+                glDeleteSync(fences[current_segment]);
+            }
+
+            fences[current_segment] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        }
+
+        GLuint get_buffer() const {
+            return buffer;
+        }
+
+        private void advance_segment() {
+            mark_segment_submitted();
+            size_t next_segment = (current_segment + 1) % segment_count;
+
+            if (fences[next_segment] !is null) {
+                glClientWaitSync(fences[next_segment], GL_SYNC_FLUSH_COMMANDS_BIT, GLuint.max);
+                glDeleteSync(fences[next_segment]);
+                fences[next_segment] = null;
+            }
+
+            current_segment = next_segment;
+            used_in_segment = 0;
+        }
+    }
+}
+
 struct GlAlignedFloat {
     float value;
     alias value this;
@@ -172,6 +262,10 @@ final class OpenGLRenderer {
     
     private GlObjectManager gl_object_manager;
     private EFBCopyOptimizer efb_optimizer;
+    private SegmentedPersistentBuffer!Vertex vertex_buffer;
+    private SegmentedPersistentBuffer!uint   index_buffer;
+    private GLuint persistent_tev_buffer = 0;
+    private GLuint persistent_vertex_config_buffer = 0;
     
     private GLuint gl_program;
     private int[8] texture_uniform_locations;
@@ -186,10 +280,6 @@ final class OpenGLRenderer {
     private int mvp_uniform_location = -1;
     private uint tev_config_block_index = -1;
     private uint vertex_config_block_index = -1;
-    private uint persistent_vertex_buffer = 0;
-    private uint persistent_tev_buffer = 0;
-    private uint persistent_vertex_config_buffer = 0;
-    private uint persistent_index_buffer = 0;
     private float[256] general_matrix_ram;
     
     private GLuint efb_fbo;
@@ -203,8 +293,6 @@ final class OpenGLRenderer {
     private u32[] tracked_efb_copy_addresses;
     private size_t efb_copy_count;
     
-    private Vertex* persistent_vertex_ptr = null;
-    private uint* persistent_index_ptr = null;
     private int[] draw_call_vertex_counts;
     
     static immutable size_t MAX_VERTICES = 1024 * 1024;
@@ -228,33 +316,19 @@ final class OpenGLRenderer {
     }
     
     Vertex* next_vertex() {
-        return allocate_vertex();
+        return vertex_buffer.acquire(1);
     }
 
     Vertex* next_vertices(size_t count) {
-        if (current_vertex_offset + count > MAX_VERTICES) {
-            import std.stdio;
-            writefln("[OpenGLRenderer] Vertex buffer overflow (%s vertices requested, %s available). Resetting offset.", count, MAX_VERTICES - current_vertex_offset);
-            current_vertex_offset = 0;
-        }
-
-        auto ptr = persistent_vertex_ptr + current_vertex_offset;
-        current_vertex_offset += cast(uint) count;
-        return ptr;
+        return vertex_buffer.acquire(count);
     }
     
     uint* next_index() {
-        return allocate_index();
+        return index_buffer.acquire(1);
     }
 
     uint* next_indices(size_t count) {
-        if (current_index_offset + count > MAX_INDICES) {
-            current_index_offset = 0;
-        }
-
-        auto ptr = persistent_index_ptr + current_index_offset;
-        current_index_offset += cast(uint) count;
-        return ptr;
+        return index_buffer.acquire(count);
     }
     
     void flush_accumulated_batch() {
@@ -271,18 +345,18 @@ final class OpenGLRenderer {
     
     void init_geometry_tracking() {
         if (accumulated_geometry.shared_index_count == 0) {
-            accumulated_geometry.shared_vertex_start = get_current_vertex_offset();
-            accumulated_geometry.shared_index_start = get_current_index_offset();
+            accumulated_geometry.shared_vertex_start = cast(uint) vertex_buffer.get_current_offset();
+            accumulated_geometry.shared_index_start = cast(uint) index_buffer.get_current_offset();
         }
     }
     
     uint get_local_vertex_index() {
-        return cast(uint) (get_current_vertex_offset() - accumulated_geometry.shared_vertex_start);
+        return cast(uint)(vertex_buffer.get_current_offset() - accumulated_geometry.shared_vertex_start);
     }
     
     void finalize_geometry() {
-        accumulated_geometry.shared_index_count = get_current_index_offset() - accumulated_geometry.shared_index_start;
-        accumulated_geometry.shared_vertex_count = get_current_vertex_offset() - accumulated_geometry.shared_vertex_start;
+        accumulated_geometry.shared_index_count = cast(uint)(index_buffer.get_current_offset() - accumulated_geometry.shared_index_start);
+        accumulated_geometry.shared_vertex_count = cast(uint)(vertex_buffer.get_current_offset() - accumulated_geometry.shared_vertex_start);
     }
     
     // Getters for fields that Hollywood needs to read
@@ -1094,16 +1168,10 @@ final class OpenGLRenderer {
     }
     
     void init_opengl() {
-        int uniform_buffer_alignment;
-        glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniform_buffer_alignment);
+        enum SEGMENTS = 8;
+        vertex_buffer        = new SegmentedPersistentBuffer!Vertex(GL_ARRAY_BUFFER,          MAX_VERTICES,                SEGMENTS);
+        index_buffer         = new SegmentedPersistentBuffer!uint  (GL_ELEMENT_ARRAY_BUFFER, MAX_INDICES,                 SEGMENTS);
 
-        glGenBuffers(1, &persistent_vertex_buffer);
-        glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
-        glBufferStorage(GL_ARRAY_BUFFER, MAX_VERTICES * Vertex.sizeof, null, 
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        persistent_vertex_ptr = cast(Vertex*) glMapBufferRange(GL_ARRAY_BUFFER, 0, MAX_VERTICES * Vertex.sizeof,
-                                                              GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        
         glGenBuffers(1, &persistent_tev_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
         glBufferData(GL_UNIFORM_BUFFER, TevConfig.sizeof, null, GL_DYNAMIC_DRAW);
@@ -1111,13 +1179,6 @@ final class OpenGLRenderer {
         glGenBuffers(1, &persistent_vertex_config_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);
         glBufferData(GL_UNIFORM_BUFFER, VertexConfig.sizeof, null, GL_DYNAMIC_DRAW);
-
-        glGenBuffers(1, &persistent_index_buffer);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
-        glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, MAX_INDICES * uint.sizeof, null,
-                       GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
-        persistent_index_ptr = cast(uint*) glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, MAX_INDICES * uint.sizeof,
-                                                           GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
 
         load_shaders();
 
@@ -1338,35 +1399,7 @@ final class OpenGLRenderer {
         return false;
     }
     
-    uint get_current_vertex_offset() const { return current_vertex_offset; }
-    uint get_current_index_offset() const { return current_index_offset; }
-    void set_current_vertex_offset(uint offset) { current_vertex_offset = offset; }
-    void set_current_index_offset(uint offset) { current_index_offset = offset; }
-    
-    private uint current_vertex_offset = 0;
-    private uint current_index_offset = 0;
-    
     private bool xfb_has_data = false;
-    
-    Vertex* allocate_vertex() {
-        if (current_vertex_offset >= MAX_VERTICES) {
-            current_vertex_offset = 0;
-            import std.stdio;
-            writefln("[Hollywood] Warning: Vertex buffer overflow, wrapping around.");
-        }
-        
-        return &persistent_vertex_ptr[current_vertex_offset++];
-    }
-    
-    uint* allocate_index() {
-        if (current_index_offset >= MAX_INDICES) {
-            current_index_offset = 0;
-            import std.stdio;
-            writefln("[Hollywood] Warning: Index buffer overflow, wrapping around.");
-        }
-        
-        return &persistent_index_ptr[current_index_offset++];
-    }
     
     private uint gc_blend_factor_to_gl(int gc_factor) {
         final switch (gc_factor) {
@@ -1393,10 +1426,11 @@ final class OpenGLRenderer {
         
         glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE, render_state.texture[0].tex_matrix.ptr);
         glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, render_state.projection_matrix.ptr);
-        
+
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, TevConfig.sizeof, &render_state.tev_config);
         glBindBufferBase(GL_UNIFORM_BUFFER, 1, persistent_tev_buffer);
+
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_vertex_config_buffer);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, VertexConfig.sizeof, &render_state.vertex_config);
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, persistent_vertex_config_buffer);
@@ -1512,8 +1546,8 @@ final class OpenGLRenderer {
     void submit_geometry_to_opengl(ShapeGroup geometry, RenderState render_state) {
         uint vertex_array_object = gl_object_manager.allocate_vertex_array_object();
         glBindVertexArray(vertex_array_object);
-        glBindBuffer(GL_ARRAY_BUFFER, persistent_vertex_buffer);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, persistent_index_buffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer.get_buffer());
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer.get_buffer());
         size_t base_offset = geometry.shared_vertex_start * Vertex.sizeof;
         
         glEnableVertexAttribArray(position_attr_location);
@@ -1552,6 +1586,9 @@ final class OpenGLRenderer {
 
         glDrawElements(GL_TRIANGLES, cast(int) geometry.shared_index_count, GL_UNSIGNED_INT,
                        cast(void*) (geometry.shared_index_start * uint.sizeof));
+
+        vertex_buffer.mark_segment_submitted();
+        index_buffer.mark_segment_submitted();
     }
     
     void flush_and_render(T)(T geometry) {

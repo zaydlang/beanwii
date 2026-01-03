@@ -4,6 +4,7 @@ import emu.hw.broadway.interrupt;
 import emu.hw.hollywood.hollywood;
 import emu.hw.memory.strategy.memstrategy;
 import emu.hw.vi.vi;
+import emu.scheduler;
 import ui.device;
 import util.bitop;
 import util.log;
@@ -622,6 +623,34 @@ final class VideoInterface {
         }
     }
 
+    private size_t get_cycle_offset_for_xy_pixel(int x, int y) {
+        int scanline_number = 
+            non_interlaced ? y :
+            (y % 2 == 0) ? 
+                (y / 2) : 
+                (y / 2 + XBFR_HEIGHT / 2);
+        
+        size_t cycle_offset =
+            scanline_number * halfline_width * 2 +
+            horizontal_offset_of_left_pixel * 2 +
+            x * 2;
+
+        size_t vi_cycles_per_second = 
+            clock_select == ClockSelect.MHZ_27 ? 27000000 :
+            54000000;
+        
+        size_t wii_cycles_per_second = 729000000;
+
+        size_t conversion_factor = wii_cycles_per_second / vi_cycles_per_second;
+
+        return cycle_offset * conversion_factor;
+    }
+
+    void raise_interrupt(int index)() {
+        interrupt_status[index] = true;
+        interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
+    }
+
     public void scanout() {
         // for (int field = 0; field < 2; field++) {
         //     auto field_address = (field == 0) ? bottom_field_fbb_address : top_field_fbb_address;
@@ -646,12 +675,14 @@ final class VideoInterface {
         // log_vi("Presenting VideoBuffer");
 
         hollywood.render_xfb();
-        // hollywood.pixel_engine.raise_finish_interrupt();
+
+        static foreach (enum i; 0 .. 4) {
+            log_vi("IRQ x: %d y: %d en: %d offset: %d", i, vertical_position[i], interrupt_enable[i], get_cycle_offset_for_xy_pixel(horizontal_position[i], vertical_position[i]));
         
-        if (interrupt_enable[0]) {
-            interrupt_status[0] = true;
-            log_vi("Raising VI interrupt");
-            interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
+            if (interrupt_enable[i]) {
+                size_t cycle_offset = get_cycle_offset_for_xy_pixel(horizontal_position[i], vertical_position[i]);
+                scheduler.add_event_relative_to_clock(&raise_interrupt!i, cycle_offset);
+            }
         }
     }
 
@@ -671,6 +702,11 @@ final class VideoInterface {
 
     public void connect_mem(Mem mem) {
         this.mem = mem;
+    }
+
+    Scheduler scheduler;
+    public void connect_scheduler(Scheduler scheduler) {
+        this.scheduler = scheduler;
     }
 
     public void connect_interrupt_controller(InterruptController ic) {
