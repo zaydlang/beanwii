@@ -148,7 +148,7 @@ final class TextureManager {
                     continue;
                 }
 
-                texture[x * height + y] = Color(
+                texture[y * width + x] = Color(
                     (value & 0x001f) << 3,
                     (value & 0x07e0) >> 3,
                     (value & 0xf800) >> 8,
@@ -188,14 +188,14 @@ final class TextureManager {
                 }
 
                 if (value & 0x8000) {
-                    texture[x * height + y] = Color(
+                    texture[y * width + x] = Color(
                         cast(u8) (value.bits(0,   4) << 3),
                         cast(u8) (value.bits(5,   9) << 3),
                         cast(u8) (value.bits(10, 14) << 3),
                         255
                     );
                 } else {
-                    texture[x * height + y] = Color(
+                    texture[y * width + x] = Color(
                         cast(u8) (value.bits(0, 3)   << 4),
                         cast(u8) (value.bits(4, 7)   << 4),
                         cast(u8) (value.bits(8, 11)  << 4),
@@ -239,14 +239,14 @@ final class TextureManager {
                 auto value = mem.physical_read_u8(cast(u32) current_address);
 
                 if (x % 2 == 0) {
-                    texture[x * height + y] = Color(
+                    texture[y * width + x] = Color(
                         ((value & 0xf0) >> 4) * 0x11,
                         ((value & 0xf0) >> 4) * 0x11,
                         ((value & 0xf0) >> 4) * 0x11,
                         ((value & 0xf0) >> 4) * 0x11,
                     );
                 } else {
-                    texture[x * height + y] = Color(
+                    texture[y * width + x] = Color(
                         (value & 0x0f) * 0x11,
                         (value & 0x0f) * 0x11,
                         (value & 0x0f) * 0x11,
@@ -289,7 +289,7 @@ final class TextureManager {
                     continue;
                 }
 
-                texture[x * height + y] = Color(value, value, value, value);
+                texture[y * width + x] = Color(value, value, value, value);
             }
             }
         }
@@ -324,7 +324,7 @@ final class TextureManager {
                     continue;
                 }
 
-                texture[x * height + y] = Color(
+                texture[y * width + x] = Color(
                     ((value & 0x0f) >> 0) * 0x11,
                     ((value & 0x0f) >> 0) * 0x11,
                     ((value & 0x0f) >> 0) * 0x11,
@@ -366,7 +366,7 @@ final class TextureManager {
                 u8 intensity = cast(u8) value.bits(0, 7);
                 u8 alpha     = cast(u8) value.bits(8, 15);
 
-                texture[x * height + y] = Color(
+                texture[y * width + x] = Color(
                     intensity,
                     intensity,
                     intensity,
@@ -469,7 +469,7 @@ final class TextureManager {
                         continue;
                     }
 
-                    auto texture_index = (x + i) * height + (y + j);
+                    auto texture_index = (y + j) * width + (x + i);
                     texture[texture_index] = Color(
                         cast(u8) colors[bits[i + j * 4]][2],
                         cast(u8) colors[bits[i + j * 4]][1],
@@ -512,7 +512,7 @@ final class TextureManager {
                     continue;
                 }
 
-                texture[x * height + y] = Color(
+                texture[y * width + x] = Color(
                     mem.physical_read_u8(rg_address + 1),
                     mem.physical_read_u8(rg_address + 0),
                     mem.physical_read_u8(ba_address + 1),
@@ -579,7 +579,7 @@ final class TextureManager {
         texture_cache.entries[cache_index].value = entry;
         
         glBindTexture(GL_TEXTURE_2D, texture_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.height, cast(int) descriptor.width, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.width, cast(int) descriptor.height, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
         // dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
         return cast(int) texture_id;
     }

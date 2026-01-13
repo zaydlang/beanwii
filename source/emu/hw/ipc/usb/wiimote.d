@@ -56,6 +56,10 @@ final class Wiimote {
     auto rnd = Random(42);
 
     u16 button_state = 0;
+    u8[3] accelerometer;
+
+    u8[6] bd_addr;
+    u16 connection_handle;
 
     struct IrDot {
         u16 x;
@@ -63,7 +67,7 @@ final class Wiimote {
         bool valid;
     }
 
-    IrDot[2] ir_dots; // we only ever emit two blobs
+    IrDot[2] ir_dots; 
 
     WiimoteExtension extension;
 
@@ -124,10 +128,12 @@ final class Wiimote {
     }
 
     void finish_connecting() {
+        import std.stdio : writefln;
+        writefln("Wiimote connected");
         state = WiimoteState.Connected;
     
         // L2CAP_CONNECT_REQ
-        bluetooth.send_acl_response([0x00, 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
+        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
     }
 
     bool is_connecting() {
@@ -170,17 +176,20 @@ final class Wiimote {
         u8 channel = data[12];
         // TODO: very wrong. figure out what is going on here.
         u8 dipshit = channel == 0x40 ? 1 : 2;
+        import std.stdio; writefln("channel: %02x dipshit: %02x", channel, dipshit);
 
-        bluetooth.send_acl_response([0x00, 0x21, 0x16, 0x00, 0x12, 0x00, 0x01, 0x00, 0x05, dipshit, 0x0e, 0x00, channel, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80, 0x02, 0x02, 0x02, 0xff, 0xff]);
-        bluetooth.send_acl_response([0x00, 0x21, 0x10, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x04, 0x04, 0x08, 0x00, channel, 0x00, 0x00, 0x00, 0x01, 0x02, 0xb9, 0x00]);
+        channel += (connection_handle - 1) * 2;
+        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x16, 0x00, 0x12, 0x00, 0x01, 0x00, 0x05, dipshit, 0x0e, 0x00, channel, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80, 0x02, 0x02, 0x02, 0xff, 0xff]);
+        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x10, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x04, 0x04, 0x08, 0x00, channel, 0x00, 0x00, 0x00, 0x01, 0x02, 0xb9, 0x00]);
     }
 
     void handle_l2cap_config_rsp(u8[] data) {
         // TODO: also very wrong. figure out what is going on here.
         u8 channel = data[12];
+        import std.stdio; writefln("channel: %02x", channel);
 
         if (channel == 0x40) {
-            bluetooth.send_acl_response([0x00, 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x13, 0x00, 0x41, 0x00]);
+            bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x13, 0x00, 0x41, 0x00]);
         } else {
             send_continuous_data_report_event_id = scheduler.add_event_relative_to_clock(&send_continuous_data_report, 100_000);
         }
@@ -445,6 +454,12 @@ final class Wiimote {
         // result.button_state[0] |= rnd_down ? 0x01 : 0x00;
     }
 
+    void fill_accelerometer_state(T)(T* result) {
+        result.accelerometer[0] = accelerometer[0];
+        result.accelerometer[1] = accelerometer[1];
+        result.accelerometer[2] = accelerometer[2];
+    }
+
     void trivial_success(OutputReportId report_id) {
         AcknowledgeOutputReport result;
         fill_button_state(&result);
@@ -460,7 +475,8 @@ final class Wiimote {
 
         log_wiimote("Sending input report response: %x", input_report.acknowledge_output_report.report_id);
         WiimoteL2capCommand l2cap_command = WiimoteL2capCommand(
-            L2capCommandHeader(cast(ushort) wiimote_l2cap_size_minus_header, Channel.WiimoteHID),
+            L2capCommandHeader(cast(ushort) wiimote_l2cap_size_minus_header, 
+            cast(u8) (Channel.WiimoteHID + (connection_handle - 1) * 2)),
             ReportDirection.Input,
             input_report
         );
@@ -470,7 +486,7 @@ final class Wiimote {
 
         // l2cap shit
         data[0] = 0x00; 
-        data[1] = 0x21;
+        data[1] = 0x20 | connection_handle.get_byte(0);
         data[2] = cast(u8) ((l2cap_command.header.length + 4) & 0xff);
         data[3] = cast(u8) ((l2cap_command.header.length + 4) >> 8);
         
@@ -554,14 +570,14 @@ final class Wiimote {
             case 0x31:
                 DataReport31 data_report31;
                 fill_button_state(&data_report31);
-                // fill_accelerometer_state(&data_report31);
+                fill_accelerometer_state(&data_report31);
                 send_input_report_response(InputReport(InputReportId.DataReport31, data_report_31 : data_report31), DataReport31.sizeof);
                 break;
             
             case 0x33:
                 DataReport33 data_report;
                 fill_button_state(&data_report);
-                // fill_accelerometer_state(&data_report);
+                fill_accelerometer_state(&data_report);
                 send_input_report_response(InputReport(InputReportId.DataReport33, data_report_33 : data_report), DataReport33.sizeof);
                 break;
 
@@ -570,7 +586,7 @@ final class Wiimote {
 
                 DataReport37 data_report37;
                 fill_button_state(&data_report37);
-                data_report37.accelerometer[] = 0;
+                fill_accelerometer_state(&data_report37);
                 fill_ir_basic(data_report37.ir_camera);
 
                 data_report37.extension[] = extension.get_report_data();
@@ -585,6 +601,12 @@ final class Wiimote {
     void set_button(WiimoteButton button, bool pressed) {
         button_state &= ~cast(u16) button;
         button_state |= cast(u16) (pressed ? button : 0);
+    }
+
+    void set_accelerometer(u8 x, u8 y, u8 z) {
+        accelerometer[0] = x;
+        accelerometer[1] = y;
+        accelerometer[2] = z;
     }
 
     void set_nunchuk_state(NunchukState state) {

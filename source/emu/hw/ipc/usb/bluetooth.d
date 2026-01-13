@@ -11,6 +11,7 @@ import emu.hw.ipc.usb.wiimote;
 import emu.hw.memory.strategy.memstrategy;
 import emu.scheduler;
 import std.container : DList;
+import std.algorithm : min;
 import std.traits : hasMember;
 import util.endian;
 import util.array;
@@ -363,15 +364,89 @@ final class Bluetooth {
         this.scheduler = scheduler;
     }
 
-    void connect_wiimote(Wiimote wiimote) {
-        this.wiimote = wiimote;
+    void connect_wiimotes(Wiimote[2] wiimotes) {
+        this.wiimotes = wiimotes;
+
+        this.wiimotes[0].bd_addr = [0x11, 0x02, 0x19, 0x79, 0x00, 0x00];
+        this.wiimotes[0].connection_handle = 0x0001;
+        this.wiimotes[1].bd_addr = [0x11, 0x02, 0x19, 0x79, 0x00, 0x01];
+        this.wiimotes[1].connection_handle = 0x0002;
     }
 
     DList!(u8[]) pending_hci;
     DList!(u8[]) pending_acl;
 
-    Wiimote wiimote;
+    Wiimote[2] wiimotes;
+    int wiimotes_to_connect = 1;
     bool scanning;
+
+    Wiimote get_wiimote_by_bdaddr(u8[6] bd_addr) {
+        foreach (wm; wiimotes) {
+            if (wm.bd_addr == bd_addr) {
+                return wm;
+            }
+        }
+
+        error_bluetooth("no wiimote with bdaddr %s", bd_addr.to_hex_string);
+        return null;
+    }
+
+    Wiimote get_wiimote_by_connection_handle(u16 connection_handle) {
+        foreach (wm; wiimotes) {
+            if (wm.connection_handle == connection_handle) {
+                return wm;
+            }
+        }
+
+        error_bluetooth("no wiimote with connection handle %x", connection_handle);
+        return null;
+    }
+
+    Wiimote first_disconnected_wiimote() {
+        foreach (i, wm; wiimotes) {
+            if (!wiimote_connection_allowed(i)) {
+                continue;
+            }
+
+            if (wm.state == WiimoteState.Disconnected) {
+                return wm;
+            }
+        }
+
+        error_bluetooth("no disconnected wiimote available");
+        return null;
+    }
+
+    bool no_wiimotes_currently_connecting() {
+        foreach (wm; wiimotes) {
+            if (wm.state == WiimoteState.Connecting) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    bool exists_disconnected_wiimote() {
+        foreach (i, wm; wiimotes) {
+            if (!wiimote_connection_allowed(i)) {
+                continue;
+            }
+
+            if (wm.state == WiimoteState.Disconnected) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool wiimote_connection_allowed(size_t index) {
+        return index < wiimotes_to_connect;
+    }
+
+    void increment_wiimotes_to_connect() {
+        wiimotes_to_connect = min(wiimotes_to_connect + 1, cast(int) wiimotes.length);
+    }
 
     u8[] hci_request(Direction direction, u32 paddr, u8[] data) {
         log_bluetooth("BT HCI request: %s", direction);
@@ -386,12 +461,15 @@ final class Bluetooth {
     }
 
     u8[] acl_request(Direction direction, u32 paddr, u8[] data) {
-        log_bluetooth("BT ACL request: %s", direction);
-
         if (direction == Direction.ControllerToHost) {
             acl_paddr = paddr;
         } else {
+            import std.stdio : writefln;
+            writefln("BT ACL request: %s %s", direction, data.to_hex_string);
+            u16 requested_connection_handle = data[1] & 0xF; // ?????
+            Wiimote wiimote = get_wiimote_by_connection_handle(requested_connection_handle);
             wiimote.handle_l2cap(data);
+
             u8[] response = [0x13, 0x15, 0x05, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x04, 0x01, 0x00, 0x00];
             send_hci_response(response);
             ipc_response_queue.push_later(paddr, 0, 10_000);
@@ -754,11 +832,13 @@ final class Bluetooth {
         };
         send_hci_response(struct_to_bytes(status_response));
         
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciModeChangeEvent mode_response = {
             event_code: HciEventCode.ModeChange,
             parameter_length: 6,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
+            connection_handle: u16_be(requested_connection_handle),
             current_mode: 0x02,
             interval: u16_be(0x0800)
         };
@@ -766,12 +846,15 @@ final class Bluetooth {
     }
 
     void hci_control_request_link_accept_connection(u8[] data) {
+        u8[6] connected_bdaddr = data[3..9];
+        u16 connection_handle = connected_bdaddr[5] + 1;
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
             status: 0x00,
             num_hci_command_packets: 1,
-            command_opcode: u16_le(cast(u16)HciCommandOpcode.AcceptConnectionRequest)
+            command_opcode: u16_le(cast(u16) HciCommandOpcode.AcceptConnectionRequest)
         };
         send_hci_response(struct_to_bytes(status_response));
 
@@ -779,7 +862,7 @@ final class Bluetooth {
             event_code: HciEventCode.RoleChange,
             parameter_length: 8,
             status: 0x00,
-            bd_addr: [0x11, 0x02, 0x19, 0x79, 0x00, 0x00],
+            bd_addr: connected_bdaddr,
             new_role: 0x00
         };
         send_hci_response(struct_to_bytes(role_response));
@@ -788,17 +871,20 @@ final class Bluetooth {
             event_code: HciEventCode.ConnectionComplete,
             parameter_length: 11,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
-            bd_addr: [0x11, 0x02, 0x19, 0x79, 0x00, 0x00],
+            connection_handle: u16_be(connection_handle),
+            bd_addr: connected_bdaddr,
             link_type: 0x01,
             encryption_enabled: 0x00
         };
         send_hci_response(struct_to_bytes(connection_response));
         
+        auto wiimote = get_wiimote_by_bdaddr(connected_bdaddr);
         wiimote.finish_connecting();
     }    
     
     void hci_control_request_link_get_name(u8[] data) {
+        u8[6] connected_bdaddr = data[3..9];
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -808,7 +894,9 @@ final class Bluetooth {
         };
         send_hci_response(struct_to_bytes(status_response));
         
-        char[] response = [0x07, 0xff, 0x00, 0x11, 0x02, 0x19, 0x79, 0x00, 0x00];
+        ubyte[] response;
+        response ~= [0x07, 0xff, 0x00];
+        response ~= connected_bdaddr[];
         foreach (char c; "Nintendo RVL-CNT-01") {
             response ~= cast(u8) c;
         }
@@ -817,10 +905,12 @@ final class Bluetooth {
             response ~= 0;
         }
 
-        send_hci_response(cast(u8[]) response);
+        send_hci_response(response);
     }
 
     void hci_control_request_link_get_clock_offset(u8[] data) {
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -834,13 +924,15 @@ final class Bluetooth {
             event_code: HciEventCode.ReadClockOffsetComplete,
             parameter_length: 5,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
+            connection_handle: u16_be(requested_connection_handle),
             clock_offset: u16_le(0x3818)
         };
         send_hci_response(struct_to_bytes(offset_response));
     }
 
     void hci_control_request_link_get_lmp_subversion(u8[] data) {
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -854,7 +946,7 @@ final class Bluetooth {
             event_code: HciEventCode.ReadRemoteVersionInformationComplete,
             parameter_length: 8,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
+            connection_handle: u16_be(requested_connection_handle),
             lmp_pal_version: 0x02,
             manufacturer_name: u16_le(0x000F),
             lmp_pal_subversion: u16_le(0x0229)
@@ -863,6 +955,8 @@ final class Bluetooth {
     }
 
     void hci_control_request_link_useless_bullshit(u8[] data) {
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -876,13 +970,15 @@ final class Bluetooth {
             event_code: HciEventCode.ReadRemoteSupportedFeaturesComplete,
             parameter_length: 11,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
+            connection_handle: u16_be(requested_connection_handle),
             lmp_features: [0xbc, 0x02, 0x04, 0x38, 0x08, 0x00, 0x00, 0x00]
         };
         send_hci_response(struct_to_bytes(features_response));
     }
 
     void hci_control_request_link_change_packet_type(u8[] data) {
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -896,13 +992,15 @@ final class Bluetooth {
             event_code: HciEventCode.ConnectionPacketTypeChanged,
             parameter_length: 5,
             status: 0x00,
-            connection_handle: u16_be(0x0001),
+            connection_handle: u16_be(requested_connection_handle),
             packet_type: u16_le(0xcc18)
         };
         send_hci_response(struct_to_bytes(packet_response));
     }
 
     void hci_control_request_link_auth_complete(u8[] data) {
+        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
@@ -916,7 +1014,7 @@ final class Bluetooth {
             event_code: HciEventCode.AuthenticationComplete,
             parameter_length: 3,
             status: 0x00,
-            connection_handle: u16_be(0x0001)
+            connection_handle: u16_be(requested_connection_handle)
         };
         send_hci_response(struct_to_bytes(auth_response));
     }
@@ -946,8 +1044,8 @@ final class Bluetooth {
     }
 
     void update() {
-        if (wiimote.is_disconnected() && scanning) {
-            send_wiimote_connection_request();
+        if (exists_disconnected_wiimote() && no_wiimotes_currently_connecting() && scanning) {
+            send_wiimote_connection_request(first_disconnected_wiimote());
         }
 
         if (!pending_acl.empty && acl_paddr != 0) {
@@ -977,14 +1075,18 @@ final class Bluetooth {
         }
     }
 
-    void send_wiimote_connection_request() {
+    void send_wiimote_connection_request(Wiimote wiimote) {
         HciConnectionRequestEvent conn_request = {
             event_code: HciEventCode.ConnectionRequest,
             parameter_length: 10,
-            bd_addr: [0x11, 0x02, 0x19, 0x79, 0x00, 0x00],
+            bd_addr: wiimote.bd_addr,
             class_of_device: [0x00, 0x04, 0x48],
             link_type: 0x01
         };
+
+        import std.stdio;
+        writefln("Sending connection request to wiimote %s", wiimote.bd_addr.to_hex_string);
+
         send_hci_response(struct_to_bytes(conn_request));
         wiimote.start_connecting();
     }
@@ -995,6 +1097,8 @@ final class Bluetooth {
     }
 
     void send_acl_response(u8[] data) {
+        import std.stdio;
+        writefln("send_acl_response to host: %s", data.to_hex_string);
         log_bluetooth("send_acl_response(%s)", data.to_hex_string);
         pending_acl ~= data;
         update();

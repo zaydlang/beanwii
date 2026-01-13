@@ -3,9 +3,6 @@ module ui.sdl.device;
 import bindbc.freetype;
 import bindbc.opengl;
 import bindbc.sdl;
-import core.sync.mutex;
-import core.thread;
-import core.time;
 import config;
 import emu.hw.hollywood.hollywood;
 import emu.hw.hollywood.hollywood_types;
@@ -40,84 +37,49 @@ import std.concurrency;
 import std.math;
 import std.stdio;
 
-class ThreadedWiimoteManager {
+class WiimoteManager {
     private {
         HardwareWiimote hardware_wiimote;
-        Thread polling_thread;
-        Mutex state_mutex;
         HardwareWiimoteState[4] wiimote_states;
         int connected_count;
-        bool should_stop;
-        bool thread_running;
     }
     
     this() {
         hardware_wiimote = new HardwareWiimote();
-        state_mutex = new Mutex();
         connected_count = 0;
-        should_stop = false;
-        thread_running = false;
-        
-        polling_thread = new Thread(&wiimote_polling_loop);
-        polling_thread.start();
     }
     
-    ~this() {
-        stop();
-    }
-    
-    void stop() {
-        should_stop = true;
-        if (polling_thread && polling_thread.isRunning) {
-            polling_thread.join();
+    void poll_once() {
+        if (connected_count < 2) {
+            hardware_wiimote.connect(1);
         }
-        thread_running = false;
-    }
-    
-    private void wiimote_polling_loop() {
-        thread_running = true;
-        
-        while (!should_stop) {
-            if (connected_count == 0) {
-                connected_count = hardware_wiimote.connect(1);
-            }
 
-            synchronized(state_mutex) {
-                if (hardware_wiimote.poll()) {
-                    for (int i = 0; i < connected_count && i < 4; i++) {
-                        wiimote_states[i] = hardware_wiimote.get_state(i);
-                    }
-                }
-            }
-            
-            Thread.sleep(dur!"msecs"(16));
+        connected_count = hardware_wiimote.count;
+        for (int i = 0; i < connected_count && i < 4; i++) {
+            wiimote_states[i] = hardware_wiimote.get_state(i);
+
+            writefln("wiiuse state (controller %d): held=0x%04X pressed=0x%04X released=0x%04X",
+                i,
+                cast(ushort) wiimote_states[i].buttons_held,
+                cast(ushort) wiimote_states[i].buttons,
+                cast(ushort) wiimote_states[i].buttons_released);
         }
-        
-        thread_running = false;
     }
-    
+
     HardwareWiimoteState get_state(int controller_id) {
         if (controller_id < 0 || controller_id >= 4) {
             return HardwareWiimoteState.init;
         }
         
-        synchronized(state_mutex) {
-            if (controller_id < connected_count) {
-                return wiimote_states[controller_id];
-            }
+        if (controller_id < connected_count) {
+            return wiimote_states[controller_id];
         }
         
         return HardwareWiimoteState.init;
     }
     
     @property int count() {
-        synchronized(state_mutex) {
-            return connected_count;
-        }
-    }
-    
-    @property bool is_thread_running() {
-        return thread_running;
+        return connected_count;
     }
 }
 
@@ -185,7 +147,7 @@ class SdlDevice : MultiMediaDevice, Window {
 
     Wii wii;
     Hollywood hollywood;
-    ThreadedWiimoteManager hardware_wiimote;
+    WiimoteManager hardware_wiimote;
 
     enum SCREEN_BORDER_WIDTH    = 10;
     enum DEBUGGER_PANEL_WIDTH   = 250;
@@ -206,6 +168,7 @@ class SdlDevice : MultiMediaDevice, Window {
     bool running;
     bool wireframe_mode;
     bool profiling_active;
+    bool escape_fast_forward;
 
     int hovered_shape = -1;
 
@@ -223,7 +186,7 @@ class SdlDevice : MultiMediaDevice, Window {
         this.wii = wii;
         this.record_audio = record_audio;
         if (use_bluetooth_wiimote) {
-            this.hardware_wiimote = new ThreadedWiimoteManager();
+            this.hardware_wiimote = new WiimoteManager();
         }
         
         if (record_audio) {
@@ -667,6 +630,8 @@ class SdlDevice : MultiMediaDevice, Window {
             ];
 
             u8* keyboard_state = SDL_GetKeyboardState(null);
+            bool ctrl_pressed = keyboard_state[SDL_SCANCODE_LCTRL] != 0 || keyboard_state[SDL_SCANCODE_RCTRL] != 0;
+            bool shift_pressed = keyboard_state[SDL_SCANCODE_LSHIFT] != 0 || keyboard_state[SDL_SCANCODE_RSHIFT] != 0;
             
             static bool audio_test_key_pressed = false;
             bool audio_test_key_current = keyboard_state[SDL_SCANCODE_T] != 0;
@@ -676,8 +641,10 @@ class SdlDevice : MultiMediaDevice, Window {
             }
             audio_test_key_pressed = audio_test_key_current;
 
+            escape_fast_forward = keyboard_state[SDL_SCANCODE_ESCAPE] != 0;
+
             static bool wireframe_key_pressed = false;
-            bool wireframe_key_current = keyboard_state[SDL_SCANCODE_W] != 0;
+            bool wireframe_key_current = keyboard_state[SDL_SCANCODE_W] != 0 && !(ctrl_pressed && shift_pressed);
             if (wireframe_key_current && !wireframe_key_pressed) {
                 wireframe_mode = !wireframe_mode;
                 log_frontend("Wireframe mode %s", wireframe_mode ? "enabled" : "disabled");
@@ -685,7 +652,6 @@ class SdlDevice : MultiMediaDevice, Window {
             wireframe_key_pressed = wireframe_key_current;
 
             static bool logging_toggle_key_pressed = false;
-            bool ctrl_pressed = keyboard_state[SDL_SCANCODE_LCTRL] != 0 || keyboard_state[SDL_SCANCODE_RCTRL] != 0;
             bool l_pressed = keyboard_state[SDL_SCANCODE_L] != 0;
             bool logging_toggle_key_current = ctrl_pressed && l_pressed;
 
@@ -714,18 +680,12 @@ class SdlDevice : MultiMediaDevice, Window {
                                     keyboard_state[SDL_SCANCODE_RCTRL] != 0);
             
             if (quit_key_current && !quit_key_pressed) {
-                if (hardware_wiimote) {
-                    hardware_wiimote.stop();
-                }
-                
                 running = false;
-                log_frontend("Graceful shutdown initiated");
             }
             
             quit_key_pressed = quit_key_current;
 
             static bool profiling_toggle_key_pressed = false;
-            bool shift_pressed = keyboard_state[SDL_SCANCODE_LSHIFT] != 0 || keyboard_state[SDL_SCANCODE_RSHIFT] != 0;
             bool g_pressed = keyboard_state[SDL_SCANCODE_G] != 0;
             bool profiling_toggle_key_current = ctrl_pressed && shift_pressed && g_pressed;
             
@@ -735,16 +695,33 @@ class SdlDevice : MultiMediaDevice, Window {
             
             profiling_toggle_key_pressed = profiling_toggle_key_current;
 
+            static bool wiimote_connect_key_pressed = false;
+            bool wiimote_connect_key_current = ctrl_pressed && shift_pressed && keyboard_state[SDL_SCANCODE_W] != 0;
+            if (wiimote_connect_key_current && !wiimote_connect_key_pressed) {
+                wii.allow_next_wiimote_connection();
+                log_frontend("Requested new Wiimote connection");
+            }
+            wiimote_connect_key_pressed = wiimote_connect_key_current;
+
             foreach (wiimote_key, host_key; KeyMapping) {
-                wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0);
+                wii.set_wiimote_button(wiimote_key, keyboard_state[host_key] != 0, 0);
             }
 
-            if (hardware_wiimote && hardware_wiimote.count > 0) {
-                auto state = hardware_wiimote.get_state(0);
+            void apply_wiimote_state(HardwareWiimoteState state, int controller_id) {
+                if (state.buttons_held != 0 || state.buttons != 0 || state.buttons_released != 0) {
+                    writefln("frontend state (controller %d): held=0x%04X pressed=0x%04X released=0x%04X",
+                        controller_id,
+                        cast(ushort) state.buttons_held,
+                        cast(ushort) state.buttons,
+                        cast(ushort) state.buttons_released);
+                }
+
+                wii.set_wiimote_accelerometer(state.accel_x, state.accel_y, state.accel_z, controller_id);
+
                 foreach (button; [WiimoteButton.A, WiimoteButton.B, WiimoteButton.One, WiimoteButton.Two,
                                 WiimoteButton.Plus, WiimoteButton.Minus, WiimoteButton.Home,
                                 WiimoteButton.Up, WiimoteButton.Down, WiimoteButton.Left, WiimoteButton.Right]) {
-                    wii.set_wiimote_button(button, (state.buttons_held & button) != 0);
+                    wii.set_wiimote_button(button, (state.buttons_held & button) != 0, controller_id);
                 }
 
                 if (state.has_nunchuk) {
@@ -756,7 +733,7 @@ class SdlDevice : MultiMediaDevice, Window {
                         state.nunchuk_accel_z | (state.nunchuk_accel_z << 2),
                         state.nunchuk_c,
                         state.nunchuk_z
-                    ));
+                    ), controller_id);
 
                     log_frontend("Nunchuk raw: stick=(%d,%d) accel=(%d,%d,%d) C=%d Z=%d",
                         state.nunchuk_stick_x,
@@ -769,6 +746,22 @@ class SdlDevice : MultiMediaDevice, Window {
                 }
             }
 
+            if (hardware_wiimote) {
+                hardware_wiimote.poll_once();
+            }
+
+            if (hardware_wiimote && hardware_wiimote.count > 0) {
+                int limit = hardware_wiimote.count;
+                if (limit > 2) {
+                    limit = 2;
+                }
+
+                for (int i = 0; i < limit; i++) {
+                    auto state = hardware_wiimote.get_state(i);
+                    apply_wiimote_state(state, i);
+                }
+            }
+
             int mouse_x, mouse_y;
             SDL_GetMouseState(&mouse_x, &mouse_y);
 
@@ -777,11 +770,11 @@ class SdlDevice : MultiMediaDevice, Window {
             int viewport_w = WII_SCREEN_WIDTH;
             int viewport_h = WII_SCREEN_HEIGHT;
 
-            wii.set_wiimote_screen_position(mouse_x - viewport_x, mouse_y - viewport_y, viewport_w, viewport_h);
+            wii.set_wiimote_screen_position(mouse_x - viewport_x, mouse_y - viewport_y, viewport_w, viewport_h, 0);
         }
 
         bool should_fast_forward() {
-            return false;
+            return escape_fast_forward;
         }
 
         bool should_exit() {

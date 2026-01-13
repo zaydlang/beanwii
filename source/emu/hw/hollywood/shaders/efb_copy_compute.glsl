@@ -17,13 +17,12 @@ void main() {
     if (gid.x >= dst_size.x || gid.y >= dst_size.y) {
         return;
     }
-
-    // Map destination pixel to source UV, replicating the previous vertex shader math.
+    
     vec2 base_uv = (vec2(gid) + 0.5) / vec2(dst_size);
-    vec2 pixel_coord = src_offset + base_uv * src_size;
+	vec2 offset = src_offset;
+	offset.y = 528.0 - src_size.y - src_offset.y;
+    vec2 pixel_coord = offset + base_uv * src_size;
     vec2 uv = pixel_coord / vec2(640.0, 528.0);
-    uv.y = 1.0 - uv.y;
-    uv = vec2(uv.y, -uv.x); // rotate 90 CCW
 
     vec4 src_color = texture(efb_color, uv);
     vec4 masked = vec4(
@@ -33,5 +32,6 @@ void main() {
         channel_mask.a != 0 ? src_color.a : 0.0
     );
 
+	gid.y = dst_size.y - gid.y;
     imageStore(dst, gid, masked);
 }

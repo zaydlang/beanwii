@@ -136,11 +136,7 @@ EmissionAction emit_psq_lu(Code code, u32 opcode) {
     auto ra = code.get_reg(guest_ra);
     auto rd = code.get_fpr(guest_rd);
 
-    if (guest_ra == GuestReg.R0) {
-        code.mov(ra, d);
-    } else {
-        code.add(ra, d);
-    }
+    code.add(ra, d);
 
     code.set_reg(guest_ra, ra);
 

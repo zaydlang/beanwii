@@ -15,10 +15,10 @@ enum MemStrategy           config_chosen_mem_strategy            = MemStrategy.H
 enum bool                  config_enable_basic_block_linking     = true;
 enum bool                  config_enable_debugger                = false;
 enum bool                  config_always_efb_copy_to_ram         = false;
-enum bool                  config_cache_display_lists            = true;
+enum bool                  config_cache_display_lists            = false;
 enum VertexDecoderStrategy config_chosen_vertex_decoder_strategy = VertexDecoderStrategy.Interpreter;
-enum bool                  config_enable_gl_debug_output         = false;
-enum bool                  config_enable_gpu_draw_stats          = true;
+enum bool                  config_enable_gl_debug_output         = true;
+enum bool                  config_enable_gpu_draw_stats          = false;
 
 // constraint enforcement
 bool implies(bool a, bool b) {

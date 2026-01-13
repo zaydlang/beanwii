@@ -129,8 +129,8 @@ final class IPC {
         this.interrupt_controller = ic;
     }
 
-    void connect_wiimote(Wiimote wiimote) {
-        this.file_manager.connect_wiimote(wiimote);
+    void connect_wiimotes(Wiimote[2] wiimotes) {
+        this.file_manager.connect_wiimotes(wiimotes);
     }
 
     u32 hw_ipc_ppcmsg;

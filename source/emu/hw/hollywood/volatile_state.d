@@ -99,6 +99,7 @@ struct Texture {
 
 struct RenderState {
     float[12] position_matrix;
+    float[12] normal_matrix;
     float[16] projection_matrix;
     
     Texture[8] texture;

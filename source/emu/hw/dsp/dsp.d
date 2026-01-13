@@ -591,12 +591,12 @@ final class DSP {
         log_tmp("Starting 32kHz audio stream: address=0x%08X, samples=%d", current_audio_address, samples_remaining);
         
         auto audio_cycles = 729_000_000 / 32000;
-        audio_stream_event_id = scheduler.add_event_relative_to_clock(&this.stream_next_sample, audio_cycles / 2);
+        audio_stream_event_id = scheduler.add_event_relative_to_clock(&this.stream_next_sample, audio_cycles);
     }
 
     private void stream_next_sample() {
         auto audio_cycles = 729_000_000 / 32000;
-        audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles / 2);
+        audio_stream_event_id = scheduler.add_event_relative_to_self(&this.stream_next_sample, audio_cycles);
 
         log_tmp("Streaming next audio sample: address=0x%08X, samples_remaining=%d", current_audio_address, samples_remaining);
         

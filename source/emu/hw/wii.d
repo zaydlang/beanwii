@@ -48,8 +48,8 @@ final class Wii {
     private SerialInterface   serial_interface;
     private IPC               ipc;
     private PixelEngine       pixel_engine;
-    private Wiimote           wiimote;
-    private GDBStub          gdb_stub;
+    private Wiimote[2]        wiimotes;
+    private GDBStub           gdb_stub;
 
     private Scheduler        scheduler;
 
@@ -69,7 +69,7 @@ final class Wii {
         this.hollywood          = new Hollywood();
         this.scheduler          = new Scheduler();
         this.pixel_engine       = new PixelEngine();
-        this.wiimote            = new Wiimote();
+        this.wiimotes           = [new Wiimote(), new Wiimote()];
         this.gdb_stub           = new GDBStub();
         
         this.broadway.connect_mem(this.mem);
@@ -96,7 +96,7 @@ final class Wii {
         this.ipc.connect_mem(this.mem);
         this.ipc.connect_scheduler(this.scheduler);
         this.ipc.connect_interrupt_controller(this.broadway.get_interrupt_controller());
-        this.ipc.connect_wiimote(this.wiimote);
+        this.ipc.connect_wiimotes(this.wiimotes);
         this.pixel_engine.connect_scheduler(this.scheduler);
         this.pixel_engine.connect_interrupt_controller(this.broadway.get_interrupt_controller());
         this.audio_interface.connect_scheduler(this.scheduler);
@@ -113,8 +113,11 @@ final class Wii {
         this.gdb_stub.connect_broadway(this.broadway);
         this.gdb_stub.connect_wii(this);
         // todo: ew
-        this.wiimote.connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);
-        this.wiimote.connect_scheduler(this.scheduler);
+
+        for (int i = 0; i < this.wiimotes.length; i++) {
+            this.wiimotes[i].connect_bluetooth(this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth);
+            this.wiimotes[i].connect_scheduler(this.scheduler);
+        }
 
         g_logger_scheduler = &this.scheduler;
 
@@ -164,6 +167,10 @@ static if (config_enable_debugger) {
     public void connect_multimedia_device(MultiMediaDevice device) {
         this.video_interface.set_present_videobuffer_callback(&device.present_videobuffer);
         this.audio_interface.set_push_sample_callback(&device.push_sample);
+    }
+
+    private bool is_valid_wiimote(int controller_id) {
+        return controller_id >= 0 && controller_id < this.wiimotes.length;
     }
 
     private void run_apploader(WiiApploader* apploader, u8[] wii_disk_data) {
@@ -327,21 +334,48 @@ static if (config_enable_debugger) {
         create_bean_dump();
     }
 
-    public void set_wiimote_button(WiimoteButton button, bool pressed) {
-        log_wiimote("wii: %s", wiimote);
-        this.wiimote.set_button(button, pressed);
+    public void set_wiimote_button(WiimoteButton button, bool pressed, int controller_id) {
+        if (!is_valid_wiimote(controller_id)) {
+            return;
+        }
+
+        this.wiimotes[controller_id].set_button(button, pressed);
     }
 
-    public void set_wiimote_screen_position(int x, int y, int width, int height) {
-        this.wiimote.set_screen_position(x, y, width, height);
+    public void set_wiimote_accelerometer(ubyte x, ubyte y, ubyte z, int controller_id) {
+        if (!is_valid_wiimote(controller_id)) {
+            return;
+        }
+
+        this.wiimotes[controller_id].set_accelerometer(cast(u8) x, cast(u8) y, cast(u8) z);
     }
 
-    public Wiimote get_wiimote() {
-        return this.wiimote;
+    public void allow_next_wiimote_connection() {
+        this.ipc.file_manager.usb_dev_57e305.usb_manager.bluetooth.increment_wiimotes_to_connect();
     }
 
-    public void set_nunchuk_state(NunchukState state) {
-        this.wiimote.set_nunchuk_state(state);
+    public void set_wiimote_screen_position(int x, int y, int width, int height, int controller_id) {
+        if (!is_valid_wiimote(controller_id)) {
+            return;
+        }
+
+        this.wiimotes[controller_id].set_screen_position(x, y, width, height);
+    }
+
+    public Wiimote get_wiimote(int controller_id) {
+        if (!is_valid_wiimote(controller_id)) {
+            return null;
+        }
+
+        return this.wiimotes[controller_id];
+    }
+
+    public void set_nunchuk_state(NunchukState state, int controller_id) {
+        if (!is_valid_wiimote(controller_id)) {
+            return;
+        }
+
+        this.wiimotes[controller_id].set_nunchuk_state(state);
     }
 
     public void hang_in_gdb_at_start() {

@@ -156,3 +156,7 @@ int get_nunchuk_button_c(struct wiimote_t* wm) {
 int get_nunchuk_button_z(struct wiimote_t* wm) {
     return (wm->exp.nunchuk.btns_held & NUNCHUK_BUTTON_Z) != 0;
 }
+
+int get_exp_nunchuk(void) {
+    return EXP_NUNCHUK;
+}

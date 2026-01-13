@@ -177,18 +177,44 @@ final class OpenGLRenderer {
 
     struct TexConfig {
         align(1):
-        float[12] dualtex_matrix;
         float[12] tex_matrix;
+        float[12] dualtex_matrix;
         GLBool    normalize_before_dualtex;
         u32       texcoord_source;
         u32       texmatrix_size;
         u32       use_stq;
     }
 
+    struct ChannelControl {
+        align(1):
+        GLBool enable;
+        u32    ambient_src;
+        u32    material_src;
+        u32    light_mask;
+        u32    diffuse_fn;
+        u32    attenuation_fn;
+        u32[2] padding;
+    }
+
+    struct Light {
+        align(1):
+        float[4] position;
+        float[4] direction;
+        float[4] color;
+        float[4] dist_atten;
+        float[4] spec_atten;
+    }
+
     struct VertexConfig {
         align(1):
         TexConfig[8] tex_configs;
+        ChannelControl[2] color_channel_controls;
+        ChannelControl[2] alpha_channel_controls;
+        Light[8] lights;
+        float[4][2] ambient_colors;
+        float[4][2] material_colors;
         int end;
+        int[3] padding_end;
     }
 
     struct Texture {
@@ -204,6 +230,7 @@ final class OpenGLRenderer {
 
     struct RenderState {
         float[12] position_matrix;
+        float[12] normal_matrix;
         float[16] projection_matrix;
         
         Texture[8] texture;
@@ -226,6 +253,8 @@ final class OpenGLRenderer {
         int blend_source;
         bool subtractive_additive_toggle;
         bool uses_per_vertex_matrices;
+        bool logicop_enable;
+        int logicop;
         
         u16 efb_src_x;
         u16 efb_src_y;
@@ -271,16 +300,21 @@ final class OpenGLRenderer {
     private int[8] texture_uniform_locations;
     private int position_attr_location = -1;
     private int normal_attr_location = -1;
+    private int binormal_t_attr_location = -1;
+    private int binormal_b_attr_location = -1;
     private int texcoord_attr_location = -1;
     private int color_attr_location = -1;
     private int matrix_index_attr_location = -1;
     private int position_matrix_uniform_location = -1;
+    private int normal_matrix_uniform_location = -1;
     private int texture_matrix_uniform_location = -1;
     private int matrix_data_uniform_location = -1;
+    private int normal_matrix_data_uniform_location = -1;
     private int mvp_uniform_location = -1;
     private uint tev_config_block_index = -1;
     private uint vertex_config_block_index = -1;
     private float[256] general_matrix_ram;
+    private float[256] normal_matrix_ram;
     
     private GLuint efb_fbo;
     private GLuint efb_color_texture;
@@ -427,8 +461,16 @@ final class OpenGLRenderer {
     // RenderState setters
     void set_position_matrix(float[12] value) {
         if (render_state.position_matrix != value) {
+            gl_debug_marker("Position matrix %f %f %f %f %f %f %f %f %f %f %f %f".format(value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7], value[8], value[9], value[10], value[11]));
             flush();
             render_state.position_matrix = value;
+        }
+    }
+
+    void set_normal_matrix(float[12] value) {
+        if (render_state.normal_matrix != value) {
+            flush();
+            render_state.normal_matrix = value;
         }
     }
 
@@ -455,6 +497,7 @@ final class OpenGLRenderer {
 
     void set_geometry_matrix_idx(int value) {
         if (render_state.geometry_matrix_idx != value) {
+            gl_debug_marker("Geometry Matrix Index Change: %d -> %d".format(render_state.geometry_matrix_idx, value));
             flush();
             render_state.geometry_matrix_idx = value;
         }
@@ -683,61 +726,26 @@ final class OpenGLRenderer {
             render_state.alpha_ref1 = value;
         }
     }
-    
+
+    void set_logicop_enable(bool value) {
+        if (render_state.logicop_enable != value) {
+            flush();
+            render_state.logicop_enable = value;
+        }
+    }
+
+    void set_logicop(u32 value) {
+        if (render_state.logicop != value) {
+            flush();
+            render_state.logicop = value;
+        }
+    }
+
     // Texture setters
     void set_texture_id(int tex_idx, int value) {
         if (render_state.texture[tex_idx].texture_id != value) {
             flush();
             render_state.texture[tex_idx].texture_id = value;
-        }
-    }
-    
-    void set_texture_width(int tex_idx, size_t value) {
-        if (render_state.texture[tex_idx].width != value) {
-            flush();
-            render_state.texture[tex_idx].width = value;
-        }
-    }
-    
-    void set_texture_height(int tex_idx, size_t value) {
-        if (render_state.texture[tex_idx].height != value) {
-            flush();
-            render_state.texture[tex_idx].height = value;
-        }
-    }
-    
-    void set_texture_wrap_s(int tex_idx, TextureWrap value) {
-        if (render_state.texture[tex_idx].wrap_s != value) {
-            flush();
-            render_state.texture[tex_idx].wrap_s = value;
-        }
-    }
-    
-    void set_texture_wrap_t(int tex_idx, TextureWrap value) {
-        if (render_state.texture[tex_idx].wrap_t != value) {
-            flush();
-            render_state.texture[tex_idx].wrap_t = value;
-        }
-    }
-    
-    void set_texture_dualtex_matrix(int tex_idx, float[12] value) {
-        if (render_state.texture[tex_idx].dualtex_matrix != value) {
-            flush();
-            render_state.texture[tex_idx].dualtex_matrix = value;
-        }
-    }
-    
-    void set_texture_tex_matrix(int tex_idx, float[12] value) {
-        if (render_state.texture[tex_idx].tex_matrix != value) {
-            flush();
-            render_state.texture[tex_idx].tex_matrix = value;
-        }
-    }
-    
-    void set_texture_normalize_before_dualtex(int tex_idx, bool value) {
-        if (render_state.texture[tex_idx].normalize_before_dualtex != value) {
-            flush();
-            render_state.texture[tex_idx].normalize_before_dualtex = value;
         }
     }
     
@@ -1095,6 +1103,41 @@ final class OpenGLRenderer {
     }
     
     // VertexConfig setters
+    void set_color_channel_control(int idx, ChannelControl value) {
+        if (render_state.vertex_config.color_channel_controls[idx] != value) {
+            flush();
+            render_state.vertex_config.color_channel_controls[idx] = value;
+        }
+    }
+
+    void set_alpha_channel_control(int idx, ChannelControl value) {
+        if (render_state.vertex_config.alpha_channel_controls[idx] != value) {
+            flush();
+            render_state.vertex_config.alpha_channel_controls[idx] = value;
+        }
+    }
+
+    void set_light(int idx, Light value) {
+        if (render_state.vertex_config.lights[idx] != value) {
+            flush();
+            render_state.vertex_config.lights[idx] = value;
+        }
+    }
+
+    void set_ambient_color(int idx, float[4] value) {
+        if (render_state.vertex_config.ambient_colors[idx] != value) {
+            flush();
+            render_state.vertex_config.ambient_colors[idx] = value;
+        }
+    }
+
+    void set_material_color(int idx, float[4] value) {
+        if (render_state.vertex_config.material_colors[idx] != value) {
+            flush();
+            render_state.vertex_config.material_colors[idx] = value;
+        }
+    }
+
     void set_vertex_config_end(int value) {
         if (render_state.vertex_config.end != value) {
             flush();
@@ -1337,15 +1380,69 @@ final class OpenGLRenderer {
 
         position_attr_location           = glGetAttribLocation(gl_program,  "in_Position");
         normal_attr_location             = glGetAttribLocation(gl_program,  "normal");
+        binormal_t_attr_location         = glGetAttribLocation(gl_program,  "binormal_t");
+        binormal_b_attr_location         = glGetAttribLocation(gl_program,  "binormal_b");
         texcoord_attr_location           = glGetAttribLocation(gl_program,  "texcoord");
         color_attr_location              = glGetAttribLocation(gl_program,  "in_color");
         matrix_index_attr_location       = glGetAttribLocation(gl_program,  "matrix_index");
         position_matrix_uniform_location = glGetUniformLocation(gl_program, "position_matrix");
+        normal_matrix_uniform_location   = glGetUniformLocation(gl_program, "normal_matrix");
         texture_matrix_uniform_location  = glGetUniformLocation(gl_program, "texture_matrix");
         matrix_data_uniform_location     = glGetUniformLocation(gl_program, "matrix_data");
+        normal_matrix_data_uniform_location = glGetUniformLocation(gl_program, "normal_matrix_data");
         mvp_uniform_location             = glGetUniformLocation(gl_program, "MVP");
         tev_config_block_index           = glGetUniformBlockIndex(gl_program, "TevConfig");
         vertex_config_block_index        = glGetUniformBlockIndex(gl_program, "VertexConfig");
+
+        // Sanity-check std140 offsets for VertexConfig against our D layout.
+        auto get_uniform_offset = (string name) {
+            GLuint idx = glGetProgramResourceIndex(gl_program, GL_UNIFORM, name.ptr);
+            assert_opengl(idx != GL_INVALID_INDEX, "Uniform %s not found for offset check", name);
+
+            GLenum prop = GL_OFFSET;
+            GLint result;
+            glGetProgramResourceiv(gl_program, GL_UNIFORM, idx, 1, &prop, 1, null, &result);
+            return result;
+        };
+
+        auto assert_offset = (string name, size_t expected) {
+            size_t got = cast(size_t) get_uniform_offset(name);
+            assert_opengl(got == expected,
+                "Uniform offset mismatch for %s: expected %d got %d", name, expected, got);
+        };
+
+        VertexConfig vc;
+        size_t base = cast(size_t) &vc;
+
+        assert_offset("tex_configs[0].dualtex_matrix",      cast(size_t) &vc.tex_configs[0].dualtex_matrix - base);
+        assert_offset("tex_configs[0].tex_matrix",          cast(size_t) &vc.tex_configs[0].tex_matrix - base);
+        assert_offset("tex_configs[0].normalize_before_dualtex", cast(size_t) &vc.tex_configs[0].normalize_before_dualtex - base);
+        assert_offset("tex_configs[0].texcoord_source",     cast(size_t) &vc.tex_configs[0].texcoord_source - base);
+        assert_offset("tex_configs[0].texmatrix_size",      cast(size_t) &vc.tex_configs[0].texmatrix_size - base);
+
+        assert_offset("color_channel_controls[0].enable",         cast(size_t) &vc.color_channel_controls[0].enable - base);
+        assert_offset("color_channel_controls[0].ambient_src",    cast(size_t) &vc.color_channel_controls[0].ambient_src - base);
+        assert_offset("color_channel_controls[0].material_src",   cast(size_t) &vc.color_channel_controls[0].material_src - base);
+        assert_offset("color_channel_controls[0].light_mask",     cast(size_t) &vc.color_channel_controls[0].light_mask - base);
+        assert_offset("color_channel_controls[0].diffuse_fn",     cast(size_t) &vc.color_channel_controls[0].diffuse_fn - base);
+        assert_offset("color_channel_controls[0].attenuation_fn", cast(size_t) &vc.color_channel_controls[0].attenuation_fn - base);
+
+        assert_offset("alpha_channel_controls[0].enable",         cast(size_t) &vc.alpha_channel_controls[0].enable - base);
+        assert_offset("alpha_channel_controls[0].ambient_src",    cast(size_t) &vc.alpha_channel_controls[0].ambient_src - base);
+        assert_offset("alpha_channel_controls[0].material_src",   cast(size_t) &vc.alpha_channel_controls[0].material_src - base);
+        assert_offset("alpha_channel_controls[0].light_mask",     cast(size_t) &vc.alpha_channel_controls[0].light_mask - base);
+        assert_offset("alpha_channel_controls[0].diffuse_fn",     cast(size_t) &vc.alpha_channel_controls[0].diffuse_fn - base);
+        assert_offset("alpha_channel_controls[0].attenuation_fn", cast(size_t) &vc.alpha_channel_controls[0].attenuation_fn - base);
+
+        assert_offset("lights[0].position",   cast(size_t) &vc.lights[0].position - base);
+        assert_offset("lights[0].direction",  cast(size_t) &vc.lights[0].direction - base);
+        assert_offset("lights[0].color",      cast(size_t) &vc.lights[0].color - base);
+        assert_offset("lights[0].dist_atten", cast(size_t) &vc.lights[0].dist_atten - base);
+        assert_offset("lights[0].spec_atten", cast(size_t) &vc.lights[0].spec_atten - base);
+
+        assert_offset("ambient_colors[0]",  cast(size_t) &vc.ambient_colors[0] - base);
+        assert_offset("material_colors[0]", cast(size_t) &vc.material_colors[0] - base);
+        assert_offset("end",                cast(size_t) &vc.end - base);
 
         // cry about it
         texture_uniform_locations = [
@@ -1367,6 +1464,10 @@ final class OpenGLRenderer {
     void set_general_matrix_ram(float[256] matrix_ram) {
         general_matrix_ram = matrix_ram;
     }
+
+    void set_normal_matrix_ram(float[256] matrix_ram) {
+        normal_matrix_ram = matrix_ram;
+    }
     
     GLuint get_efb_fbo() const { return efb_fbo; }
     GLuint get_efb_color_texture() const { return efb_color_texture; }
@@ -1374,6 +1475,7 @@ final class OpenGLRenderer {
     GLuint copy_efb_to_texture(u8 format, bool mipmap) {
         efb_copy_count++;
         
+        apply_opengl_state(render_state);
         return efb_optimizer.copy_efb_to_texture(efb_color_texture, get_efb_src_x(), get_efb_src_y(), get_efb_src_w(), get_efb_src_h(), format, mipmap);
     }
     
@@ -1413,6 +1515,27 @@ final class OpenGLRenderer {
             case 7: return GL_ONE_MINUS_DST_ALPHA;
         }
     }
+
+    private uint gc_logic_op_to_gl(int gc_logic_op) {
+        final switch (gc_logic_op) {
+            case 0: return GL_CLEAR;
+            case 1: return GL_AND;
+            case 2: return GL_AND_REVERSE;
+            case 3: return GL_COPY;
+            case 4: return GL_AND_INVERTED;
+            case 5: return GL_NOOP;
+            case 6: return GL_XOR;
+            case 7: return GL_OR;
+            case 8: return GL_NOR;
+            case 9: return GL_EQUIV;
+            case 10: return GL_INVERT;
+            case 11: return GL_OR_REVERSE;
+            case 12: return GL_COPY_INVERTED;
+            case 13: return GL_OR_INVERTED;
+            case 14: return GL_NAND;
+            case 15: return GL_SET;
+        }
+    }
     
     void apply_opengl_state(RenderState render_state) {
         glUseProgram(gl_program);
@@ -1437,6 +1560,7 @@ final class OpenGLRenderer {
 
         if (render_state.arithmetic_blending_enable) {
             glEnable(GL_BLEND);
+            glDisable(GL_COLOR_LOGIC_OP);
 
             auto op1 = gc_blend_factor_to_gl(render_state.blend_source);
             auto op2 = gc_blend_factor_to_gl(render_state.blend_destination);
@@ -1446,9 +1570,13 @@ final class OpenGLRenderer {
             } else {
                 glBlendFunc(op1, op2);
             }
+        } else if (render_state.logicop_enable) {
+            glEnable(GL_COLOR_LOGIC_OP);
+            glLogicOp(gc_logic_op_to_gl(render_state.logicop));
         } else {
             glEnable(GL_BLEND);
-            glBlendFuncSeparate(GL_SRC1_ALPHA, GL_ZERO, GL_ONE, GL_ZERO);
+            glDisable(GL_COLOR_LOGIC_OP);
+            glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ZERO);
         }
 
         // Unbind all non-enabled texture slots
@@ -1554,17 +1682,23 @@ final class OpenGLRenderer {
         glVertexAttribPointer(position_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 0));
         glEnableVertexAttribArray(normal_attr_location);
         glVertexAttribPointer(normal_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 3 * float.sizeof));
+        glEnableVertexAttribArray(binormal_t_attr_location);
+        glVertexAttribPointer(binormal_t_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 6 * float.sizeof));
+        glEnableVertexAttribArray(binormal_b_attr_location);
+        glVertexAttribPointer(binormal_b_attr_location, 3, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 9 * float.sizeof));
         glEnableVertexAttribArray(texcoord_attr_location);
-        glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 6 * float.sizeof));
+        glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 12 * float.sizeof));
         glEnableVertexAttribArray(color_attr_location);
-        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 22 * float.sizeof));
+        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 28 * float.sizeof));
         glEnableVertexAttribArray(matrix_index_attr_location);
-        glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + 30 * float.sizeof));
+        glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + 36 * float.sizeof));
             
         if (render_state.uses_per_vertex_matrices) {
             glUniform1fv(matrix_data_uniform_location, 256, general_matrix_ram.ptr);
+            glUniform1fv(normal_matrix_data_uniform_location, 256, normal_matrix_ram.ptr);
         } else {
             glUniformMatrix4x3fv(position_matrix_uniform_location, 1, GL_TRUE, render_state.position_matrix.ptr);
+            glUniformMatrix4x3fv(normal_matrix_uniform_location,   1, GL_TRUE, render_state.normal_matrix.ptr);
         }
 
         glUniformMatrix4x3fv(texture_matrix_uniform_location, 1, GL_TRUE,  render_state.texture[0].tex_matrix.ptr);
@@ -1694,7 +1828,10 @@ final class OpenGLRenderer {
     }
     
     void update_gl_viewport(int gl_x, int gl_y, int gl_width, int gl_height) {
-        if (render_state.viewport_width != gl_width || render_state.viewport_height != gl_height) {
+        if (render_state.viewport_x != gl_x ||
+            render_state.viewport_y != gl_y ||
+            render_state.viewport_width != gl_width ||
+            render_state.viewport_height != gl_height) {
             flush();
         }
 

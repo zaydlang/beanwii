@@ -48,6 +48,8 @@ final class Hollywood {
 
     bool general_matrix_dirty = true;
     private float[256] general_matrix_ram;
+    bool normal_matrix_dirty = true;
+    private float[256] normal_matrix_ram;
     bool dt_texture_matrix_dirty = true;
     private float[256] dt_texture_matrix_ram;
 
@@ -680,7 +682,18 @@ final class Hollywood {
             opengl_renderer.set_position_matrix(new_matrix);
         }
 
+        if (normal_matrix_dirty) {
+            int matrix_idx = opengl_renderer.get_geometry_matrix_idx();
+            float[12] new_normal_matrix = normal_matrix_ram[matrix_idx * 4 .. matrix_idx * 4 + 12];
+            opengl_renderer.set_normal_matrix(new_normal_matrix);
+        }
+
+        if (the_men_we_see != the_men_you_see) {
+            writefln("?????????????? mismatch between the men we see and the men you see");
+        }
+
         general_matrix_dirty = false;
+        normal_matrix_dirty = false;
         dt_texture_matrix_dirty = false;
     }
     
@@ -876,16 +889,26 @@ final class Hollywood {
                             int address = param.bits(0, 11);
                             int size    = param.bits(12, 15) + 1;
                             int mtxidx  = param.bits(16, 31);
+                            opengl_renderer.gl_debug_marker("load_mtx_idx(%d, size=%d, address=0x%03x, mtxidx=%d)", current_load_mtx_idx, size, address, mtxidx);
 
-                            u32 src_addr = vertex_decode_state.array_bases[12 + current_load_mtx_idx] + (vertex_decode_state.array_strides[12 + current_load_mtx_idx] * mtxidx);
+                            u32 src_addr = 
+                                 vertex_decode_state.array_bases[12 + current_load_mtx_idx] + 
+                                (vertex_decode_state.array_strides[12 + current_load_mtx_idx] * mtxidx);
 
                             for (int i = 0; i < size; i++) {
                                 u32 float_bits = mem.physical_read_u32(src_addr + i * 4);
                                 
+                                // writefln("GRIGOR: %x %x %x %x %d %f\n", 
+                                // 12 + current_load_mtx_idx, mtxidx, address, size, i, 
+                                // force_cast!float(float_bits));
+
                                 // TODO: fixme
                                 if (address + i <= 0xff) {
                                     general_matrix_dirty = true;
                                     general_matrix_ram[address + i] = force_cast!float(float_bits);
+                                } else if (address + i >= 0x400 && address + i <= 0x4ff) {
+                                    normal_matrix_dirty = true;
+                                    normal_matrix_ram[address + i - 0x400] = force_cast!float(float_bits);
                                 }
                             }
                         // }
@@ -1130,12 +1153,14 @@ final class Hollywood {
                 break;
             
             case 0x41:
+                opengl_renderer.set_logicop_enable(bp_data.bit(1));
                 opengl_renderer.set_color_update_enable(bp_data.bit(3));
                 opengl_renderer.set_alpha_update_enable(bp_data.bit(4));
                 opengl_renderer.set_arithmetic_blending_enable(bp_data.bit(0));
                 opengl_renderer.set_blend_destination(cast(int) bp_data.bits(5, 7));
                 opengl_renderer.set_blend_source(cast(int) bp_data.bits(8, 10));
                 opengl_renderer.set_subtractive_additive_toggle(bp_data.bit(11));
+                opengl_renderer.set_logicop(bp_data.bits(12, 15));
                 break;
             
             case 0x42:
@@ -1508,8 +1533,9 @@ final class Hollywood {
     void handle_new_cp_write(u8 register, u32 value) {
         switch (register) {
             case 0x30:
-                
+                general_matrix_dirty = true;
                 opengl_renderer.set_geometry_matrix_idx(value.bits(0, 5));
+                the_men_you_see = value.bits(0, 5);
                 break;
 
             case 0x50: .. case 0x57:
@@ -1708,10 +1734,14 @@ final class Hollywood {
         return size;
     }
 
+    int the_men_we_see; 
+    int the_men_you_see; 
     private void handle_new_transform_unit_write(u16 register, u32 value) {
         switch (register) {
             case 0x1018:
                 log_hollywood("geometry_matrix: %08x", value);
+                general_matrix_dirty = true;
+                the_men_we_see = value.bits(0, 5);
                 opengl_renderer.set_geometry_matrix_idx(value.bits(0, 5));
                 opengl_renderer.set_texture_descriptor_tex_matrix_slot(0, value.bits(6, 11));
                 opengl_renderer.set_texture_descriptor_tex_matrix_slot(1, value.bits(12, 17));
@@ -1758,8 +1788,15 @@ final class Hollywood {
                 break;
 
             case 0x0000: .. case 0x00ff:
+                opengl_renderer.gl_debug_marker("general_matrix_ram[%d] = %f", register, force_cast!float(value));
+
                 general_matrix_dirty = true;
                 general_matrix_ram[register] = force_cast!float(value);
+                break;
+
+            case 0x0400: .. case 0x04ff:
+                normal_matrix_dirty = true;
+                normal_matrix_ram[register - 0x400] = force_cast!float(value);
                 break;
             
             case 0x0500: .. case 0x05ff:
@@ -1771,34 +1808,145 @@ final class Hollywood {
                 int idx = register - 0x1050;
 
                 opengl_renderer.set_texture_descriptor_dualtex_matrix_slot(idx, value.bits(0, 5));
-                opengl_renderer.set_tex_config_normalize_before_dualtex(idx, value.bit(7));
+                opengl_renderer.set_tex_config_normalize_before_dualtex(idx, value.bit(8));
                 break;
             
             case 0x100c:
-                vertex_decode_state.color_global[0] = [
+                float[4] mat = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
                     value.bits(0, 7) / 255.0
                 ];
+                vertex_decode_state.color_global[0] = mat;
+                opengl_renderer.set_material_color(0, mat);
                 break;
             
             case 0x100d:
-                vertex_decode_state.color_global[1] = [
+                float[4] mat = [
                     value.bits(24, 31) / 255.0,
                     value.bits(16, 23) / 255.0,
                     value.bits(8, 15) / 255.0,
                     value.bits(0, 7) / 255.0
                 ];
+                vertex_decode_state.color_global[1] = mat;
+                opengl_renderer.set_material_color(1, mat);
                 break;
+
+            case 0x100a: {
+                float[4] amb0 = [
+                    value.bits(24, 31) / 255.0,
+                    value.bits(16, 23) / 255.0,
+                    value.bits(8, 15) / 255.0,
+                    value.bits(0, 7) / 255.0
+                ];
+                opengl_renderer.set_ambient_color(0, amb0);
+                break;
+            }
+
+            case 0x100b: {
+                float[4] amb1 = [
+                    value.bits(24, 31) / 255.0,
+                    value.bits(16, 23) / 255.0,
+                    value.bits(8, 15) / 255.0,
+                    value.bits(0, 7) / 255.0
+                ];
+                opengl_renderer.set_ambient_color(1, amb1);
+                break;
+            }
             
-            case 0x100e:
-                vertex_decode_state.color_configs[0].material_src = cast(MaterialSource) value.bit(0);
+            case 0x100e: {
+                ChannelControl ctrl;
+                ctrl.enable = value.bit(1);
+                ctrl.ambient_src = value.bit(6);
+                ctrl.material_src = value.bit(0);
+                ctrl.light_mask = value.bits(2, 5) | (value.bits(11, 14) << 4);
+                ctrl.diffuse_fn = value.bits(7, 8);
+                ctrl.attenuation_fn = value.bits(9, 10);
+
+                opengl_renderer.set_color_channel_control(0, ctrl);
                 break;
+            }
             
-            case 0x100f:
-                vertex_decode_state.color_configs[1].material_src = cast(MaterialSource) value.bit(0);
+            case 0x100f: {
+                ChannelControl ctrl;
+                ctrl.enable = value.bit(1);
+                ctrl.ambient_src = value.bit(6);
+                ctrl.material_src = value.bit(0);
+                ctrl.light_mask = value.bits(2, 5) | (value.bits(11, 14) << 4);
+                ctrl.diffuse_fn = value.bits(7, 8);
+                ctrl.attenuation_fn = value.bits(9, 10);
+
+                opengl_renderer.set_color_channel_control(1, ctrl);
                 break;
+            }
+
+            case 0x1010: {
+                ChannelControl ctrl;
+                ctrl.enable = value.bit(1);
+                ctrl.ambient_src = value.bit(6);
+                ctrl.material_src = value.bit(0);
+                ctrl.light_mask = value.bits(2, 5) | (value.bits(11, 14) << 4);
+                ctrl.diffuse_fn = value.bits(7, 8);
+                ctrl.attenuation_fn = value.bits(9, 10);
+
+                opengl_renderer.set_alpha_channel_control(0, ctrl);
+                break;
+            }
+
+            case 0x1011: {
+                ChannelControl ctrl;
+                ctrl.enable = value.bit(1);
+                ctrl.ambient_src = value.bit(6);
+                ctrl.material_src = value.bit(0);
+                ctrl.light_mask = value.bits(2, 5) | (value.bits(11, 14) << 4);
+                ctrl.diffuse_fn = value.bits(7, 8);
+                ctrl.attenuation_fn = value.bits(9, 10);
+
+                opengl_renderer.set_alpha_channel_control(1, ctrl);
+                break;
+            }
+            
+            case 0x0600: .. case 0x06ff: {
+                int idx = (register - 0x0600) / 0x10;
+                int off = (register - 0x0600) % 0x10;
+
+                auto vc = opengl_renderer.get_vertex_config();
+                auto light = vc.lights[idx];
+
+                switch (off) {
+                    case 3: {
+                        light.color = [
+                            value.bits(24, 31) / 255.0f,
+                            value.bits(16, 23) / 255.0f,
+                            value.bits(8, 15)  / 255.0f,
+                            value.bits(0, 7)   / 255.0f
+                        ];
+                        break;
+                    }
+                    
+                    case 4:  light.dist_atten[0] = force_cast!float(value); break;
+                    case 5:  light.dist_atten[1] = force_cast!float(value); break;
+                    case 6:  light.dist_atten[2] = force_cast!float(value); break;
+                    case 7:  light.spec_atten[0] = force_cast!float(value); break;
+                    case 8:  light.spec_atten[1] = force_cast!float(value); break;
+                    case 9:  light.spec_atten[2] = force_cast!float(value); break;
+                    case 10: light.position[0]   = force_cast!float(value); break;
+                    case 11: light.position[1]   = force_cast!float(value); break;
+                    case 12: light.position[2]   = force_cast!float(value); break;
+                    case 13: light.direction[0]  = force_cast!float(value); break;
+                    case 14: light.direction[1]  = force_cast!float(value); break;
+                    case 15: light.direction[2]  = force_cast!float(value); break;
+                    
+                    default:
+                        break;
+                }
+
+                light.position[3] = 1.0f;
+                light.direction[3] = 0.0f;
+                opengl_renderer.set_light(idx, light);
+                break;
+            }
             
             case 0x103f:
                 num_texgens = cast(int) value.bits(0, 3);
@@ -2091,9 +2239,10 @@ final class Hollywood {
             error_hollywood("Unimplemented draw command: %s", current_draw_command);
         }
 
-        if (opengl_renderer.get_uses_per_vertex_matrices()) {
+        // if (opengl_renderer.get_uses_per_vertex_matrices()) {
             opengl_renderer.set_general_matrix_ram(general_matrix_ram);
-        }
+            opengl_renderer.set_normal_matrix_ram(normal_matrix_ram);
+        // }
 
         opengl_renderer.finalize_geometry();
     }

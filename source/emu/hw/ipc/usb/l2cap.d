@@ -28,7 +28,7 @@ struct L2capCommandHeader {
     align(1):
 
     u16 length;
-    Channel channel;
+    u16 channel;
 }
 
 enum Channel : u16 {

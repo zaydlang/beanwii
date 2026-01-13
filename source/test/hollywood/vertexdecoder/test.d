@@ -8,7 +8,6 @@ import std.math : fabs;
 import util.force_cast;
 import util.number;
 
-/// Lightweight harness so the same cases can be pointed at the interpreter or the JIT.
 struct VertexDecodeHarness {
     Mem mem;
     VertexDecodeState state;
@@ -24,11 +23,6 @@ struct VertexDecodeHarness {
         foreach (i; 0 .. h.state.array_bases.length) {
             h.state.array_bases[i] = 0;
             h.state.array_strides[i] = 0;
-        }
-
-        foreach (i; 0 .. h.state.color_configs.length) {
-            h.state.color_configs[i].material_src = MaterialSource.FromVertex;
-            h.state.color_global[i] = [1.0f, 1.0f, 1.0f, 1.0f];
         }
 
         return h;
@@ -47,13 +41,12 @@ struct VertexDecodeHarness {
         state.vertex_descriptors[state.current_vat].position_normal_matrix_location = location;
     }
 
-    void set_color(int idx, VertexAttributeLocation location, ColorFormat format, int count = 4, MaterialSource src = MaterialSource.FromVertex) {
+    void set_color(int idx, VertexAttributeLocation location, ColorFormat format, int count = 4) {
         auto vcd = &state.vertex_descriptors[state.current_vat];
         auto vat = &state.vats[state.current_vat];
         vcd.color_location[idx] = location;
         vat.color_format[idx] = format;
         vat.color_count[idx] = count;
-        state.color_configs[idx].material_src = src;
     }
 
     void set_color_global(int idx, float[4] value) {
@@ -265,7 +258,7 @@ unittest {
     auto harness = VertexDecodeHarness.make();
     auto decoder = new VertexInterpreterDecoder();
 
-    harness.set_color(0, VertexAttributeLocation.Direct, ColorFormat.RGBA8888, 4, MaterialSource.FromGlobal);
+    harness.set_color(0, VertexAttributeLocation.Direct, ColorFormat.RGBA8888, 4);
     harness.set_color_global(0, [0.1f, 0.2f, 0.3f, 0.4f]);
 
     // Incoming color data should be ignored in favor of the global value.
@@ -286,7 +279,7 @@ unittest {
     auto harness = VertexDecodeHarness.make();
     auto decoder = new VertexInterpreterDecoder();
 
-    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4, MaterialSource.FromVertex);
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
     harness.write_array_bytes(2, 0x1100, [0x10, 0x20, 0x30, 0x40], 4);
 
     assert_vertices_match(

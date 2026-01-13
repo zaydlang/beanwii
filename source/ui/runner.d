@@ -53,9 +53,13 @@ final class Runner {
 
         while (!frontend.should_exit()) {
             if (frontend.is_running()) {
-                int audio_samples = frontend.get_audio_buffer_num_samples();
-                if (audio_samples < audio_buffer_threshold) {
+                if (frontend.should_fast_forward()) {
                     wii.cycle(729_000_000 / 60);
+                } else {
+                    int audio_samples = frontend.get_audio_buffer_num_samples();
+                    if (audio_samples < audio_buffer_threshold) {
+                        wii.cycle(729_000_000 / 60);
+                    }
                 }
             }
             

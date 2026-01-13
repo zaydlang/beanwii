@@ -38,7 +38,7 @@ version (unittest) {} else {
 	wii = new Wii(cli_args.ringbuffer_size);
 	
 	if (cli_args.extension) {
-		wii.get_wiimote().connect_extension(cli_args.extension.get());
+		wii.get_wiimote(0).connect_extension(cli_args.extension.get());
 	}
 
 	auto device = new SdlDevice(wii, 1, cli_args.start_debugger, cli_args.record_audio, cli_args.use_bluetooth_wiimote);

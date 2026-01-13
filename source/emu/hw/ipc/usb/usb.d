@@ -28,8 +28,8 @@ final class USBManager {
         bluetooth.connect_scheduler(scheduler);
     }
 
-    void connect_wiimote(Wiimote wiimote) {
-        bluetooth.connect_wiimote(wiimote);
+    void connect_wiimotes(Wiimote[2] wiimotes) {
+        bluetooth.connect_wiimotes(wiimotes);
     }
 
     u8[] interrupt_request(u32 paddr, u8 endpoint, u8[] data) {

@@ -37,7 +37,7 @@ final class VideoInterface {
     DisplayLatchSetting display_latch_0;
     DisplayLatchSetting display_latch_1;
     bool display_mode_3;
-    bool non_interlaced;
+    bool non_interlaced = true;
     
     int hsync_start_to_color_burst_start;
     int hsync_start_to_color_burst_end;
@@ -112,6 +112,7 @@ final class VideoInterface {
                     log_vi("Unimplemented: DCR Reset");
                 }
 
+                log_vi("Interlaced mode set to: %s", value.bit(2) ? "Non-Interlaced" : "Interlaced");
                 non_interlaced = value.bit(2);
                 display_mode_3 = value.bit(3);
                 display_latch_0 = cast(DisplayLatchSetting) value.bits(4, 5);
@@ -624,11 +625,7 @@ final class VideoInterface {
     }
 
     private size_t get_cycle_offset_for_xy_pixel(int x, int y) {
-        int scanline_number = 
-            non_interlaced ? y :
-            (y % 2 == 0) ? 
-                (y / 2) : 
-                (y / 2 + XBFR_HEIGHT / 2);
+        int scanline_number = y / 2;
         
         size_t cycle_offset =
             scanline_number * halfline_width * 2 +
@@ -643,7 +640,13 @@ final class VideoInterface {
 
         size_t conversion_factor = wii_cycles_per_second / vi_cycles_per_second;
 
-        return cycle_offset * conversion_factor;
+        size_t offset_within_first_field = cycle_offset * conversion_factor;
+
+        if (!non_interlaced && scanline_number % 2 == 1) {
+            offset_within_first_field += (729_000_000 / 60);
+        }
+
+        return offset_within_first_field;
     }
 
     void raise_interrupt(int index)() {
@@ -651,7 +654,19 @@ final class VideoInterface {
         interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.VI);
     }
 
+    int field = 0;
     public void scanout() {
+        if (!non_interlaced) {
+            log_vi("Scanning out field %d", field);
+            field ^= 1;
+            
+            if (field != 1) {
+                log_vi("Skipping render of first field");
+                hollywood.render_xfb();
+                return;
+            }
+        }
+
         // for (int field = 0; field < 2; field++) {
         //     auto field_address = (field == 0) ? bottom_field_fbb_address : top_field_fbb_address;
         //     u32 base_address = (field_address << 9) + (field * XBFR_WIDTH * 2);

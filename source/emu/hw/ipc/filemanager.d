@@ -976,8 +976,8 @@ final class FileManager {
             usb_manager.connect_scheduler(scheduler);
         }
 
-        void connect_wiimote(Wiimote wiimote) {
-            usb_manager.connect_wiimote(wiimote);
+        void connect_wiimotes(Wiimote[2] wiimotes) {
+            usb_manager.connect_wiimotes(wiimotes);
         }
         
         override void ioctlv(u32 request_paddr, int ioctl, int argcin, int argcio, u32 data_paddr) {
@@ -1122,8 +1122,8 @@ final class FileManager {
         this.usb_dev_57e305.connect_scheduler(scheduler);
     }
 
-    void connect_wiimote(Wiimote wiimote) {
-        this.usb_dev_57e305.connect_wiimote(wiimote);
+    void connect_wiimotes(Wiimote[2] wiimotes) {
+        this.usb_dev_57e305.connect_wiimotes(wiimotes);
     }
 
     void open(u32 paddr, string filename, OpenMode mode, int uid, int gid) {

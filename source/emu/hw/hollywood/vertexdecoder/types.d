@@ -12,7 +12,6 @@ struct VertexDecodeState {
     VertexDescriptor[8]     vertex_descriptors;
     VertexAttributeTable[8] vats;
     int                     bytes_per_vertex;
-    ColorConfig[2]          color_configs;
     float[4][2]             color_global;
     u32[16]                 array_bases;
     u32[16]                 array_strides;

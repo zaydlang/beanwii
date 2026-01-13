@@ -60,11 +60,10 @@ final class VertexJitDecoder {
     private u64 create_jit_key(ref VertexDecodeState state) {
         auto vcd = state.vertex_descriptors[state.current_vat];
         auto vat = state.vats[state.current_vat];
-        auto color_configs = state.color_configs;
-        return hash_descriptor(vcd, vat, color_configs);
+        return hash_descriptor(vcd, vat);
     }
 
-    private u64 hash_descriptor(ref VertexDescriptor vcd, ref VertexAttributeTable vat, ref ColorConfig[2] color_configs) {
+    private u64 hash_descriptor(ref VertexDescriptor vcd, ref VertexAttributeTable vat) {
         u64 h = 0xcbf29ce484222325;
 
         void mix(u64 value) {
@@ -77,9 +76,6 @@ final class VertexJitDecoder {
         mix(vat.raw_vat_a);
         mix(vat.raw_vat_b);
         mix(vat.raw_vat_c);
-        foreach (config; color_configs) {
-            mix(cast(u64) config.material_src);
-        }
 
         return h;
     }

@@ -10,6 +10,7 @@ alias Texture = OpenGLRenderer.Texture;
 alias RenderState = OpenGLRenderer.RenderState;
 alias TevConfig = OpenGLRenderer.TevConfig;
 alias VertexConfig = OpenGLRenderer.VertexConfig;
+alias ChannelControl = OpenGLRenderer.ChannelControl;
 
 enum GXFifoCommand {
     BlittingProcessor = 0x61,
@@ -82,11 +83,6 @@ enum ColorFormat {
     RGBA8888 = 5,
 }
 
-enum MaterialSource {
-    FromGlobal = 0,
-    FromVertex = 1,
-}
-
 enum RasChannelId {
     Color0    = 0,
     Color1    = 1,
@@ -133,13 +129,11 @@ struct VertexAttributeTable {
 struct Vertex {
     float[3] position;
     float[3] normal;
+    float[3] binormal_t;
+    float[3] binormal_b;
     float[2][8] texcoord;
     float[4][2] color;
     int position_matrix_index;
-}
-
-struct ColorConfig {
-    MaterialSource material_src;
 }
 
 struct ShapeGroup {

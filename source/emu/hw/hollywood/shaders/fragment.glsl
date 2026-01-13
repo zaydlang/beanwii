@@ -100,14 +100,14 @@ vec4 sample_texture(int stage) {
 	vec2 proj = texcoord.xy / texcoord.z;
 	
 	switch (texmap) {
-		case 0: return texture(wiiscreen0, proj.yx);
-		case 1: return texture(wiiscreen1, proj.yx);
-		case 2: return texture(wiiscreen2, proj.yx);
-		case 3: return texture(wiiscreen3, proj.yx);
-		case 4: return texture(wiiscreen4, proj.yx);
-		case 5: return texture(wiiscreen5, proj.yx);
-		case 6: return texture(wiiscreen6, proj.yx);
-		case 7: return texture(wiiscreen7, proj.yx);
+		case 0: return texture(wiiscreen0, proj.xy);
+		case 1: return texture(wiiscreen1, proj.xy);
+		case 2: return texture(wiiscreen2, proj.xy);
+		case 3: return texture(wiiscreen3, proj.xy);
+		case 4: return texture(wiiscreen4, proj.xy);
+		case 5: return texture(wiiscreen5, proj.xy);
+		case 6: return texture(wiiscreen6, proj.xy);
+		case 7: return texture(wiiscreen7, proj.xy);
 	}
 }
 

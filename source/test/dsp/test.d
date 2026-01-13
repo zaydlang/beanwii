@@ -262,7 +262,7 @@ bool is_prod_test(string test_name) {
 void run_dsp_test(string test_name) {
     DspTestFile test_file = parse_test_file("source/test/dsp/tests/" ~ test_name ~ ".bin");
     
-    for (size_t test_case_idx = 0; test_case_idx < test_file.test_cases.length; test_case_idx++) {
+    for (size_t test_case_idx = 25; test_case_idx < 28; test_case_idx++) {
         DSP dsp = new DSP();
         
         bool ignore_flags = is_prod_test(test_name);
@@ -284,7 +284,7 @@ void run_dsp_test(string test_name) {
         DspTestState actual_state = get_actual_dsp_state(dsp);
         auto diff = get_dsp_diff(previous_state, test_case.expected_state, actual_state, ignore_flags);
         
-        if (is_failure(diff)) {
+        // if (is_failure(diff)) {
             writefln("===== DSP Test %s Failed! =====", test_name);
             writefln("Test case: %d", test_case_idx);
             writefln("Instructions: %s", format_instructions(test_case.instructions[62 .. $]));
@@ -296,7 +296,7 @@ void run_dsp_test(string test_name) {
             writefln("Actual:");
             pretty_print_dsp_state(actual_state, diff);
             assert(0);
-        }
+        // }
     }
 }
 

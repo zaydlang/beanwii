@@ -40,7 +40,7 @@ final class VertexInterpreterDecoder {
             }
             
             decode_position(stream, offset, vcd, vat, state, v);
-            decode_normal(stream, offset, vcd, vat);
+            decode_normal(stream, offset, vcd, vat, v, state);
             decode_colors(stream, offset, vcd, vat, v, state);
             decode_texcoords(stream, offset, vcd, vat, v, state);
 
@@ -101,6 +101,19 @@ private:
             case NormalFormat.S8:  return 1;
             case NormalFormat.S16: return 2;
             case NormalFormat.F32: return 4;
+        }
+    }
+
+    float dequantize_normal(u32 value, NormalFormat format) {
+        final switch (format) {
+            case NormalFormat.S8:
+                return (cast(float) (sext_32((cast(s8) value), 8))) / 64.0;
+            
+            case NormalFormat.S16:
+                return (cast(float) (sext_32((cast(s16) value), 16))) / 16384.0;
+            
+            case NormalFormat.F32:
+                return force_cast!float(value);
         }
     }
 
@@ -214,24 +227,85 @@ private:
         }
     }
 
-    void decode_normal(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat) {
+    void decode_normal(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat, ref Vertex v, ref VertexDecodeState state) {
+        // Ensure we don't leak data when only a normal (3 comps) is provided.
+        v.normal = [0.0f, 0.0f, 0.0f];
+        v.binormal_t = [0.0f, 0.0f, 0.0f];
+        v.binormal_b = [0.0f, 0.0f, 0.0f];
+
+        size_t size = calculate_expected_size_of_normal(vat.normal_format);
+
         final switch (vcd.normal_location) {
         case VertexAttributeLocation.Direct: {
-            size_t size = calculate_expected_size_of_normal(vat.normal_format);
-            for (int j = 0; j < vat.normal_count; j++) {
-                read_from_shape_data_buffer_direct(stream, offset, size);
+            // Normal (XYZ)
+            for (int j = 0; j < 3 && j < vat.normal_count; j++) {
+                v.normal[j] = dequantize_normal(
+                    read_from_shape_data_buffer_direct(stream, offset, size),
+                    vat.normal_format);
                 offset += size;
+            }
+            // Tangent (BinormalT)
+            if (vat.normal_count == 9) {
+                for (int j = 0; j < 3; j++) {
+                    v.binormal_t[j] = dequantize_normal(
+                        read_from_shape_data_buffer_direct(stream, offset, size),
+                        vat.normal_format);
+                    offset += size;
+                }
+                // Bitangent (BinormalB)
+                for (int j = 0; j < 3; j++) {
+                    v.binormal_b[j] = dequantize_normal(
+                        read_from_shape_data_buffer_direct(stream, offset, size),
+                        vat.normal_format);
+                    offset += size;
+                }
             }
             break;
         }
-        case VertexAttributeLocation.Indexed8Bit:
-            read_from_shape_data_buffer_direct(stream, offset, 1);
+        case VertexAttributeLocation.Indexed8Bit: {
+            auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 1);
+            // Normal (XYZ)
+            for (int j = 0; j < 3 && j < vat.normal_count; j++) {
+                u32 vertex_data = read_from_indexed_array(state, 1, array_offset, j, size);
+                v.normal[j] = dequantize_normal(vertex_data, vat.normal_format);
+            }
+            if (vat.normal_count == 9) {
+                // Tangent (BinormalT)
+                for (int j = 0; j < 3; j++) {
+                    u32 vertex_data = read_from_indexed_array(state, 1, array_offset, 3 + j, size);
+                    v.binormal_t[j] = dequantize_normal(vertex_data, vat.normal_format);
+                }
+                // Bitangent (BinormalB)
+                for (int j = 0; j < 3; j++) {
+                    u32 vertex_data = read_from_indexed_array(state, 1, array_offset, 6 + j, size);
+                    v.binormal_b[j] = dequantize_normal(vertex_data, vat.normal_format);
+                }
+            }
             offset += 1;
             break;
-        case VertexAttributeLocation.Indexed16Bit:
-            read_from_shape_data_buffer_direct(stream, offset, 2);
+        }
+        case VertexAttributeLocation.Indexed16Bit: {
+            auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 2);
+            // Normal (XYZ)
+            for (int j = 0; j < 3 && j < vat.normal_count; j++) {
+                u32 vertex_data = read_from_indexed_array(state, 1, array_offset, j, size);
+                v.normal[j] = dequantize_normal(vertex_data, vat.normal_format);
+            }
+            if (vat.normal_count == 9) {
+                // Tangent (BinormalT)
+                for (int j = 0; j < 3; j++) {
+                    u32 vertex_data = read_from_indexed_array(state, 1, array_offset, 3 + j, size);
+                    v.binormal_t[j] = dequantize_normal(vertex_data, vat.normal_format);
+                }
+                // Bitangent (BinormalB)
+                for (int j = 0; j < 3; j++) {
+                    u32 vertex_data = read_from_indexed_array(state, 1, array_offset, 6 + j, size);
+                    v.binormal_b[j] = dequantize_normal(vertex_data, vat.normal_format);
+                }
+            }
             offset += 2;
             break;
+        }
         case VertexAttributeLocation.NotPresent:
             break;
         }
@@ -244,16 +318,14 @@ private:
                        ref Vertex v,
                        ref VertexDecodeState state) {
         for (int j = 0; j < 2; j++) {
-            float[4] color;
-
             final switch (vcd.color_location[j]) {
             case VertexAttributeLocation.Direct: {
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_shape_data_buffer_direct(stream, offset, size);
-                color = dequantize_color(color_data, vat.color_format[j], j);
+                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
 
                 if (vat.color_count[j] == 3) {
-                    color[3] = 1.0;
+                    v.color[j][3] = 1.0;
                 }
 
                 offset += size;
@@ -264,10 +336,10 @@ private:
                 auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 1);
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_indexed_array(state, j + 2, array_offset, 0, size);
-                color = dequantize_color(color_data, vat.color_format[j], j);
+                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
 
                 if (vat.color_count[j] == 3) {
-                    color[3] = 1.0;
+                    v.color[j][3] = 1.0;
                 }
 
                 offset += 1;
@@ -278,10 +350,10 @@ private:
                 auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 2);
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_indexed_array(state, j + 2, array_offset, 0, size);
-                color = dequantize_color(color_data, vat.color_format[j], j);
+                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
 
                 if (vat.color_count[j] == 3) {
-                    color[3] = 1.0;
+                    v.color[j][3] = 1.0;
                 }
 
                 offset += 2;
@@ -289,17 +361,8 @@ private:
             }
             
             case VertexAttributeLocation.NotPresent:
-                color = [1.0, 1.0, 1.0, 1.0];
+                v.color[j] = [1.0, 1.0, 1.0, 1.0];
                 break;
-            }
-
-            final switch (state.color_configs[j].material_src) {
-                case MaterialSource.FromGlobal:
-                    v.color[j] = state.color_global[j];
-                    break;
-                case MaterialSource.FromVertex:
-                    v.color[j] = color;
-                    break;
             }
         }
     }
