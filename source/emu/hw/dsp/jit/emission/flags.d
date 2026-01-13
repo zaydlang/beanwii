@@ -9,6 +9,22 @@ import gallinule.x86;
 import util.number;
 import util.log;
 
+// so, i hate the flags system on the DSP.
+
+// so. goddamn. much.
+
+// I haven't been able to find a good way to unify the flag setting behaviors of 
+// all isntructions, it seems like a ton of them have their own unique quirks as to
+// what flags they set and how they set them. very annoying.
+
+// to make flag setting easier, i try to keep operand values in the top bits of a 64-bit
+// x86 register (see prepare_register_for_flags). This allows x86 flags like negative,
+// carry, overflow, etc to cleanly map to the DSPs (in most cases). emit_set_flags is the
+// function that handles the flags for most instructions, but, like I said, there are
+// edge cases. a lot. each edge case has a comment above the function on why that case is an edge.
+
+// sorry
+
 enum Condition {
     GE  = 0,
     L   = 1,
@@ -108,6 +124,60 @@ enum Flag {
 enum AllFlagsButLZ = Flag.C | Flag.O | Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.OS;
 enum AllFlagsButLZAndC = Flag.O | Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.OS;
 
+// the common function - most instructions use this. this is a very straightforward
+// implementation that just maps x86 flags to DSP flags, and calculates the rest
+// as needed.
+void emit_set_flags(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 tmp) {
+    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
+
+    if (flags_to_reset & Flag.C) {
+        code.mov(FlagState.flag_c_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.O) {
+        code.mov(FlagState.flag_o_addr(code), 0);
+    }
+
+    if (flags_to_reset & Flag.S32) {
+        code.mov(FlagState.flag_s32_addr(code), 1);
+    }
+
+    if (flags_to_set & Flag.C) {
+        code.setc(tmp.cvt8());
+        code.mov(FlagState.flag_c_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.O) {
+        code.seto(tmp.cvt8());
+        code.mov(FlagState.flag_o_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.AZ) {
+        code.sete(tmp.cvt8());
+        code.mov(FlagState.flag_az_addr(code), tmp.cvt8());
+    }
+
+    if (flags_to_set & Flag.OS) {
+        code.seto(tmp.cvt8());
+        code.or(FlagState.flag_os_addr(code), tmp.cvt8());
+    }
+
+    emit_set_flags_without_host_state(flags_to_set, code, result, tmp);
+}
+
+// addpaxz is a bitch. 
+
+// this instruction does the computation $acD += $prod, where $acD is 40-bit register, 
+// and $prod is defined as the following calculation on these four registers: 
+// ($prodhi << 32) + ($prodm1 << 16) + ($prodm2 << 16) + ($prodl). so, how do the carry
+// and overflow flags get computed? well, take the carry / overflow from the calculation of 
+// $prod, and the carry / overflow form the addition to $acD. then:
+
+// carry is the xor of the two carry flags, overflow is the xor of the two overflow flags
+
+// this fucking processor.
+
+// auxiliary_carry and auxiliary_overflow are the flags after the calculation of prod.
 void emit_set_flags_addpaxz(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 auxiliary_carry, R64 auxiliary_overflow, R64 tmp1, R64 tmp2) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
@@ -154,6 +224,12 @@ void emit_set_flags_addpaxz(int flags_to_set, int flags_to_reset, DspCode code, 
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
+// addp is ALSO a bitch (see addpaxz). but in a different way:
+
+// carry is the orr of the two carry flags, overflow is the xor of the two overflow flags
+// im going to strangle someone
+
+// once again, auxiliary_carry and auxiliary_overflow are the flags after the calculation of prod.
 void emit_set_flags_addp(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 auxiliary_carry, R64 auxiliary_overflow, R64 tmp1, R64 tmp2) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
@@ -196,7 +272,9 @@ void emit_set_flags_addp(int flags_to_set, int flags_to_reset, DspCode code, R64
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
-void emit_set_flags_andi(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 ac_full, R64 tmp) {
+// this motherfucker... the andi/andcf/andf instructions set the S32 flag as a result of the full AC register,
+// rather than the result from the instruction's execution.
+void set_flags_and_immediate(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 ac_full, R64 tmp) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
     if (flags_to_reset & Flag.C) {
@@ -240,56 +318,10 @@ void emit_set_flags_andi(int flags_to_set, int flags_to_reset, DspCode code, R64
         code.shr(tmp, 64 - 1);
         code.mov(FlagState.flag_tb_addr(code), tmp.cvt8());
     }
-
-    if (flags_to_set & Flag.LZ) {
-        // dunno yet lol
-    }
 }
 
-void emit_set_flags(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 tmp) {
-    assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
-
-    if (flags_to_reset & Flag.C) {
-        code.mov(FlagState.flag_c_addr(code), 0);
-    }
-
-    if (flags_to_reset & Flag.O) {
-        code.mov(FlagState.flag_o_addr(code), 0);
-    }
-
-    // if (flags_to_reset & Flag.S) {
-        // code.mov(FlagState.flag_s_addr(code), 1);
-    // }
-
-    // TODO: this is technically worng when we add flag analyssi
-    if (flags_to_reset & Flag.S32) {
-        code.mov(FlagState.flag_s32_addr(code), 1);
-    }
-
-    if (flags_to_set & Flag.C) {
-        code.setc(tmp.cvt8());
-        code.mov(FlagState.flag_c_addr(code), tmp.cvt8());
-    }
-
-    if (flags_to_set & Flag.O) {
-        code.seto(tmp.cvt8());
-        code.mov(FlagState.flag_o_addr(code), tmp.cvt8());
-    }
-
-    if (flags_to_set & Flag.AZ) {
-        code.sete(tmp.cvt8());
-        code.mov(FlagState.flag_az_addr(code), tmp.cvt8());
-    }
-
-    if (flags_to_set & Flag.OS) {
-        code.seto(tmp.cvt8());
-        code.or(FlagState.flag_os_addr(code), tmp.cvt8());
-    }
-
-    emit_set_flags_without_host_state(flags_to_set, code, result, tmp);
-}
-
-void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 src2, R64 tmp1, R64 tmp2, R64 tmp3) {
+// apparently subtraction has some VERY FUCKY flag behavior. it's described inline below.
+void set_flags_subtract(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 src2, R64 tmp1, R64 tmp2, R64 tmp3) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
     if (flags_to_reset & Flag.C) {
@@ -313,6 +345,9 @@ void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 
     code.setc(tmp1.cvt8());
     code.seto(tmp2.cvt8());
 
+    // somehow, subtracting by the max negative number yields to an edge case.
+    // if we subtract by 0x8000000000000000, then flip the overflow flag.
+    // i dont get why it works, but it does.
     code.mov(tmp3, 0x8000000000000000);
     code.cmp(src2, tmp3);
     code.sete(src2.cvt8());
@@ -321,6 +356,8 @@ void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 
     code.mov(FlagState.flag_o_addr(code), tmp2.cvt8());
     code.or(FlagState.flag_os_addr(code), tmp2.cvt8());
     
+    // and once again, subtracting by zero is an edge case for carry.
+    // if we subtract by 0, then force the carry to be set, like the DSP does.
     code.cmp(src2, 0);
     code.sete(src2.cvt8());
     code.or(tmp1.cvt8(), src2.cvt8());
@@ -329,6 +366,9 @@ void emit_set_flags_sub(int flags_to_set, int flags_to_reset, DspCode code, R64 
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
+// this is the worst one yet. see the comment in emit_set_flags_sub for context on the edge cases, but
+// also see emit_set_flags_addp for what the auxiliary_carry and auxiliary_overflow parameters are. 
+// both edge cases come together simultaneously to form a perfect storm of wtf.
 void emit_set_flags_subp(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 src2, R64 auxiliary_carry, R64 auxiliary_overflow, R64 tmp1, R64 tmp2, R64 tmp3) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
@@ -353,6 +393,9 @@ void emit_set_flags_subp(int flags_to_set, int flags_to_reset, DspCode code, R64
     code.setc(tmp1.cvt8());
     code.seto(tmp2.cvt8());
 
+    // somehow, subtracting by the max negative number yields to an edge case.
+    // if we subtract by 0x8000000000000000, then flip the overflow flag.
+    // i dont get why it works, but it does.
     code.mov(tmp3, 0x8000000000000000);
     code.cmp(src2, tmp3);
     code.sete(src2.cvt8());
@@ -362,6 +405,9 @@ void emit_set_flags_subp(int flags_to_set, int flags_to_reset, DspCode code, R64
     code.mov(FlagState.flag_o_addr(code), tmp2.cvt8());
     code.or(FlagState.flag_os_addr(code), tmp2.cvt8());
     
+    // and once again, subtracting by zero is an edge case for carry.
+    // if we subtract by 0, then force the carry to be set, like the DSP does 
+    // (unless the auxiliary carry is already set).
     code.cmp(src2, 0);
     code.sete(src2.cvt8());
     code.or(tmp1.cvt8(), src2.cvt8());
@@ -373,7 +419,9 @@ void emit_set_flags_subp(int flags_to_set, int flags_to_reset, DspCode code, R64
     emit_set_flags_without_host_state(flags_to_set, code, result, tmp1);
 }
 
-void emit_set_flags_not(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 full_result, R64 tmp) {
+// this function also needs the full AC register, because both S32 and TB are set based
+// on the full AC register, not just the result of the operation.
+void set_flags_bitwise(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 full_result, R64 tmp) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
     if (flags_to_reset & Flag.C) {
@@ -384,7 +432,6 @@ void emit_set_flags_not(int flags_to_set, int flags_to_reset, DspCode code, R64 
         code.mov(FlagState.flag_o_addr(code), 0);
     }
 
-    // TODO: this is technically worng when we add flag analyssi
     if (flags_to_reset & Flag.S32) {
         code.mov(FlagState.flag_s32_addr(code), 1);
     }
@@ -435,6 +482,8 @@ void emit_set_flags_not(int flags_to_set, int flags_to_reset, DspCode code, R64 
     }
 }
 
+// neg is computed using a subtraction, and the DSP's carry flag is inverted for neg operations.
+// so, we have to do an extra xor to get the correct carry flag. the other flag calculations are the same
 void emit_set_flags_neg(int flags_to_set, int flags_to_reset, DspCode code, R64 result, R64 tmp, R64 tmp2) {
     assert_dsp((flags_to_set & flags_to_reset) == 0, "Cannot set and reset the same flag");
 
@@ -446,7 +495,6 @@ void emit_set_flags_neg(int flags_to_set, int flags_to_reset, DspCode code, R64 
         code.mov(FlagState.flag_o_addr(code), 0);
     }
 
-    // TODO: this is technically worng when we add flag analyssi
     if (flags_to_reset & Flag.S32) {
         code.mov(FlagState.flag_s32_addr(code), 1);
     }
@@ -486,6 +534,13 @@ private void emit_set_flags_without_host_state(int flags_to_set, DspCode code, R
     }
 
     if (flags_to_set & Flag.S32) {
+        // does the value fit in 32-bits? in other words, since the value is in the top 40 bits of the register,
+        // are the top 9 bits all equal?
+
+        // the way i do this is add by 1 << 55. if the top 9 bits are all 0, then the top 8 bits are still all 
+        // 0 after this operation is done. if the top 9 bits are all 1, then the top 8 bits become all 0. in any 
+        // other case, the top 8 bits become not all 0
+        
         code.mov(tmp, 1L << 55);
         code.add(tmp, result);
         code.sar(tmp, 56);
@@ -502,10 +557,6 @@ private void emit_set_flags_without_host_state(int flags_to_set, DspCode code, R
         code.sal(tmp, 8);
         code.shr(tmp, 64 - 1);
         code.mov(FlagState.flag_tb_addr(code), tmp.cvt8());
-    }
-
-    if (flags_to_set & Flag.LZ) {
-        // dunno yet lol
     }
 }
 

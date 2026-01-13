@@ -16,6 +16,126 @@ enum StackType {
     LOOP_COUNTER
 }
 
+// AC values are 40-bit. We temporarily shift them into the upper bits of a host
+// 64-bit register (bit 39 -> bit 63) so host arithmetic/logic produces the
+// correct condition codes (carry/overflow/sign/zero) for flag updates. These
+// helpers “prepare registers for flags” and then restore the value on store.
+
+void prepare_register_for_flags(DspCode code, R64 reg, int shift_amount) {
+    code.sal(reg, cast(u8) (64 - shift_amount));
+}
+
+void restore_prepared_register(DspCode code, R64 reg, int shift_amount) {
+    code.sar(reg, cast(u8) (64 - shift_amount));
+}
+
+// Product helpers:
+// - prepared_for_flags shifts the 40-bit product so its sign bit sits at host
+//   bit 63 (flag-friendly form).
+// - value computes the 40-bit product and sign-extends it into the low bits.
+
+void load_prod_prepared_for_flags(DspCode code, R64 out_prod, R64 tmp_hi) {
+    code.mov(out_prod.cvt32(), code.prod_lo_m1_address());
+    code.mov(tmp_hi.cvt32(), code.prod_m2_hi_address());
+    code.sal(out_prod, 24);
+    code.sal(tmp_hi, 40);
+    code.add(out_prod, tmp_hi);
+}
+
+void load_prod_value(DspCode code, R64 out_prod, R64 tmp_hi) {
+    code.mov(out_prod.cvt32(), code.prod_lo_m1_address());
+    code.mov(tmp_hi.cvt32(), code.prod_m2_hi_address());
+    code.sal(tmp_hi, 16);
+    code.add(out_prod, tmp_hi);
+}
+
+// Capture host carry/overflow into byte registers for later flag logic.
+void save_carry_and_overflow(DspCode code, R64 carry_out, R64 overflow_out) {
+    code.setc(carry_out.cvt8());
+    code.seto(overflow_out.cvt8());
+}
+
+// tmp_ctrl bit 6 (0x40) decides direction; CL holds the amount (masked to 6 bits).
+// If bit 6 is set: shift right by (64 - (cl&0x3f)).
+// Else: shift left by (cl&0x3f).
+void conditional_shift_asr(DspCode code, R64 tmp_ctrl, R64 shift_target, R64 alt_shift_target) {
+    code.mov(alt_shift_target, shift_target);
+    code.sar(shift_target);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.sal(alt_shift_target);
+    code.test(tmp_ctrl, 0x40);
+    code.cmovne(shift_target, alt_shift_target);
+}
+
+// tmp_ctrl bit 6 (0x40) decides direction; CL holds the amount (masked to 6 bits).
+// If bit 6 is set: shift left by (64 - (cl&0x3f)).
+// Else: shift right by (cl&0x3f).
+void conditional_shift_asrnr(DspCode code, R64 tmp_ctrl, R64 shift_target, R64 alt_shift_target) {
+    code.mov(alt_shift_target, shift_target);
+    code.sal(shift_target);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.sar(alt_shift_target);
+    code.test(tmp_ctrl, 0x40);
+    code.cmovne(shift_target, alt_shift_target);
+}
+
+// tmp_ctrl bit 6 (0x40) decides direction; CL holds the amount (masked to 6 bits).
+// If bit 6 is set: shift right by (64 - (cl&0x3f)).
+// Else: shift left by (cl&0x3f).
+void conditional_shift_lsr(DspCode code, R64 tmp_ctrl, R64 shift_target, R64 alt_shift_target) {
+    code.mov(alt_shift_target, shift_target);
+    code.shr(shift_target);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.shl(alt_shift_target);
+    code.test(tmp_ctrl, 0x40);
+    code.cmovne(shift_target, alt_shift_target);
+}
+
+// tmp_ctrl bit 6 (0x40) decides direction; CL holds the amount (masked to 6 bits).
+// If bit 6 is set: shift left by (64 - (cl&0x3f)).
+// Else: shift right by (cl&0x3f).
+void conditional_shift_lsrnr(DspCode code, R64 tmp_ctrl, R64 shift_target, R64 alt_shift_target) {
+    code.mov(alt_shift_target, shift_target);
+    code.shl(shift_target);
+    code.neg(cl);
+    code.and(cl, 0x3f);
+    code.shr(alt_shift_target);
+    code.test(tmp_ctrl, 0x40);
+    code.cmovne(shift_target, alt_shift_target);
+}
+
+// Write combined prod back into prod_lo_m1/prod_m2_hi after prod math.
+void write_prod(DspCode code, R64 prod_value) {
+    code.mov(code.prod_lo_m1_address(), prod_value.cvt32());
+    code.sar(prod_value, 32);
+    code.sal(prod_value, 16);
+    code.mov(code.prod_m2_hi_address(), prod_value.cvt32());
+}
+
+// Round-to-nearest (half-up) for prepared prod values:
+//  - grab the next bit below the target width (0x10000 << 24)
+//  - add it plus a bias (0x7fff << 24) before shifting down later
+void round_prepared_prod_to_nearest(DspCode code, R64 value, R64 tmp_next_bit, R64 tmp_bias) {
+    code.mov(tmp_next_bit, 0x10000UL << 24);
+    code.and(tmp_next_bit, value);
+    code.sar(tmp_next_bit, 16);
+    code.add(value, tmp_next_bit);
+    code.mov(tmp_bias, 0x7fffUL << 24);
+    code.add(value, tmp_bias);
+}
+
+// Apply AM doubling (if SR bit 0x20 is set) to a value in-place.
+// Shifts src by 1 into tmp_shifted, then conditionally moves it back.
+void apply_am_doubling(DspCode code, R64 src, R64 tmp_shifted) {
+    code.mov(tmp_shifted, src);
+    code.sal(tmp_shifted, 1);
+    code.test(code.sr_upper_address(), 0x20);
+    code.cmovz(src, tmp_shifted);
+}
+
 void emit_wrapping_register_add(DspCode code, R16 ar, R16 wr, R16 ix, R16 sum, R16 tmp1, R16 tmp2) {
     code.movzx(ix.cvt32(), ix);
     code.movzx(wr.cvt32(), wr);
