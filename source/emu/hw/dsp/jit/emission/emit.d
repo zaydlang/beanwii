@@ -255,14 +255,15 @@ DspJitResult emit_abs(DspCode code, DecodedInstruction decoded_instruction, DSP 
 
     code.mov(tmp, code.ac_full_address(instruction.abs.d));
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
+
     code.mov(tmp2, tmp);
     code.neg(tmp);
     code.cmovs(tmp, tmp2);
 
     emit_set_flags(AllFlagsButLZAndC, Flag.C, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.abs.d), tmp);
 
     return DspJitResult.Continue;
@@ -278,12 +279,12 @@ DspJitResult emit_add(DspCode code, DecodedInstruction decoded_instruction, DSP 
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.add.d), tmp1);
  
@@ -324,12 +325,12 @@ DspJitResult emit_addax(DspCode code, DecodedInstruction decoded_instruction, DS
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.addax.d), tmp1);
 
@@ -347,12 +348,12 @@ DspJitResult emit_addaxl(DspCode code, DecodedInstruction decoded_instruction, D
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.addaxl.d), tmp1);
 
@@ -369,11 +370,11 @@ DspJitResult emit_addi(DspCode code, DecodedInstruction decoded_instruction, DSP
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp1, 64 - 24);
+    code.prepare_register_for_flags(tmp1, 24);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
-    code.sar(tmp1, 64 - 24);
+    code.restore_prepared_register(tmp1, 24);
 
     code.mov(code.ac_hm_address(instruction.addi.d), tmp1.cvt32());
 
@@ -390,11 +391,11 @@ DspJitResult emit_addis(DspCode code, DecodedInstruction decoded_instruction, DS
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp1, 64 - 24);
+    code.prepare_register_for_flags(tmp1, 24);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
-    code.sar(tmp1, 64 - 24);
+    code.restore_prepared_register(tmp1, 24);
 
     code.mov(code.ac_hm_address(instruction.addis.d), tmp1.cvt32());
 
@@ -409,24 +410,17 @@ DspJitResult emit_addp(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    save_carry_and_overflow(code, tmp3, tmp4);
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-
-    code.setc(tmp3.cvt8());
-    code.seto(tmp4.cvt8());
 
     code.mov(tmp2, code.ac_full_address(instruction.addp.d));
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.add(tmp1, tmp2);
 
     emit_set_flags_addp(AllFlagsButLZ, 0, code, tmp1, tmp3, tmp4, tmp2, tmp5);
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.addp.d), tmp1);
 
@@ -441,35 +435,25 @@ DspJitResult emit_addpaxz(DspCode code, DecodedInstruction decoded_instruction, 
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    save_carry_and_overflow(code, tmp5, tmp2);
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-    code.setc(tmp5.cvt8());
-    code.seto(tmp2.cvt8());
+
     code.mov(tmp3, tmp1);
-    code.mov(tmp4, 0x10000UL << 24);
-    code.and(tmp3, tmp4);
-    code.sar(tmp3, 16);
-    code.add(tmp1, tmp3);
-    code.mov(tmp4, 0x7fffUL << 24);
-    code.add(tmp1, tmp4);
+    round_prepared_prod_to_nearest(code, tmp1, tmp3, tmp4);
     code.sar(tmp1, 40);
-    code.sal(tmp1, 40);
+    code.prepare_register_for_flags(tmp1, 24);
 
     code.mov(tmp3.cvt16(), code.ax_hi_address(instruction.addpaxz.s));
     code.movsx(tmp3, tmp3.cvt16());
-    code.sal(tmp3, 64 - 24);
+    code.prepare_register_for_flags(tmp3, 24);
 
     code.add(tmp1, tmp3);
 
     emit_set_flags_addpaxz(AllFlagsButLZ, 0, code, tmp1, tmp5, tmp2, tmp4, tmp3);
 
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
     code.mov(code.ac_full_address(instruction.addpaxz.d), tmp1);
 
     return DspJitResult.Continue;
@@ -493,14 +477,14 @@ DspJitResult emit_addr(DspCode code, DecodedInstruction decoded_instruction, DSP
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp1, 48);
+    code.prepare_register_for_flags(tmp1, 16);
     code.sar(tmp1, 8);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.add(tmp1, tmp2);
 
     emit_set_flags(AllFlagsButLZ, 0, code, tmp1, tmp2);
 
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
     code.mov(code.ac_full_address(instruction.addr.d), tmp1);
 
     return DspJitResult.Continue;
@@ -522,9 +506,9 @@ DspJitResult emit_andc(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(code.ac_m_address(instruction.andi.r), tmp1.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.andi.r));
 
-    code.sal(tmp3, 24);
-    code.sal(tmp1, 48);
-    emit_set_flags_andi(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp1, 16);
+    set_flags_and_immediate(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
     
     return DspJitResult.Continue;
 }
@@ -573,9 +557,9 @@ DspJitResult emit_andi(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(code.ac_m_address(instruction.andi.r), tmp1.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.andi.r));
 
-    code.sal(tmp3, 24);
-    code.sal(tmp1, 48);
-    emit_set_flags_andi(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp1, 16);
+    set_flags_and_immediate(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
     
     return DspJitResult.Continue;
 }
@@ -595,9 +579,9 @@ DspJitResult emit_andr(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(code.ac_m_address(instruction.andr.r), tmp1.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.andr.r));
 
-    code.sal(tmp3, 24);
-    code.sal(tmp1, 48);
-    emit_set_flags_andi(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp1, 16);
+    set_flags_and_immediate(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.O | Flag.C, code, tmp1, tmp3, tmp2);
     
     return DspJitResult.Continue;
 }
@@ -608,13 +592,13 @@ DspJitResult emit_asl(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.asl.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp2, tmp);
     code.sal(tmp, cast(u8) instruction.asl.s);
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.asl.r), tmp);
 
     return DspJitResult.Continue;
@@ -626,7 +610,7 @@ DspJitResult emit_asr(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.asr.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp2, tmp);
 
     code.sar(tmp, cast(u8) ((-instruction.asr.s) & 0x3f));
@@ -634,7 +618,7 @@ DspJitResult emit_asr(DspCode code, DecodedInstruction decoded_instruction, DSP 
     code.and(tmp, tmp2);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.asr.r), tmp);
 
     return DspJitResult.Continue;
@@ -650,24 +634,19 @@ DspJitResult emit_asrn(DspCode code, DecodedInstruction decoded_instruction, DSP
 
     code.mov(cx, code.ac_m_address(1));
     code.mov(tmp2, code.ac_full_address(0));
-    code.sal(tmp2, 64 - 40);
-    code.sar(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
+    code.restore_prepared_register(tmp2, 40);
 
     code.and(ecx, 0x7f);
     
     code.mov(tmp1, rcx);
     code.mov(tmp3, tmp2);
-    code.sar(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.sal(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    conditional_shift_asr(code, tmp1, tmp2, tmp3);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(0), tmp2);
 
     return DspJitResult.Continue;
@@ -683,26 +662,21 @@ DspJitResult emit_asrnr(DspCode code, DecodedInstruction decoded_instruction, DS
 
     code.mov(cx, code.ac_m_address(1 - instruction.asrnr.d));
     code.mov(tmp2, code.ac_full_address(instruction.asrnr.d));
-    code.sal(tmp2, 64 - 40);
-    code.sar(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
+    code.restore_prepared_register(tmp2, 40);
     
     code.and(ecx, 0x7f);
     
     code.mov(tmp1, rcx);
     code.mov(tmp3, tmp2);
-    code.sal(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.sar(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    conditional_shift_asrnr(code, tmp1, tmp2, tmp3);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(instruction.asrnr.d), tmp2);
 
     return DspJitResult.Continue;
@@ -718,26 +692,21 @@ DspJitResult emit_asrnrx(DspCode code, DecodedInstruction decoded_instruction, D
 
     code.mov(cx, code.ax_hi_address(instruction.asrnrx.s));
     code.mov(tmp2, code.ac_full_address(instruction.asrnrx.d));
+    
+    // clear top 24 bits
     code.sal(tmp2, 64 - 40);
     code.sar(tmp2, 64 - 40);
     
-    code.and(ecx, 0x7f);
-    
     code.mov(tmp1, rcx);
-    code.mov(tmp3, tmp2);
-    code.sal(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.sar(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    code.and(ecx, 0x7f);
+    conditional_shift_asrnr(code, tmp1, tmp2, tmp3);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(instruction.asrnrx.d), tmp2);
 
     return DspJitResult.Continue;
@@ -752,12 +721,13 @@ DspJitResult emit_asr16(DspCode code, DecodedInstruction decoded_instruction, DS
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp, 64 - 40);
+    // clear the top 24-bits, and shift by 16 (the asr16 instruction operation)
+    code.sal(tmp, 24);
     code.sar(tmp, 40);
 
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
 
     code.mov(code.ac_full_address(instruction.asr16.r), tmp);
     return DspJitResult.Continue;
@@ -879,10 +849,10 @@ DspJitResult emit_clrl(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(tmp2, ~0xffffUL);
     code.and(tmp1, tmp2);
 
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp1, tmp2);
     
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
     code.mov(code.ac_full_address(instruction.clrl.r), tmp1);
 
     return DspJitResult.Continue;
@@ -913,12 +883,12 @@ DspJitResult emit_cmp(DspCode code, DecodedInstruction decoded_instruction, DSP 
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
 
     return DspJitResult.Continue;
 }
@@ -937,12 +907,12 @@ DspJitResult emit_cmpaxh(DspCode code, DecodedInstruction decoded_instruction, D
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 24);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 24);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
 
     return DspJitResult.Continue;
 }
@@ -957,11 +927,11 @@ DspJitResult emit_cmpi(DspCode code, DecodedInstruction decoded_instruction, DSP
 
     code.mov(tmp1, code.ac_full_address(instruction.cmpi.r));
     code.mov(tmp2, sext_64(instruction.cmpi.i, 16) << 40);
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
 
     return DspJitResult.Continue;
 }
@@ -976,11 +946,11 @@ DspJitResult emit_cmpis(DspCode code, DecodedInstruction decoded_instruction, DS
 
     code.mov(tmp1, code.ac_full_address(instruction.cmpis.d));
     code.mov(tmp2, sext_64(instruction.cmpis.i, 8) << 40);
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
 
     return DspJitResult.Continue;
 }
@@ -1013,13 +983,13 @@ DspJitResult emit_dec(DspCode code, DecodedInstruction decoded_instruction, DSP 
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp3, 0xffffffffff000000);
     code.add(tmp, tmp3);
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.C | Flag.O, 0, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.dec.d), tmp);
 
     return DspJitResult.Continue;
@@ -1035,12 +1005,12 @@ DspJitResult emit_decm(DspCode code, DecodedInstruction decoded_instruction, DSP
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp3, 0xffffff0000000000);
     code.add(tmp, tmp3);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.C | Flag.O | Flag.OS, 0, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.decm.d), tmp);
 
     return DspJitResult.Continue;
@@ -1176,13 +1146,13 @@ DspJitResult emit_inc(DspCode code, DecodedInstruction decoded_instruction, DSP 
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp3, 0x0000000001000000);
     code.add(tmp, tmp3);
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.C | Flag.O, 0, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.inc.d), tmp);
 
     return DspJitResult.Continue;
@@ -1197,12 +1167,12 @@ DspJitResult emit_incm(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(tmp, code.ac_full_address(instruction.incm.d));
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp3, 0x0000010000000000);
     code.add(tmp, tmp3);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB | Flag.C | Flag.O | Flag.OS, 0, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.incm.d), tmp);
 
     return DspJitResult.Continue;
@@ -1214,13 +1184,13 @@ DspJitResult emit_lsl(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.lsl.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.mov(tmp2, tmp);
     code.shl(tmp, cast(u8) instruction.lsl.s);
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.lsl.r), tmp);
 
     return DspJitResult.Continue;
@@ -1232,7 +1202,7 @@ DspJitResult emit_lsl16(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.lsl16.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
@@ -1240,7 +1210,7 @@ DspJitResult emit_lsl16(DspCode code, DecodedInstruction decoded_instruction, DS
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.lsl16.r), tmp);
 
     return DspJitResult.Continue;
@@ -1252,14 +1222,14 @@ DspJitResult emit_lsr(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.lsr.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
     code.shr(tmp, cast(u8) (64 - instruction.lsr.s));
     code.mov(tmp2, ~((1UL << 24) - 1));
     code.and(tmp, tmp2);
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.lsr.r), tmp);
 
     return DspJitResult.Continue;
@@ -1275,24 +1245,19 @@ DspJitResult emit_lsrn(DspCode code, DecodedInstruction decoded_instruction, DSP
 
     code.mov(cx, code.ac_m_address(1));
     code.mov(tmp2, code.ac_full_address(0));
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.shr(tmp2, 64 - 40);
 
     code.and(ecx, 0x7f);
     
     code.mov(tmp1, rcx);
     code.mov(tmp3, tmp2);
-    code.shr(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.shl(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    conditional_shift_lsr(code, tmp1, tmp2, tmp3);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(0), tmp2);
 
     return DspJitResult.Continue;
@@ -1308,26 +1273,21 @@ DspJitResult emit_lsrnr(DspCode code, DecodedInstruction decoded_instruction, DS
 
     code.mov(cx, code.ac_m_address(1 - instruction.lsrnr.d));
     code.mov(tmp2, code.ac_full_address(instruction.lsrnr.d));
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.shr(tmp2, 64 - 40);
     
     code.and(ecx, 0x7f);
     
     code.mov(tmp1, rcx);
     code.mov(tmp3, tmp2);
-    code.shl(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.shr(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    conditional_shift_lsrnr(code, tmp1, tmp2, tmp3);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(instruction.lsrnr.d), tmp2);
 
     return DspJitResult.Continue;
@@ -1343,26 +1303,21 @@ DspJitResult emit_lsrnrx(DspCode code, DecodedInstruction decoded_instruction, D
 
     code.mov(cx, code.ax_hi_address(instruction.lsrnrx.s));
     code.mov(tmp2, code.ac_full_address(instruction.lsrnrx.d));
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.shr(tmp2, 64 - 40);
     
     code.and(ecx, 0x7f);
     
     code.mov(tmp1, rcx);
     code.mov(tmp3, tmp2);
-    code.shl(tmp2);
-    code.neg(cl);
-    code.and(cl, 0x3f);
-    code.shr(tmp3);
-    code.test(tmp1, 0x40);
-    code.cmovne(tmp2, tmp3);
+    conditional_shift_lsrnr(code, tmp1, tmp2, tmp3);
 
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp2, tmp3);
     
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(instruction.lsrnrx.d), tmp2);
 
     return DspJitResult.Continue;
@@ -1374,7 +1329,7 @@ DspJitResult emit_lsr16(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.lsr16.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
@@ -1384,7 +1339,7 @@ DspJitResult emit_lsr16(DspCode code, DecodedInstruction decoded_instruction, DS
 
     emit_set_flags(Flag.AZ | Flag.S | Flag.S32 | Flag.TB, Flag.C | Flag.O, code, tmp, tmp2);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.lsr16.r), tmp);
 
     return DspJitResult.Continue;
@@ -1700,14 +1655,11 @@ DspJitResult emit_madd(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
+    load_prod_value(code, tmp1, tmp2);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -1716,18 +1668,10 @@ DspJitResult emit_madd(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
-    // add to prod
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -1740,12 +1684,9 @@ DspJitResult emit_maddc(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -1756,18 +1697,11 @@ DspJitResult emit_maddc(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
     // add to prod with carry
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -1780,12 +1714,9 @@ DspJitResult emit_maddx(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -1796,18 +1727,11 @@ DspJitResult emit_maddx(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
     // add to prod with carry
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -1823,7 +1747,7 @@ DspJitResult emit_mov(DspCode code, DecodedInstruction decoded_instruction, DSP 
     
     code.mov(code.ac_full_address(instruction.mov.d), tmp1);
 
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32, Flag.O | Flag.C, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1835,6 +1759,8 @@ DspJitResult emit_movax(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp1.cvt32(), code.ax_full_address(instruction.movax.s));
+
+    // clear the top 32 bits
     code.sal(tmp1, 32);
     code.sar(tmp1, 32);
 
@@ -1842,7 +1768,7 @@ DspJitResult emit_movax(DspCode code, DecodedInstruction decoded_instruction, DS
     
     code.mov(code.ac_full_address(instruction.movax.d), tmp1);
 
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32, Flag.O | Flag.C, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1853,10 +1779,7 @@ DspJitResult emit_movnp(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
@@ -1864,7 +1787,7 @@ DspJitResult emit_movnp(DspCode code, DecodedInstruction decoded_instruction, DS
 
     code.mov(code.ac_full_address(instruction.movnp.d), tmp1);
     
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32 | Flag.O | Flag.C, 0, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1875,16 +1798,13 @@ DspJitResult emit_movp(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp1 = code.allocate_register();
     R64 tmp2 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
     code.mov(code.ac_full_address(instruction.movp.d), tmp1);
     
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32 | Flag.O | Flag.C, 0, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1897,18 +1817,8 @@ DspJitResult emit_movpz(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp3 = code.allocate_register();
     R64 tmp4 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-    code.mov(tmp3, tmp1);
-    code.mov(tmp4, 0x10000UL << 24);
-    code.and(tmp3, tmp4);
-    code.sar(tmp3, 16);
-    code.add(tmp1, tmp3);
-    code.mov(tmp4, 0x7fffUL << 24);
-    code.add(tmp1, tmp4);
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    round_prepared_prod_to_nearest(code, tmp1, tmp3, tmp4);
     code.sar(tmp1, 24);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
@@ -1918,7 +1828,7 @@ DspJitResult emit_movpz(DspCode code, DecodedInstruction decoded_instruction, DS
 
     code.mov(code.ac_full_address(instruction.movp.d), tmp1);
     
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32 | Flag.O | Flag.C, 0, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1936,6 +1846,8 @@ DspJitResult emit_movr(DspCode code, DecodedInstruction decoded_instruction, DSP
         case 3: code.movsx(tmp1.cvt32(), code.ax_hi_address(1)); break;
     }
 
+    // clear the top 32 bits, and put the value in the middle 32 bits because
+    // movr places the value into hl.
     code.sal(tmp1, 32);
     code.sar(tmp1, 16);
 
@@ -1943,7 +1855,7 @@ DspJitResult emit_movr(DspCode code, DecodedInstruction decoded_instruction, DSP
     
     code.mov(code.ac_full_address(instruction.movr.d), tmp1);
 
-    code.sal(tmp1, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
     emit_set_flags(Flag.TB | Flag.S | Flag.AZ | Flag.S32, Flag.O | Flag.C, code, tmp1, tmp2);
 
     return DspJitResult.Continue;
@@ -1967,12 +1879,9 @@ DspJitResult emit_msub(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -1983,19 +1892,12 @@ DspJitResult emit_msub(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
     // sub from prod
     code.neg(tmp2);
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2008,12 +1910,9 @@ DspJitResult emit_msubc(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2024,19 +1923,12 @@ DspJitResult emit_msubc(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
     // sub from prod
     code.neg(tmp2);
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2049,12 +1941,9 @@ DspJitResult emit_msubx(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    // calculate the full prod
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2065,19 +1954,12 @@ DspJitResult emit_msubx(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
     // sub from prod
     code.neg(tmp2);
     code.add(tmp1, tmp2);
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2096,16 +1978,9 @@ DspJitResult emit_mul(DspCode code, DecodedInstruction decoded_instruction, DSP 
     code.mov(tmp2, (1UL << 48) - 1);
     code.and(tmp1, tmp2);
 
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
     
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2118,20 +1993,21 @@ DspJitResult emit_mulac(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
     code.mov(tmp5, code.ac_full_address(instruction.mulac.r));
-    code.sal(tmp5, 64 - 40);
-    code.sar(tmp5, 64 - 40);
+    
+    // clear upper 24 bits of register
+    code.sal(tmp5, 24);
+    code.sar(tmp5, 24);
+
     code.add(tmp1, tmp5);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
     code.mov(code.ac_full_address(instruction.mulac.r), tmp1);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2140,16 +2016,8 @@ DspJitResult emit_mulac(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
-
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    apply_am_doubling(code, tmp2, tmp4);
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2168,16 +2036,9 @@ DspJitResult emit_mulaxh(DspCode code, DecodedInstruction decoded_instruction, D
     code.mov(tmp2, (1UL << 48) - 1);
     code.and(tmp1, tmp2);
 
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
     
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2196,16 +2057,9 @@ DspJitResult emit_mulc(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(tmp2, (1UL << 48) - 1);
     code.and(tmp1, tmp2);
 
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
     
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2218,16 +2072,17 @@ DspJitResult emit_mulcac(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
     code.mov(tmp5, code.ac_full_address(instruction.mulcac.r));
-    code.sal(tmp5, 64 - 40);
-    code.sar(tmp5, 64 - 40);
+
+    // clear upper 24 bits of register
+    code.sal(tmp5, 24);
+    code.sar(tmp5, 24);
+
     code.add(tmp1, tmp5);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2240,16 +2095,8 @@ DspJitResult emit_mulcac(DspCode code, DecodedInstruction decoded_instruction, D
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
-
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    apply_am_doubling(code, tmp2, tmp4);
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2262,11 +2109,9 @@ DspJitResult emit_mulcmv(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2279,16 +2124,8 @@ DspJitResult emit_mulcmv(DspCode code, DecodedInstruction decoded_instruction, D
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
-
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    apply_am_doubling(code, tmp2, tmp4);
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2301,27 +2138,18 @@ DspJitResult emit_mulcmvz(DspCode code, DecodedInstruction decoded_instruction, 
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-    code.setc(tmp5.cvt8());
-    code.seto(tmp2.cvt8());
-    code.mov(tmp3, tmp1);
-    code.mov(tmp4, 0x10000UL << 24);
-    code.and(tmp3, tmp4);
-    code.sar(tmp3, 16);
-    code.add(tmp1, tmp3);
-    code.mov(tmp4, 0x7fffUL << 24);
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    code.save_carry_and_overflow(tmp5, tmp2);
+    round_prepared_prod_to_nearest(code, tmp1, tmp3, tmp4);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     code.add(tmp1, tmp4);
     code.sar(tmp1, 40);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
-    code.sal(tmp1, 16);
+    code.prepare_register_for_flags(tmp1, 48);
 
     code.movsx(tmp2, code.ac_m_address(instruction.mulcmv.s));
     code.movsx(tmp3, code.ax_hi_address(instruction.mulcmv.t));
@@ -2329,16 +2157,8 @@ DspJitResult emit_mulcmvz(DspCode code, DecodedInstruction decoded_instruction, 
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
-
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    apply_am_doubling(code, tmp2, tmp4);
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2351,11 +2171,9 @@ DspJitResult emit_mulmv(DspCode code, DecodedInstruction decoded_instruction, DS
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2367,16 +2185,8 @@ DspJitResult emit_mulmv(DspCode code, DecodedInstruction decoded_instruction, DS
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
-
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    apply_am_doubling(code, tmp2, tmp4);
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2389,27 +2199,17 @@ DspJitResult emit_mulmvz(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-    code.setc(tmp5.cvt8());
-    code.seto(tmp2.cvt8());
-    code.mov(tmp3, tmp1);
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    code.save_carry_and_overflow(tmp5, tmp2);
+    round_prepared_prod_to_nearest(code, tmp1, tmp3, tmp4);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    code.mov(tmp4, 0x10000UL << 24);
-    code.and(tmp3, tmp4);
-    code.sar(tmp3, 16);
-    code.add(tmp1, tmp3);
-    code.mov(tmp4, 0x7fffUL << 24);
-    code.add(tmp1, tmp4);
     code.sar(tmp1, 40);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
-    code.sal(tmp1, 16);
+    code.prepare_register_for_flags(tmp1, 16);
 
     code.movsx(tmp2, code.ax_lo_address(instruction.mulmv.s));
     code.movsx(tmp3, code.ax_hi_address(instruction.mulmv.s));
@@ -2417,16 +2217,9 @@ DspJitResult emit_mulmvz(DspCode code, DecodedInstruction decoded_instruction, D
     code.imul(tmp2, tmp3);
     code.and(tmp2, tmp4);
     
-    code.mov(tmp5.cvt8(), code.sr_upper_address());
-    code.mov(tmp4, tmp2);
-    code.sal(tmp4, 1);
-    code.test(tmp5.cvt8(), 0x20);
-    code.cmovz(tmp2, tmp4);
+    apply_am_doubling(code, tmp2, tmp4);
 
-    code.mov(code.prod_lo_m1_address(), tmp2.cvt32());
-    code.sar(tmp2, 32);
-    code.sal(tmp2, 16);
-    code.mov(code.prod_m2_hi_address(), tmp2.cvt32());
+    write_prod(code, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2481,16 +2274,9 @@ DspJitResult emit_mulx(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(tmp2, (1UL << 48) - 1);
     code.and(tmp1, tmp2);
 
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
     
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2504,18 +2290,20 @@ DspJitResult emit_mulxac(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
     code.mov(tmp5, code.ac_full_address(instruction.mulxac.r));
-    code.sal(tmp5, 64 - 40);
-    code.sar(tmp5, 64 - 40);
+
+    // clear upper 24 bits of register
+    code.sal(tmp5, 24);
+    code.sar(tmp5, 24);
+
     code.add(tmp1, tmp5);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
     code.mov(code.ac_full_address(instruction.mulxac.r), tmp1);
+
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2560,16 +2348,9 @@ DspJitResult emit_mulxac(DspCode code, DecodedInstruction decoded_instruction, D
     code.imul(tmp1, tmp2);
     code.and(tmp1, tmp4);
     
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
 
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
 
     return DspJitResult.Continue;
 }
@@ -2581,14 +2362,13 @@ DspJitResult emit_mulxmv(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp3 = code.allocate_register();
     R64 tmp4 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp2, 16);
-    code.add(tmp1, tmp2);
+    load_prod_value(code, tmp1, tmp2);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     
     code.mov(code.ac_full_address(instruction.mulxac.r), tmp1);
+
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
     code.and(tmp1, tmp4);
 
@@ -2633,16 +2413,9 @@ DspJitResult emit_mulxmv(DspCode code, DecodedInstruction decoded_instruction, D
     code.imul(tmp1, tmp2);
     code.and(tmp1, tmp4);
     
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
 
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
     
     return DspJitResult.Continue;
 }
@@ -2655,27 +2428,18 @@ DspJitResult emit_mulxmvz(DspCode code, DecodedInstruction decoded_instruction, 
     R64 tmp4 = code.allocate_register();
     R64 tmp5 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
-    code.setc(tmp5.cvt8());
-    code.seto(tmp2.cvt8());
-    code.mov(tmp3, tmp1);
-    code.mov(tmp4, 0x10000UL << 24);
-    code.and(tmp3, tmp4);
-    code.sar(tmp3, 16);
-    code.add(tmp1, tmp3);
-    code.mov(tmp4, 0x7fffUL << 24);
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    code.save_carry_and_overflow(tmp5, tmp2);
+    round_prepared_prod_to_nearest(code, tmp1, tmp3, tmp4);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
-    code.add(tmp1, tmp4);
     code.sar(tmp1, 40);
 
+    // precompute a mask that we reuse later
     code.mov(tmp4, ((1UL << 48) - 1));
+
     code.and(tmp1, tmp4);
-    code.sal(tmp1, 16);
+    code.prepare_register_for_flags(tmp1, 48);
 
     code.mov(code.ac_full_address(instruction.mulxac.r), tmp1);
 
@@ -2720,16 +2484,9 @@ DspJitResult emit_mulxmvz(DspCode code, DecodedInstruction decoded_instruction, 
     code.imul(tmp1, tmp2);
     code.and(tmp1, tmp4);
     
-    code.mov(tmp2.cvt8(), code.sr_upper_address());
-    code.mov(tmp3, tmp1);
-    code.sal(tmp3, 1);
-    code.test(tmp2.cvt8(), 0x20);
-    code.cmovz(tmp1, tmp3);
+    apply_am_doubling(code, tmp1, tmp3);
 
-    code.mov(code.prod_lo_m1_address(), tmp1.cvt32());
-    code.sar(tmp1, 32);
-    code.sal(tmp1, 16);
-    code.mov(code.prod_m2_hi_address(), tmp1.cvt32());
+    write_prod(code, tmp1);
     
     return DspJitResult.Continue;
 }
@@ -2741,14 +2498,14 @@ DspJitResult emit_neg(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp3 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.abs.d));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     code.neg(tmp);
 
     emit_set_flags_neg(AllFlagsButLZ, 0, code, tmp, tmp2, tmp3);
 
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.abs.d), tmp);
 
     return DspJitResult.Continue;
@@ -2778,9 +2535,9 @@ DspJitResult emit_not(DspCode code, DecodedInstruction decoded_instruction, DSP 
     code.mov(code.ac_m_address(instruction.abs.d), tmp.cvt16());
 
     code.mov(tmp2, code.ac_full_address(instruction.abs.d));
-    code.sal(tmp2, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp2, tmp3);
+    code.prepare_register_for_flags(tmp2, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp2, tmp3);
 
     return DspJitResult.Continue;
 }
@@ -2801,9 +2558,9 @@ DspJitResult emit_orc(DspCode code, DecodedInstruction decoded_instruction, DSP 
 
     code.mov(tmp3, code.ac_full_address(instruction.orc.r));
 
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2822,9 +2579,9 @@ DspJitResult emit_ori(DspCode code, DecodedInstruction decoded_instruction, DSP 
     code.mov(code.ac_m_address(instruction.ori.r), tmp.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.ori.r));
     
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
     
     return DspJitResult.Continue;
 }
@@ -2843,9 +2600,9 @@ DspJitResult emit_orr(DspCode code, DecodedInstruction decoded_instruction, DSP 
     code.mov(code.ac_m_address(instruction.orr.r), tmp.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.orr.r));
     
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -2941,16 +2698,16 @@ DspJitResult emit_sub(DspCode code, DecodedInstruction decoded_instruction, DSP 
 
     code.mov(tmp, code.ac_full_address(instruction.sub.d));
     code.mov(tmp2, code.ac_full_address(1 - instruction.sub.d));
-    code.sal(tmp, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
+    code.prepare_register_for_flags(tmp2, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
     code.neg(tmp2);
     code.add(tmp, tmp2);
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp, tmp2, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp, tmp2, tmp3, tmp4, tmp5);
     
-    code.sar(tmp, 64 - 40);
+    code.restore_prepared_register(tmp, 40);
     code.mov(code.ac_full_address(instruction.sub.d), tmp);
 
     return DspJitResult.Continue;
@@ -2991,15 +2748,15 @@ DspJitResult emit_subax(DspCode code, DecodedInstruction decoded_instruction, DS
     code.mov(tmp2.cvt32(), code.ax_full_address(instruction.subax.s));
     code.movsxd(tmp2, tmp2.cvt32());
 
-    code.sal(tmp1, 64 - 40);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp1, 40);
+    code.prepare_register_for_flags(tmp2, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     code.neg(tmp2);
     code.add(tmp1, tmp2);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
-    code.sar(tmp1, 64 - 40);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp1, tmp2, tmp3, tmp4, tmp5);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.subax.d), tmp1);
 
@@ -3016,25 +2773,19 @@ DspJitResult emit_subp(DspCode code, DecodedInstruction decoded_instruction, DSP
     R64 tmp6 = code.allocate_register();
     R64 tmp7 = code.allocate_register();
 
-    code.mov(tmp1.cvt32(), code.prod_lo_m1_address());
-    code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp1, 24);
-    code.sal(tmp2, 40);
-    code.add(tmp1, tmp2);
+    load_prod_prepared_for_flags(code, tmp1, tmp2);
+    code.save_carry_and_overflow(tmp6, tmp7);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
-    code.setc(tmp6.cvt8());
-    code.seto(tmp7.cvt8());
-
     code.mov(tmp2, code.ac_full_address(instruction.subp.d));
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
     code.neg(tmp1);
     code.mov(tmp3, tmp1);
     code.add(tmp1, tmp2);
 
     emit_set_flags_subp(AllFlagsButLZ, 0, code, tmp1, tmp3, tmp6, tmp7, tmp4, tmp2, tmp5);
-    code.sar(tmp1, 64 - 40);
+    code.restore_prepared_register(tmp1, 40);
 
     code.mov(code.ac_full_address(instruction.subp.d), tmp1);
 
@@ -3059,17 +2810,17 @@ DspJitResult emit_subr(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.movzx(tmp1, tmp1.cvt16());
 
     code.mov(tmp2, code.ac_full_address(instruction.addr.d));
-    code.sal(tmp1, 48);
+    code.prepare_register_for_flags(tmp1, 16);
     code.sar(tmp1, 8);
-    code.sal(tmp2, 64 - 40);
+    code.prepare_register_for_flags(tmp2, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
     code.neg(tmp1);
     code.add(tmp2, tmp1);
 
-    emit_set_flags_sub(AllFlagsButLZ, 0, code, tmp2, tmp1, tmp3, tmp4, tmp5);
+    set_flags_subtract(AllFlagsButLZ, 0, code, tmp2, tmp1, tmp3, tmp4, tmp5);
 
-    code.sar(tmp2, 64 - 40);
+    code.restore_prepared_register(tmp2, 40);
     code.mov(code.ac_full_address(instruction.addr.d), tmp2);
 
     return DspJitResult.Continue;
@@ -3081,7 +2832,7 @@ DspJitResult emit_tst(DspCode code, DecodedInstruction decoded_instruction, DSP 
     R64 tmp2 = code.allocate_register();
 
     code.mov(tmp, code.ac_full_address(instruction.tst.r));
-    code.sal(tmp, 64 - 40);
+    code.prepare_register_for_flags(tmp, 40);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
 
@@ -3096,7 +2847,7 @@ DspJitResult emit_tstaxh(DspCode code, DecodedInstruction decoded_instruction, D
     R64 tmp2 = code.allocate_register();
 
     code.movzx(tmp, code.ax_hi_address(instruction.tstaxh.r));
-    code.sal(tmp, 64 - 16);
+    code.prepare_register_for_flags(tmp, 16);
     code.sar(tmp, 8);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
@@ -3113,8 +2864,8 @@ DspJitResult emit_tstprod(DspCode code, DecodedInstruction decoded_instruction, 
 
     code.mov(tmp.cvt32(), code.prod_lo_m1_address());
     code.mov(tmp2.cvt32(), code.prod_m2_hi_address());
-    code.sal(tmp, 24);
-    code.sal(tmp2, 40);
+    code.prepare_register_for_flags(tmp, 40);
+    code.prepare_register_for_flags(tmp2, 24);
     code.add(tmp, tmp2);
 
     handle_extension_opcode(code, decoded_instruction, dsp_instance);
@@ -3140,9 +2891,9 @@ DspJitResult emit_xorc(DspCode code, DecodedInstruction decoded_instruction, DSP
 
     code.mov(tmp3, code.ac_full_address(instruction.xorc.d));
 
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
 
     return DspJitResult.Continue;
 }
@@ -3160,9 +2911,9 @@ DspJitResult emit_xori(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(code.ac_m_address(instruction.xori.r), tmp.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.xori.r));
     
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
     
     return DspJitResult.Continue;
 }
@@ -3182,9 +2933,9 @@ DspJitResult emit_xorr(DspCode code, DecodedInstruction decoded_instruction, DSP
     code.mov(code.ac_m_address(instruction.xorr.r), tmp.cvt16());
     code.mov(tmp3, code.ac_full_address(instruction.xorr.r));
     
-    code.sal(tmp3, 64 - 40);
-    code.sal(tmp, 64 - 16);
-    emit_set_flags_not(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
+    code.prepare_register_for_flags(tmp3, 40);
+    code.prepare_register_for_flags(tmp, 16);
+    set_flags_bitwise(Flag.TB | Flag.S32 | Flag.AZ | Flag.S, Flag.C | Flag.O, code, tmp, tmp3, tmp2);
 
     return DspJitResult.Continue;
 }
