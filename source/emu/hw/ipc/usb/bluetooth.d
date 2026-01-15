@@ -13,10 +13,11 @@ import emu.scheduler;
 import std.container : DList;
 import std.algorithm : min;
 import std.traits : hasMember;
-import util.endian;
 import util.array;
-import util.number;
+import util.bitop;
+import util.endian;
 import util.log;
+import util.number;
 
 enum HciEventCode : u8 {
     CommandComplete = 0x0E,
@@ -108,7 +109,7 @@ struct HciConnectionCompleteEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u8[6] bd_addr;
     u8 link_type;
     u8 encryption_enabled;
@@ -198,7 +199,7 @@ struct HciAuthenticationCompleteEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
 }
 
 static assert(HciAuthenticationCompleteEvent.sizeof == 5);
@@ -219,7 +220,7 @@ struct HciReadClockOffsetCompleteEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u16_le clock_offset;
 }
 
@@ -230,7 +231,7 @@ struct HciReadRemoteVersionCompleteEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u8 lmp_pal_version;
     u16_le manufacturer_name;
     u16_le lmp_pal_subversion;
@@ -243,7 +244,7 @@ struct HciReadRemoteFeaturesCompleteEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u8[8] lmp_features;
 }
 
@@ -254,7 +255,7 @@ struct HciConnectionPacketTypeChangedEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u16_le packet_type;
 }
 
@@ -265,7 +266,7 @@ struct HciNumberOfCompletedPacketsEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 number_of_handles;
-    u16_le connection_handle;
+    u16 connection_handle;
     u16_le num_completed_packets;
 }
 
@@ -327,12 +328,28 @@ struct HciModeChangeEvent {
     HciEventCode event_code;
     u8 parameter_length;
     u8 status;
-    u16_be connection_handle;
+    u16 connection_handle;
     u8 current_mode;
     u16_be interval;
 }
 
 static assert(HciModeChangeEvent.sizeof == 8);
+
+struct HciAclPacketCountResponse {
+    align(1):
+    HciEventCode event_code;
+    u8 parameter_length;
+    u8 num_handles;
+    
+    struct HandleData {
+        u16 connection_handle;
+        u16 num_acl_packets;
+    }
+    
+    HandleData[5] handle_data; // Wii seems to send 5
+}
+
+static assert(HciAclPacketCountResponse.sizeof == 23);
 
 u8[] struct_to_bytes(T)(ref T s) {
     return (cast(u8*)&s)[0..T.sizeof].dup;
@@ -368,9 +385,9 @@ final class Bluetooth {
         this.wiimotes = wiimotes;
 
         this.wiimotes[0].bd_addr = [0x11, 0x02, 0x19, 0x79, 0x00, 0x00];
-        this.wiimotes[0].connection_handle = 0x0001;
+        this.wiimotes[0].connection_handle = 0x0100;
         this.wiimotes[1].bd_addr = [0x11, 0x02, 0x19, 0x79, 0x00, 0x01];
-        this.wiimotes[1].connection_handle = 0x0002;
+        this.wiimotes[1].connection_handle = 0x0101;
     }
 
     DList!(u8[]) pending_hci;
@@ -466,12 +483,37 @@ final class Bluetooth {
         } else {
             import std.stdio : writefln;
             writefln("BT ACL request: %s %s", direction, data.to_hex_string);
-            u16 requested_connection_handle = data[1] & 0xF; // ?????
+            u16 requested_connection_handle = data.read_le!u16(0).bits(0, 11);
             Wiimote wiimote = get_wiimote_by_connection_handle(requested_connection_handle);
             wiimote.handle_l2cap(data);
 
-            u8[] response = [0x13, 0x15, 0x05, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x03, 0x01, 0x00, 0x00, 0x04, 0x01, 0x00, 0x00];
-            send_hci_response(response);
+            HciAclPacketCountResponse response = {
+                event_code: HciEventCode.NumberOfCompletedPackets,
+                parameter_length: 21,
+                num_handles: 5,
+                handle_data: []
+            };
+
+            for (int i = 0; i < 5; i++) {
+                HciAclPacketCountResponse.HandleData handle_data = {
+                    connection_handle: 0,
+                    num_acl_packets: 0
+                };
+
+                response.handle_data[i] = handle_data;
+            }
+
+            for (int i = 0; i < 2; i++) {
+                HciAclPacketCountResponse.HandleData handle_data = {
+                    connection_handle: wiimotes[i].connection_handle,
+                    num_acl_packets: cast(u16) wiimotes[i].num_acl_packets_processed
+                };
+
+                wiimotes[i].num_acl_packets_processed = 0;                
+                response.handle_data[i] = handle_data;
+            }
+
+            send_hci_response(struct_to_bytes(response));
             ipc_response_queue.push_later(paddr, 0, 10_000);
         }
 
@@ -832,13 +874,13 @@ final class Bluetooth {
         };
         send_hci_response(struct_to_bytes(status_response));
         
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciModeChangeEvent mode_response = {
             event_code: HciEventCode.ModeChange,
             parameter_length: 6,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle),
+            connection_handle: requested_connection_handle,
             current_mode: 0x02,
             interval: u16_be(0x0800)
         };
@@ -847,7 +889,7 @@ final class Bluetooth {
 
     void hci_control_request_link_accept_connection(u8[] data) {
         u8[6] connected_bdaddr = data[3..9];
-        u16 connection_handle = connected_bdaddr[5] + 1;
+        u16 connection_handle = connected_bdaddr[5] + 0x100;
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
@@ -871,7 +913,7 @@ final class Bluetooth {
             event_code: HciEventCode.ConnectionComplete,
             parameter_length: 11,
             status: 0x00,
-            connection_handle: u16_be(connection_handle),
+            connection_handle: connection_handle,
             bd_addr: connected_bdaddr,
             link_type: 0x01,
             encryption_enabled: 0x00
@@ -909,7 +951,7 @@ final class Bluetooth {
     }
 
     void hci_control_request_link_get_clock_offset(u8[] data) {
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
@@ -924,21 +966,21 @@ final class Bluetooth {
             event_code: HciEventCode.ReadClockOffsetComplete,
             parameter_length: 5,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle),
+            connection_handle: requested_connection_handle,
             clock_offset: u16_le(0x3818)
         };
         send_hci_response(struct_to_bytes(offset_response));
     }
 
     void hci_control_request_link_get_lmp_subversion(u8[] data) {
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
             status: 0x00,
             num_hci_command_packets: 1,
-            command_opcode: u16_le(cast(u16)HciCommandOpcode.ReadRemoteVersionInformation)
+            command_opcode: cast(u16) HciCommandOpcode.ReadRemoteVersionInformation
         };
         send_hci_response(struct_to_bytes(status_response));
         
@@ -946,16 +988,16 @@ final class Bluetooth {
             event_code: HciEventCode.ReadRemoteVersionInformationComplete,
             parameter_length: 8,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle),
+            connection_handle: requested_connection_handle,
             lmp_pal_version: 0x02,
-            manufacturer_name: u16_le(0x000F),
-            lmp_pal_subversion: u16_le(0x0229)
+            manufacturer_name: 0x000F,
+            lmp_pal_subversion: 0x0229
         };
         send_hci_response(struct_to_bytes(version_response));
     }
 
     void hci_control_request_link_useless_bullshit(u8[] data) {
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
@@ -970,21 +1012,21 @@ final class Bluetooth {
             event_code: HciEventCode.ReadRemoteSupportedFeaturesComplete,
             parameter_length: 11,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle),
+            connection_handle: requested_connection_handle,
             lmp_features: [0xbc, 0x02, 0x04, 0x38, 0x08, 0x00, 0x00, 0x00]
         };
         send_hci_response(struct_to_bytes(features_response));
     }
 
     void hci_control_request_link_change_packet_type(u8[] data) {
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
             status: 0x00,
             num_hci_command_packets: 1,
-            command_opcode: u16_le(cast(u16)HciCommandOpcode.ChangeConnectionPacketType)
+            command_opcode: u16_le(cast(u16) HciCommandOpcode.ChangeConnectionPacketType)
         };
         send_hci_response(struct_to_bytes(status_response));
         
@@ -992,21 +1034,21 @@ final class Bluetooth {
             event_code: HciEventCode.ConnectionPacketTypeChanged,
             parameter_length: 5,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle),
+            connection_handle: requested_connection_handle,
             packet_type: u16_le(0xcc18)
         };
         send_hci_response(struct_to_bytes(packet_response));
     }
 
     void hci_control_request_link_auth_complete(u8[] data) {
-        u16 requested_connection_handle = cast(u16) (data[3] << 8 | data[4]);
+        u16 requested_connection_handle = data.read_le!u16(3);
 
         HciCommandStatusEvent status_response = {
             event_code: HciEventCode.CommandStatus,
             parameter_length: 4,
             status: 0x00,
             num_hci_command_packets: 1,
-            command_opcode: u16_le(cast(u16)HciCommandOpcode.AuthenticationRequested)
+            command_opcode: u16_le(cast(u16) HciCommandOpcode.AuthenticationRequested)
         };
         send_hci_response(struct_to_bytes(status_response));
         
@@ -1014,7 +1056,7 @@ final class Bluetooth {
             event_code: HciEventCode.AuthenticationComplete,
             parameter_length: 3,
             status: 0x00,
-            connection_handle: u16_be(requested_connection_handle)
+            connection_handle: requested_connection_handle
         };
         send_hci_response(struct_to_bytes(auth_response));
     }
@@ -1025,7 +1067,7 @@ final class Bluetooth {
             parameter_length: 4,
             status: 0x00,
             num_hci_command_packets: 1,
-            command_opcode: u16_le(cast(u16)HciCommandOpcode.WriteLinkPolicySettings)
+            command_opcode: u16_le(cast(u16) HciCommandOpcode.WriteLinkPolicySettings)
         };
         send_hci_response(struct_to_bytes(status_response));
     }
@@ -1092,6 +1134,8 @@ final class Bluetooth {
     }
 
     void send_hci_response(u8[] data) {
+        import std.stdio;
+        writefln("send_hci_response to host: %s", data.to_hex_string);
         log_bluetooth("send_hci_response(%s)", data.to_hex_string);
         pending_hci ~= data;
     }

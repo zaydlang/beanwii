@@ -60,6 +60,7 @@ final class Wiimote {
 
     u8[6] bd_addr;
     u16 connection_handle;
+    int num_acl_packets_processed;
 
     struct IrDot {
         u16 x;
@@ -70,7 +71,7 @@ final class Wiimote {
     IrDot[2] ir_dots; 
 
     WiimoteExtension extension;
-
+    
     void connect_extension(WiimoteExtensionType extension_type) {
         this.extension = create_extension(extension_type);
     }
@@ -106,6 +107,8 @@ final class Wiimote {
             0x80, 0x80, 0x80, 0x00, 0x9a, 0x9a, 0x9a, 0x00, 0x00, 0xa3, 
             0x80, 0x80, 0x80, 0x00, 0x9a, 0x9a, 0x9a, 0x00, 0x00, 0xa3, 
         ];
+
+        num_acl_packets_processed = 0;
     }
 
     void connect_scheduler(Scheduler scheduler) {
@@ -133,7 +136,7 @@ final class Wiimote {
         state = WiimoteState.Connected;
     
         // L2CAP_CONNECT_REQ
-        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
+        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
     }
 
     bool is_connecting() {
@@ -149,6 +152,8 @@ final class Wiimote {
     }
 
     void handle_l2cap(u8[] data) {
+        num_acl_packets_processed++;
+
         WiimoteL2capCommand l2cap_command = *force_cast!(WiimoteL2capCommand*)(&data[4]);
         log_wiimote("L2CAP: " ~ data.to_hex_string);
         log_wiimote("channel: %s", l2cap_command.header.channel);
@@ -174,13 +179,11 @@ final class Wiimote {
 
     void handle_l2cap_config_req(u8[] data) {
         u8 channel = data[12];
-        // TODO: very wrong. figure out what is going on here.
         u8 dipshit = channel == 0x40 ? 1 : 2;
-        import std.stdio; writefln("channel: %02x dipshit: %02x", channel, dipshit);
 
-        channel += (connection_handle - 1) * 2;
-        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x16, 0x00, 0x12, 0x00, 0x01, 0x00, 0x05, dipshit, 0x0e, 0x00, channel, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80, 0x02, 0x02, 0x02, 0xff, 0xff]);
-        bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x10, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x04, 0x04, 0x08, 0x00, channel, 0x00, 0x00, 0x00, 0x01, 0x02, 0xb9, 0x00]);
+        channel += 2 * (connection_handle & 0xF);
+        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x16, 0x00, 0x12, 0x00, 0x01, 0x00, 0x05, dipshit, 0x0e, 0x00, channel, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80, 0x02, 0x02, 0x02, 0xff, 0xff]);
+        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x10, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x04, 0x04, 0x08, 0x00, channel, 0x00, 0x00, 0x00, 0x01, 0x02, 0xb9, 0x00]);
     }
 
     void handle_l2cap_config_rsp(u8[] data) {
@@ -189,7 +192,7 @@ final class Wiimote {
         import std.stdio; writefln("channel: %02x", channel);
 
         if (channel == 0x40) {
-            bluetooth.send_acl_response([0x00, 0x20 | connection_handle.get_byte(0), 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x13, 0x00, 0x41, 0x00]);
+            bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x13, 0x00, 0x41, 0x00]);
         } else {
             send_continuous_data_report_event_id = scheduler.add_event_relative_to_clock(&send_continuous_data_report, 100_000);
         }
@@ -476,7 +479,7 @@ final class Wiimote {
         log_wiimote("Sending input report response: %x", input_report.acknowledge_output_report.report_id);
         WiimoteL2capCommand l2cap_command = WiimoteL2capCommand(
             L2capCommandHeader(cast(ushort) wiimote_l2cap_size_minus_header, 
-            cast(u8) (Channel.WiimoteHID + (connection_handle - 1) * 2)),
+            cast(u8) (Channel.WiimoteHID + (connection_handle & 0xF) * 2)),
             ReportDirection.Input,
             input_report
         );
@@ -485,8 +488,8 @@ final class Wiimote {
         u8* ptr = cast(u8*) &l2cap_command;
 
         // l2cap shit
-        data[0] = 0x00; 
-        data[1] = 0x20 | connection_handle.get_byte(0);
+        data[0] = cast(u8) (connection_handle & 0xF); 
+        data[1] = 0x21;
         data[2] = cast(u8) ((l2cap_command.header.length + 4) & 0xff);
         data[3] = cast(u8) ((l2cap_command.header.length + 4) >> 8);
         
