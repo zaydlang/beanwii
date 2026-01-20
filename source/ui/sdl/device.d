@@ -699,7 +699,7 @@ class SdlDevice : MultiMediaDevice, Window {
             bool wiimote_connect_key_current = ctrl_pressed && shift_pressed && keyboard_state[SDL_SCANCODE_W] != 0;
             if (wiimote_connect_key_current && !wiimote_connect_key_pressed) {
                 wii.allow_next_wiimote_connection();
-                log_frontend("Requested new Wiimote connection");
+                writefln("Requested new Wiimote connection");
             }
             wiimote_connect_key_pressed = wiimote_connect_key_current;
 

@@ -66,6 +66,9 @@ layout (std140, binding = 1) uniform TevConfig {
 	uniform int alpha_ref1;
 	uniform int forced_alpha;
 	uniform int is_alpha_forced;
+    uniform float zbias;
+    uniform int ztexture_fmt;
+    uniform int ztexture_op;
 };
 
 vec4 color_regs[4];
@@ -219,6 +222,19 @@ vec3 get_parameter_for_alfa_stage(int idx, int stage) {
 	}
 }
 
+float read_ztexture(void) {
+	vec4 last_tex = sample_texture(num_tev_stages - 1);
+
+	// weird dolphin voodoo magic
+	switch (ztexture_fmt) {
+		case 0: return dot(last_tex, vec4(0, 0, 0, 1));
+		case 1: return dot(last_tex, vec4(1, 0, 0, 256));
+		case 2: return dot(last_tex, vec4(65536, 256, 1, 0));
+	}
+
+	return 0.0; // should never happen but ok
+}
+
 void main(void) {
 	vec3 last_color_dest;
 	float last_alfa_dest;
@@ -266,6 +282,8 @@ void main(void) {
 
 			bool cond = (op & 1) == 0 ? (operand_a > operand_b) : (operand_a == operand_b);
 			last_color_dest = cond ? cc : cd;
+		} else if (stages[i].color_op == 1) {
+			last_color_dest = (cd - ((1 - cc) * ca + cc * cb) + vec3(stages[i].bias_color)) * vec3(stages[i].scale_color);
 		} else {
 			last_color_dest = (cd + ((1 - cc) * ca + cc * cb) + vec3(stages[i].bias_color)) * vec3(stages[i].scale_color);
 		}
@@ -276,6 +294,8 @@ void main(void) {
 			int op = stages[i].alfa_op;
 			bool cond = (op & 1) == 0 ? (a_r > b_r) : (a_r == b_r);
 			last_alfa_dest = (cond ? ac : ad).r;
+		} else if (stages[i].alfa_op == 1) {
+			last_alfa_dest = ((ad - ((1 - ac) * aa + ac * ab) + vec3(stages[i].bias_alfa)) * vec3(stages[i].scale_alfa)).x;
 		} else {
 			last_alfa_dest = ((ad + ((1 - ac) * aa + ac * ab) + vec3(stages[i].bias_alfa)) * vec3(stages[i].scale_alfa)).x;
 		}
@@ -310,6 +330,21 @@ void main(void) {
 
 	out_Color0 = vec4(last_color_dest, is_alpha_forced != 0 ? forced_alpha / 255 : last_alfa_dest);
 	out_Color1 = vec4(0, 0, 0, last_alfa_dest);
+
+	if (ztexture_op != 0) {
+		float ztexture = read_ztexture();
+		
+		ztexture += zbias;
+		
+		if (ztexture_op == 1) {
+			ztexture += gl_FragCoord.z;
+		}
+
+		gl_FragDepth = ztexture;
+	} else {
+		gl_FragDepth = gl_FragCoord.z;
+	}
+
 	// out_Color = vec4(UV[0],UV[1],0,1);
 
 	// if (stages[0].in_alfa_a == 7 && stages[0].in_alfa_b == 7 && stages[0].in_alfa_c == 7 && stages[0].in_alfa_d == 6) {

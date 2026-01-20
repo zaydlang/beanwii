@@ -216,6 +216,7 @@ final class DSP {
         }
         
         if (value.bit(1)) {
+            log_dsp("DSP IRQ: CPU raising an interrupt to the DSP!");
             if (dsp_state.phase == DspPhase.Running) {
                 dsp_state.raise_interrupt();
             }
@@ -287,6 +288,7 @@ final class DSP {
         log_dsp("Write AR_DMA_SIZE<%s>[%d] = 0x%x (PC=0x%08x LR=0x%08x)", T.stringof, offset, value, interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         
         if (dsp_state.phase == DspPhase.Bootstrap && value != 0) {
+            log_dsp("DSP IRQ: bit 5");
             dsp_state.csr |= (1 << 5);
             log_dsp("DSP Bootstrap: Setting CSR bit 5 due to nonzero AR_DMA_SIZE write");
         }
@@ -449,6 +451,7 @@ final class DSP {
             }
             
             if (value == 1 && dsp_state.csr.bit(8)) {
+            log_dsp("DSP IRQ: bit 7");
                 dsp_state.csr |= 1 << 7;
                 log_dsp("DSP DIRQ: Processing interrupt request, raising CPU interrupt");
                 interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
@@ -528,10 +531,10 @@ final class DSP {
     }
 
     private void complete_dsp_dma() {
-        log_dsp("DSP DMA completed");
 
         if (dsp_state.csr.bit(4)) {
             dsp_state.csr |= 1 << 3;
+            log_dsp("DSP IRQ: bit 3");
             interrupt_controller.raise_processor_interface_interrupt(ProcessorInterfaceInterruptCause.DSP);
         }
     }

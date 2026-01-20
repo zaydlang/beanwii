@@ -289,8 +289,8 @@ static if (config_enable_debugger) {
         this.mem.cpu_write_u32(0x8000_3130, 0x935E_0000); // IOS IPC Buffer Start
         this.mem.cpu_write_u32(0x8000_3134, 0x9360_0000); // IOS IPC Buffer End
         this.mem.cpu_write_u32(0x8000_3138, 0x0000_0011); // Hollywood Version
-        this.mem.cpu_write_u32(0x8000_3140, 0x0035_161f); // IOS Version nsmbwii
-        // this.mem.cpu_write_u32(0x8000_3140, 0x0038_161e); // IOS Version galaxy2
+        // this.mem.cpu_write_u32(0x8000_3140, 0x0035_161f); // IOS Version nsmbwii
+        this.mem.cpu_write_u32(0x8000_3140, 0x0038_161e); // IOS Version galaxy2
         this.mem.cpu_write_u32(0x8000_3144, 0x0003_0310); // IOS Build Date (03/03/2010)
         this.mem.cpu_write_u32(0x8000_3148, 0x9360_0000); // IOS Reserved Heap Start
         this.mem.cpu_write_u32(0x8000_314C, 0x9362_0000); // IOS Reserved Heap End

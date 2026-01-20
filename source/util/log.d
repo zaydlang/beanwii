@@ -48,7 +48,7 @@ enum Whitelist = [
     // LogSource.VI,
     // LogSource.WBFS,
     // LogSource.WII,
-    LogSource.WIIMOTE,
+    // LogSource.WIIMOTE,
 
     LogSource.GPERF
 ];
@@ -119,8 +119,34 @@ static LogColor[LogSource] initialize_source_color_map()() {
     return source_color_map;
 }
 
+private noreturn error(LogSource log_source, Char, A...)(scope const(Char)[] fmt, LogColor color, A args) {
+    import core.runtime;
+    import core.stdc.stdlib;
+    import std.array;
+    import std.conv;
+    import std.format;
+    import std.stdio;
+
+    if (g_on_error_callback !is null) {
+        g_on_error_callback();
+    }
+
+    log!(log_source, Char, A)(fmt, color, args);
+
+    version (unittest) {
+    } else {
+        auto trace = defaultTraceHandler(null);
+        foreach (line; trace) {
+            import core.stdc.stdio;
+            printf("%.*s\n", cast(int) line.length, line.ptr);
+        }
+    }
+
+    abort();
+}
+
 // thanks https://github.com/dlang/phobos/blob/4239ed8ebd3525206453784908f5d37c82d338ee/std/outbuffer.d
-private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)[] fmt, LogColor color, A args) {
+private void log(LogSource log_source, Char, A...)(scope const(Char)[] fmt, LogColor color, A args) {
     import core.runtime;
     import core.stdc.stdlib;
     import std.array;
@@ -131,14 +157,8 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
     version (silent) {
         return;
     } else {
-        if (logging_paused && !fatal) {
+        if (logging_paused) {
             return;
-        }
-        
-        version (quiet) {
-            if (!fatal) {
-                return;
-            }
         }
 
         ulong timestamp = g_logger_scheduler ? g_logger_scheduler.get_current_time_relative_to_cpu() : 0;
@@ -146,28 +166,8 @@ private void log(LogSource log_source, bool fatal, Char, A...)(scope const(Char)
         string written_string = format(fmt, args);
         written_string = written_string.replace("\n", "\n" ~ prefix);
 
-        if (fatal && g_on_error_callback !is null) {
-            g_on_error_callback();
-        }
-
-        if (fatal) {
-            stderr.writef(prefix);
-            stderr.writefln(written_string);
-            version (unittest) {
-                assert(0);
-            } else {
-                auto trace = defaultTraceHandler(null);
-                foreach (line; trace) {
-                    import core.stdc.stdio;
-                    printf("%.*s\n", cast(int) line.length, line.ptr);
-                }
-
-                exit(-1);
-            }
-        } else {
-            writef(prefix);
-            writefln(written_string);
-        }
+        writef(prefix);
+        writefln(written_string);
     }
 }
 
@@ -217,21 +217,21 @@ static string generate_prettier_logging_functions() {
 
                 version (quiet) {
                 } else {
-                    log!(LogSource.%s, false, Char, A)(fmt, source_color_map[LogSource.%s], args);
+                    log!(LogSource.%s, Char, A)(fmt, source_color_map[LogSource.%s], args);
                 }
             }
         ".format(source_name.toLower(), source_name, source_name, source_name);
 
         mixed_in ~= "
-            public void error_%s(Char, A...)(scope const(Char)[] fmt, A args) {
-                log!(LogSource.%s, true, Char, A)(fmt, LogColor.RED, args);
+            public noreturn error_%s(Char, A...)(scope const(Char)[] fmt, A args) {
+                error!(LogSource.%s, Char, A)(fmt, LogColor.RED, args);
             }
         ".format(source_name.toLower(), source_name);
 
         mixed_in ~= "
             public void assert_%s(Char, A...)(bool condition, scope const(Char)[] fmt, A args) {
                 if (!condition) {
-                    log!(LogSource.%s, true, Char, A)(fmt, LogColor.RED, args);
+                    error!(LogSource.%s, Char, A)(fmt, LogColor.RED, args);
                 }
             }
         ".format(source_name.toLower(), source_name);

@@ -1,26 +1,36 @@
 module emu.hw.ipc.usb.l2cap;
 
-// more like l2crap am i right
-
 import util.endian;
 import util.number;
 
-enum {
-    L2CAP_CONNECT_RSP    = 0x3,
-    L2CAP_CONFIG_REQ     = 0x4,
-    L2CAP_CONFIG_RSP     = 0x5,
-    L2CAP_DISCONNECT_REQ = 0x6,
+struct AclPacket {
+    align(1):
+
+    u16  handle_and_flags;
+    u16  data_total_length;
+
+    WiimoteL2capCommand l2cap_command;
+}
+
+enum AclFlags : u16 {
+    PbContinuing          = 0x0000,
+    PbFirstAutoFlush      = 0x1000,
+    PbFirstNonFlushable   = 0x2000,
+    PbReserved            = 0x3000,
+
+    BcPointToPoint        = 0x0000, 
+    BcActiveBroadcast     = 0x4000,
+    BcParkedBroadcast     = 0x8000,
 }
 
 struct WiimoteL2capCommand {
     align(1):
 
     L2capCommandHeader header;
-    ReportDirection report_direction;
 
     union {
-        InputReport input_report;
-        OutputReport output_report;
+        WiimoteHidInterruptPayload hid_interrupt;
+        L2capSignalCommand         signal;
     }
 }
 
@@ -31,10 +41,21 @@ struct L2capCommandHeader {
     u16 channel;
 }
 
+struct WiimoteHidInterruptPayload {
+    align(1):
+
+    ReportDirection report_direction;
+
+    union {
+        InputReport input_report;
+        OutputReport output_report;
+    }
+}
+
 enum Channel : u16 {
-    // maybe inaccurate names but whatever
-    BluetoothHCI = 0x0001,
-    WiimoteHID   = 0x0041,
+    Signal       = 0x0001,
+    HIDControl   = 0x0040,
+    HIDInterrupt = 0x0041,
 }
 
 enum ReportDirection : u8 {
@@ -303,3 +324,105 @@ struct DataReport37 {
 }
 
 static assert(DataReport37.sizeof == 21);
+
+struct L2capSignalCommand {
+    align(1):
+
+    L2capSignalHeader header;
+
+    union {
+        L2capConnectionReq connection_req;
+        L2capConnectionRsp connection_rsp;
+        L2capConfigReq     config_req;
+        L2capConfigRsp     config_rsp;
+    }
+}
+
+struct L2capSignalHeader {
+    align(1):
+
+    SignalType signal_type;
+    u8         identifier;
+    u16        length;
+}
+
+enum SignalType : u8 {
+    ConnectReq    = 0x2,
+    ConnectRsp    = 0x3,
+    ConfigReq     = 0x4,
+    ConfigRsp     = 0x5,
+    DisconnectReq = 0x6,
+}
+
+struct L2capConnectionReq {
+    align(1):
+    PSM psm;
+    u16 source_channel;
+}
+
+struct L2capConnectionRsp {
+    align(1):
+    
+    u16 dest_channel;
+    u16 source_channel;
+    u16 result;
+    u16 status;
+}
+
+enum PSM : u16 {
+    Control   = 0x11,
+    Interrupt = 0x13,
+}
+
+struct L2capConfigReq {
+    align(1):
+    
+    u16 channel;
+    u16 flags;
+
+    // options follow (MTU, etc.) i don't really care about emulating this too well
+    // since im not supporting more than wiimote anyway
+}
+
+struct L2capConfigRsp {
+    align(1):
+    
+    u16 channel;
+    u16 flags;
+    u16 result;
+
+    // options follow
+}
+
+enum L2capConfigOptionType : u8 {
+    MTU          = 0x01,
+    FlushTimeout = 0x02,
+}
+
+struct L2capConfigOptionHeader {
+    align(1):
+
+    L2capConfigOptionType option_type;
+    u8                    length;
+}
+
+struct L2capConfigOptionMtu {
+    align(1):
+    u16 mtu;
+}
+
+struct L2capConfigOptionFlushTimeout {
+    align(1):
+    u16 flush_timeout;
+}
+
+struct L2capConfigOption {
+    align(1):
+
+    L2capConfigOptionHeader header;
+
+    union {
+        L2capConfigOptionMtu          mtu;
+        L2capConfigOptionFlushTimeout flush_timeout;
+    }
+}

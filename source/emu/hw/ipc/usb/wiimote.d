@@ -1,6 +1,7 @@
 module emu.hw.ipc.usb.wiimote;
 
 import emu.hw.ipc.usb.bluetooth;
+import emu.hw.ipc.usb.bluetooth_types;
 import emu.hw.ipc.usb.extensions.extension;
 import emu.hw.ipc.usb.extensions.nunchuk;
 import emu.hw.ipc.usb.l2cap;
@@ -8,6 +9,7 @@ import emu.hw.ipc.usb.extensions.extension;
 import emu.scheduler;
 import std.algorithm;
 import std.random;
+import core.stdc.string : memcpy;
 import util.array;
 import util.bitop;
 import util.endian;
@@ -68,6 +70,45 @@ final class Wiimote {
         bool valid;
     }
 
+    enum L2capChannelBindingState {
+        Unbound,
+        Connecting,
+        Bound,
+    }
+
+    struct L2capChannelBinding {
+        // All bindings start as unbound. When we send a ConnectReq, they go to Connecting.
+        // When we receive a ConnectRsp, they go to Bound.
+
+        L2capChannelBindingState state;
+
+        u16 source_channel;
+        u16 dest_channel;
+        PSM psm;
+    }
+
+    L2capChannelBinding[2] l2cap_channel_bindings;
+
+    L2capChannelBinding get_next_unbound_channel_binding() {
+        foreach (ref binding; l2cap_channel_bindings) {
+            if (binding.state == L2capChannelBindingState.Unbound) {
+                return binding;
+            }
+        }
+
+        error_wiimote("No unbound L2CAP channel bindings available");
+    }
+
+    bool all_channel_bindings_bound() {
+        foreach (ref binding; l2cap_channel_bindings) {
+            if (binding.state != L2capChannelBindingState.Bound) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     IrDot[2] ir_dots; 
 
     WiimoteExtension extension;
@@ -94,13 +135,6 @@ final class Wiimote {
         reporting_mode = 0x30;
         continuous_mode = ContinuousMode.Continuous;
 
-        // this.ram[0..42] = [
-        //     0xa1, 0xaa, 0x8b, 0x99, 0xae, 0x9e, 0x78, 0x30, 0xa7, 0x74, 0xd3, 
-        //     0xa1, 0xaa, 0x8b, 0x99, 0xae, 0x9e, 0x78, 0x30, 0xa7, 0x74, 0xd3, 
-        //     0x82, 0x82, 0x82, 0x15, 0x9c, 0x9c, 0x9e, 0x38, 0x40, 0x3e,
-        //     0x82, 0x82, 0x82, 0x15, 0x9c, 0x9c, 0x9e, 0x38, 0x49, 0x3e
-        // ];
-
         this.ram[0..42] = [
             0x7f, 0x5d, 0x03, 0x80, 0x5d, 0x80, 0xa2, 0xb8, 0x7f, 0xa2, 0x0c, 
             0x7f, 0x5d, 0x03, 0x80, 0x5d, 0x80, 0xa2, 0xb8, 0x7f, 0xa2, 0x0c, 
@@ -109,6 +143,22 @@ final class Wiimote {
         ];
 
         num_acl_packets_processed = 0;
+
+        l2cap_channel_bindings = [
+            L2capChannelBinding(
+                state: L2capChannelBindingState.Unbound,
+                source_channel: Channel.HIDControl,
+                dest_channel: 0,
+                psm: PSM.Control
+            ),
+
+            L2capChannelBinding(
+                state: L2capChannelBindingState.Unbound,
+                source_channel: Channel.HIDInterrupt,
+                dest_channel: 0,
+                psm: PSM.Interrupt
+            )
+        ];
     }
 
     void connect_scheduler(Scheduler scheduler) {
@@ -119,6 +169,10 @@ final class Wiimote {
         this.bluetooth = bluetooth;
     }
 
+    void enable_data_reporting() {
+        send_continuous_data_report_event_id = scheduler.add_event_relative_to_self(&send_continuous_data_report, 1_000_000);
+    }
+
     void send_continuous_data_report() {
         log_wiimote("Sending continuous data report");
 
@@ -127,16 +181,23 @@ final class Wiimote {
     }
 
     void start_connecting() {
+        import std.stdio;
+        writefln("Starting Wiimote connection");
         state = WiimoteState.Connecting;   
     }
 
     void finish_connecting() {
-        import std.stdio : writefln;
-        writefln("Wiimote connected");
+        // The remote has accepted our connection. Now we need to configure L2CAP channels.
+        // There's two PSMs we need to configure: Control (0x11) and Interrupt (0x13).
+        // Each PSM is configured by sending a ConnectReq signal. After the remote sends a 
+        // ConnectRsp, both sides exchange ConfigReq/ConfigRsp on the signalling channel: 
+        // we acknowledge their ConfigReq with success, MTU 0x0280 and a flush timeout of 
+        // 0xffff, then immediately send our own ConfigReq advertising the smaller 0x00b9 
+        // MTU real Wiimotes use. Once Control config is acknowledged we kick off the 
+        // Interrupt channel and repeat the config dance.
+
         state = WiimoteState.Connected;
-    
-        // L2CAP_CONNECT_REQ
-        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x11, 0x00, 0x40, 0x00]);
+        setup_channel_binding(get_next_unbound_channel_binding());
     }
 
     bool is_connecting() {
@@ -151,57 +212,192 @@ final class Wiimote {
         return state == WiimoteState.Disconnected;
     }
 
+    u8 current_identifier = 1;
+    u8 fresh_identifier() {
+        return current_identifier++;
+    }
+
+    void setup_channel_binding(L2capChannelBinding channel_binding) {
+        AclPacket acl_packet = AclPacket(
+            handle_and_flags: (connection_handle & 0x0FFF) | AclFlags.PbFirstNonFlushable,
+            data_total_length: 12,
+            l2cap_command: WiimoteL2capCommand(
+                header: L2capCommandHeader(
+                    length: 8,
+                    Channel.Signal,
+                ),
+                signal: L2capSignalCommand(
+                    header: L2capSignalHeader(
+                        signal_type: SignalType.ConnectReq,
+                        identifier: fresh_identifier(),
+                        length: 4
+                    ),
+                    connection_req: L2capConnectionReq(
+                        psm: channel_binding.psm,
+                        source_channel: channel_binding.source_channel
+                    )
+                )
+            )
+        );
+
+        bluetooth.send_acl_response(struct_to_bytes(acl_packet), 16);
+    }
+
     void handle_l2cap(u8[] data) {
         num_acl_packets_processed++;
 
-        WiimoteL2capCommand l2cap_command = *force_cast!(WiimoteL2capCommand*)(&data[4]);
-        log_wiimote("L2CAP: " ~ data.to_hex_string);
-        log_wiimote("channel: %s", l2cap_command.header.channel);
+        WiimoteL2capCommand* l2cap_command = cast(WiimoteL2capCommand*) data.ptr;
 
         final switch (l2cap_command.header.channel) {
-            case Channel.BluetoothHCI: handle_bluetooth_hci(data); break;
-            case Channel.WiimoteHID:   handle_wiimote_hid(l2cap_command); break;
+            case Channel.Signal:       handle_l2cap_signal(l2cap_command); break;
+            case Channel.HIDControl:   error_wiimote("L2CAP HID Control not implemented"); break;
+            case Channel.HIDInterrupt: handle_l2cap_hid(l2cap_command.hid_interrupt); break;
         }
     }
 
-    void handle_bluetooth_hci(u8[] data) {
-        final switch (data[8]) {
-            case L2CAP_CONNECT_RSP:    handle_l2cap_connect_rsp(data); break;
-            case L2CAP_CONFIG_REQ:     handle_l2cap_config_req(data);  break;
-            case L2CAP_CONFIG_RSP:     handle_l2cap_config_rsp(data);  break;
-            case L2CAP_DISCONNECT_REQ: error_wiimote("L2CAP_DISCONNECT_REQ not implemented"); break;
+    void handle_l2cap_signal(WiimoteL2capCommand* l2cap_command) {
+        L2capSignalCommand* command = &l2cap_command.signal;
+
+        final switch (command.header.signal_type) {
+            case SignalType.ConnectReq:    error_wiimote("L2CAP_CONNECT_REQ not implemented"); break;
+            case SignalType.ConnectRsp:    handle_l2cap_connect_rsp(command.connection_rsp); break;
+            case SignalType.ConfigReq:     handle_l2cap_config_req(command); break;
+            case SignalType.ConfigRsp:     handle_l2cap_config_rsp(); break;
+            case SignalType.DisconnectReq: error_wiimote("L2CAP_DISCONNECT_REQ not implemented"); break;
         }
     }
 
-    void handle_l2cap_connect_rsp(u8[] data) {
+    void handle_l2cap_connect_rsp(L2capConnectionRsp connection_rsp) {
+        L2capChannelBinding* binding = find_binding_by_source_channel(connection_rsp.source_channel);
 
+        if (!binding) {
+            error_wiimote("Unknown channel in ConnectRsp: %x", connection_rsp.source_channel);
+            return;
+        }
+
+        binding.dest_channel = connection_rsp.dest_channel;
+        binding.state        = L2capChannelBindingState.Bound;
+
+        send_config_req(binding.dest_channel);
     }
 
-    void handle_l2cap_config_req(u8[] data) {
-        u8 channel = data[12];
-        u8 dipshit = channel == 0x40 ? 1 : 2;
+    L2capChannelBinding* find_binding_by_source_channel(u16 source_channel) {
+        foreach (ref binding; l2cap_channel_bindings) {
+            if (binding.source_channel == source_channel) {
+                return &binding;
+            }
+        }
 
-        channel += 2 * (connection_handle & 0xF);
-        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x16, 0x00, 0x12, 0x00, 0x01, 0x00, 0x05, dipshit, 0x0e, 0x00, channel, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80, 0x02, 0x02, 0x02, 0xff, 0xff]);
-        bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x10, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x04, 0x04, 0x08, 0x00, channel, 0x00, 0x00, 0x00, 0x01, 0x02, 0xb9, 0x00]);
+        return null;
     }
 
-    void handle_l2cap_config_rsp(u8[] data) {
-        // TODO: also very wrong. figure out what is going on here.
-        u8 channel = data[12];
-        import std.stdio; writefln("channel: %02x", channel);
+    void handle_l2cap_config_req(L2capSignalCommand* command) {
+        L2capConfigReq* config_req = &command.config_req;
+        size_t options_length = command.header.length - L2capConfigReq.sizeof;
+        u8* config_options = (cast(u8*) config_req) + L2capConfigReq.sizeof;
 
-        if (channel == 0x40) {
-            bluetooth.send_acl_response([cast(u8) (connection_handle & 0xF), 0x21, 0x0c, 0x00, 0x08, 0x00, 0x01, 0x00, 0x02, 0x02, 0x04, 0x00, 0x13, 0x00, 0x41, 0x00]);
+        send_config_rsp(config_req, command.header.identifier, config_options, options_length);
+    }
+
+    void send_config_rsp(L2capConfigReq* config_req, u8 incoming_identifier, u8* config_options, size_t options_length) {
+        size_t config_rsp_options_size = options_length;
+        size_t l2cap_payload_length = L2capSignalHeader.sizeof + L2capConfigRsp.sizeof + config_rsp_options_size;
+        size_t data_total_length = l2cap_payload_length + L2capCommandHeader.sizeof;
+        size_t acl_packet_size = data_total_length + 4;
+
+        AclPacket acl_packet = AclPacket(
+            handle_and_flags: (connection_handle & 0x0FFF) | AclFlags.PbFirstNonFlushable,
+            data_total_length: cast(u16) data_total_length,
+            l2cap_command: WiimoteL2capCommand(
+                header: L2capCommandHeader(
+                    length: cast(u16) l2cap_payload_length,
+                    Channel.Signal,
+                ),
+                signal: L2capSignalCommand(
+                    header: L2capSignalHeader(
+                        signal_type: SignalType.ConfigRsp,
+                        identifier: incoming_identifier,
+                        length: cast(u16) (L2capConfigRsp.sizeof + config_rsp_options_size)
+                    ),
+                    config_rsp: L2capConfigRsp(
+                        channel: find_binding_by_source_channel(config_req.channel).dest_channel,
+                        flags: 0,
+                        result: 0
+                    )
+                )
+            )
+        );
+
+        u8[] config_rsp_data = new u8[acl_packet_size];
+        memcpy(&config_rsp_data[0], &acl_packet, data_total_length);
+
+        size_t rsp_options_offset = acl_packet_size - config_rsp_options_size;
+        memcpy(&config_rsp_data[rsp_options_offset], config_options, config_rsp_options_size);
+
+        bluetooth.send_acl_response(config_rsp_data, acl_packet_size);
+    }
+
+    void send_config_req(u16 channel) {
+        L2capConfigOption[] config_req_options = [
+            L2capConfigOption(
+                header: L2capConfigOptionHeader(
+                    option_type: L2capConfigOptionType.MTU,
+                    length: L2capConfigOptionMtu.sizeof
+                ),
+                mtu: L2capConfigOptionMtu(0x00b9)
+            )
+        ];
+
+        size_t config_req_options_size = config_req_options.length * L2capConfigOption.sizeof;
+        size_t l2cap_payload_length = L2capSignalHeader.sizeof + L2capConfigReq.sizeof + config_req_options_size;
+        size_t data_total_length = l2cap_payload_length + L2capCommandHeader.sizeof;
+        size_t total_size = data_total_length + config_req_options_size;
+        size_t acl_packet_size = data_total_length + 4;
+
+        AclPacket acl_packet = AclPacket(
+            handle_and_flags: (connection_handle & 0x0FFF) | AclFlags.PbFirstNonFlushable,
+            data_total_length: cast(u16) data_total_length,
+            l2cap_command: WiimoteL2capCommand(
+                header: L2capCommandHeader(
+                    length: cast(u16) l2cap_payload_length,
+                    Channel.Signal,
+                ),
+                signal: L2capSignalCommand(
+                    header: L2capSignalHeader(
+                        signal_type: SignalType.ConfigReq,
+                        identifier: fresh_identifier(),
+                        length: cast(u16) (L2capConfigReq.sizeof + config_req_options_size)
+                    ),
+                    config_req: L2capConfigReq(
+                        channel: channel,
+                        flags: 0
+                    )
+                )
+            )
+        );
+
+        u8[] config_req_data = new u8[acl_packet_size];
+        memcpy(&config_req_data[0], &acl_packet, data_total_length);
+
+        size_t req_options_offset = acl_packet_size - config_req_options_size;
+        u8* req_options_ptr = cast(u8*) config_req_options.ptr;
+        memcpy(&config_req_data[req_options_offset], req_options_ptr, config_req_options_size);
+
+        bluetooth.send_acl_response(config_req_data, acl_packet_size);
+    }
+
+    void handle_l2cap_config_rsp() {
+        if (all_channel_bindings_bound()) {
+            enable_data_reporting();
         } else {
-            send_continuous_data_report_event_id = scheduler.add_event_relative_to_clock(&send_continuous_data_report, 100_000);
+            setup_channel_binding(get_next_unbound_channel_binding());
         }
     }
 
-    void handle_wiimote_hid(WiimoteL2capCommand l2cap_command) {
-        final switch (l2cap_command.report_direction) {
-            case ReportDirection.Input:  handle_input_report (l2cap_command.input_report);  break;
-            case ReportDirection.Output: handle_output_report(l2cap_command.output_report); break;
+    void handle_l2cap_hid(WiimoteHidInterruptPayload l2cap_payload) {
+        final switch (l2cap_payload.report_direction) {
+            case ReportDirection.Input:  handle_input_report (l2cap_payload.input_report);  break;
+            case ReportDirection.Output: handle_output_report(l2cap_payload.output_report); break;
         }
     }
 
@@ -249,14 +445,6 @@ final class Wiimote {
 
     void handle_read_memory(u32 address, u16 size) {
         if (address >= ram.length || address + size > ram.length) {
-            // AcknowledgeOutputReport result;
-            // fill_button_state(&result);
-
-            // result.report_id = OutputReportId.ReadMemoryAndRegisters;
-            // result.error_code = 0x3;
-
-            // log_wiimote("Read memory out of bounds: %x, size: %d", address, size);
-            // send_input_report_response(InputReport(InputReportId.AcknowledgeOutputReport, acknowledge_output_report : result), AcknowledgeOutputReport.sizeof);
             ReadMemoryAndRegistersData result2;
             fill_button_state(&result2);
             result2.size_and_error = 0xf8;
@@ -380,10 +568,6 @@ final class Wiimote {
         this.continuous_mode = cast(ContinuousMode) (report.continuous_mode & 0x40);
         this.reporting_mode  = report.report_mode;
 
-        if (this.continuous_mode == ContinuousMode.Normal) {
-            // error_wiimote("Switching to normal mode. This is not supported yet.");
-        }
-
         if (this.reporting_mode.bits(4, 7) != 0x3) {
             error_wiimote("Data reporting mode is not 0x30 - 0x3f (%x)", this.reporting_mode);
         }
@@ -447,14 +631,9 @@ final class Wiimote {
         trivial_success(OutputReportId.SpeakerData);
     }
 
-    // TODO: make this less bad
     void fill_button_state(T)(T* result) {
         result.button_state[0] = button_state >> 8;
         result.button_state[1] = button_state & 0xff;
-        // bool rnd_up = uniform(0, 100, rnd) > 50;
-        // bool rnd_down = uniform(0, 100, rnd) > 50;
-        // result.button_state[0] |= rnd_up ? 0x02 : 0x00;
-        // result.button_state[0] |= rnd_down ? 0x01 : 0x00;
     }
 
     void fill_accelerometer_state(T)(T* result) {
@@ -474,32 +653,27 @@ final class Wiimote {
     }
 
     void send_input_report_response(InputReport input_report, size_t report_size) {
-        size_t wiimote_l2cap_size_minus_header = report_size + 2; // ReportDirection and ReportId
+        size_t l2cap_payload_length = report_size + 2; // ReportDirection + ReportId
+        size_t data_total_length = l2cap_payload_length + L2capCommandHeader.sizeof;
 
         log_wiimote("Sending input report response: %x", input_report.acknowledge_output_report.report_id);
-        WiimoteL2capCommand l2cap_command = WiimoteL2capCommand(
-            L2capCommandHeader(cast(ushort) wiimote_l2cap_size_minus_header, 
-            cast(u8) (Channel.WiimoteHID + (connection_handle & 0xF) * 2)),
-            ReportDirection.Input,
-            input_report
+
+        AclPacket acl_packet = AclPacket(
+            handle_and_flags: (connection_handle & 0x0FFF) | AclFlags.PbFirstNonFlushable,
+            data_total_length: cast(u16) data_total_length,
+            l2cap_command: WiimoteL2capCommand(
+                header: L2capCommandHeader(
+                    length: cast(u16) l2cap_payload_length, 
+                    channel: find_binding_by_source_channel(Channel.HIDInterrupt).dest_channel
+                ),
+                hid_interrupt: WiimoteHidInterruptPayload(
+                    report_direction: ReportDirection.Input,
+                    input_report: input_report
+                )
+            )
         );
 
-        u8[] data = new u8[l2cap_command.header.length + 8];
-        u8* ptr = cast(u8*) &l2cap_command;
-
-        // l2cap shit
-        data[0] = cast(u8) (connection_handle & 0xF); 
-        data[1] = 0x21;
-        data[2] = cast(u8) ((l2cap_command.header.length + 4) & 0xff);
-        data[3] = cast(u8) ((l2cap_command.header.length + 4) >> 8);
-        
-        for (size_t i = 0; i < l2cap_command.header.length + 4; i++) {
-            data[i + 4] = ptr[i];
-        }
-
-        log_wiimote("Sending input report response: %s", data.to_hex_string);
-
-        bluetooth.send_acl_response(data);
+        bluetooth.send_acl_response(struct_to_bytes(acl_packet), data_total_length + 4);
     }
 
     private u16 clamp_ir_x(int x) {
@@ -511,11 +685,6 @@ final class Wiimote {
     }
 
     private void fill_ir_basic(ref ubyte[10] dest) {
-        // if (!camera_enabled) {
-            // dest[] = 0;
-            // return;
-        // }
-
         u16 x1 = ir_dots[0].valid ? clamp_ir_x(ir_dots[0].x) : 0x3ff;
         u16 y1 = ir_dots[0].valid ? clamp_ir_y(ir_dots[0].y) : 0x3ff;
         u16 x2 = ir_dots[1].valid ? clamp_ir_x(ir_dots[1].x) : 0x3ff;
@@ -524,9 +693,9 @@ final class Wiimote {
         dest[0] = cast(ubyte) (x1 & 0xff);
         dest[1] = cast(ubyte) (y1 & 0xff);
         dest[2] = cast(ubyte) (((y1 >> 8) & 0x3) << 6 |
-                                ((x1 >> 8) & 0x3) << 4 |
-                                ((y2 >> 8) & 0x3) << 2 |
-                                ((x2 >> 8) & 0x3));
+                               ((x1 >> 8) & 0x3) << 4 |
+                               ((y2 >> 8) & 0x3) << 2 |
+                               ((x2 >> 8) & 0x3));
         dest[3] = cast(ubyte) (x2 & 0xff);
         dest[4] = cast(ubyte) (y2 & 0xff);
 
@@ -559,10 +728,7 @@ final class Wiimote {
 
     void send_data_report() {
         log_wiimote("Sending data report: %x", reporting_mode);
-        // if (reporting_mode != 0x30) {
-            // error_wiimote("Data reporting mode is not 0x30 (%x). This is not supported yet.", reporting_mode);
-        // }
-        // TODO
+
         switch (reporting_mode) {
             case 0x30:
                 DataReport30 data_report;

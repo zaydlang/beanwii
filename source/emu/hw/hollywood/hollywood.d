@@ -653,8 +653,12 @@ final class Hollywood {
         int gl_y = cast(int) y_orig; 
         int gl_width = cast(int) width;
         int gl_height = cast(int) height;
+
+        float far = viewport[5];
+        float near = viewport[5] - viewport[2];
         
         opengl_renderer.update_gl_viewport(gl_x, gl_y, gl_width, gl_height);
+        opengl_renderer.update_depth_range(near / 16777215.0f, far / 16777215.0f);
     }
 
     private void update_texture_matrices() {
@@ -1353,87 +1357,20 @@ final class Hollywood {
                 if (bp_data.bit(23)) {
                     int idx = (bp_register - 0xe0) / 2;
                     if (bp_register.bit(0)) {
-                        final switch (idx) {
-                        case 0: 
-                            opengl_renderer.set_tev_k(0, 2, bp_data.bits(0, 7) / 255.0f); 
-                            opengl_renderer.set_tev_k(0, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 1:
-                            opengl_renderer.set_tev_k(1, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(1, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 2:
-                            opengl_renderer.set_tev_k(2, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(2, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 3:
-                            opengl_renderer.set_tev_k(3, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(3, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        }
+                        opengl_renderer.set_tev_k(idx, 2, sext_32(bp_data.bits(0, 7), 11) / 255.0f); 
+                        opengl_renderer.set_tev_k(idx, 1, sext_32(bp_data.bits(12, 22), 11) / 255.0f);
                     } else {
-                        final switch (idx) {
-                        case 0: 
-                            opengl_renderer.set_tev_k(0, 0, bp_data.bits(0, 7) / 255.0f); 
-                            opengl_renderer.set_tev_k(0, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 1:
-                            opengl_renderer.set_tev_k(1, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(1, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 2:
-                            opengl_renderer.set_tev_k(2, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(2, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 3:
-                            opengl_renderer.set_tev_k(3, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_k(3, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        }
+                        opengl_renderer.set_tev_k(idx, 0, sext_32(bp_data.bits(0, 7), 11) / 255.0f); 
+                        opengl_renderer.set_tev_k(idx, 3, sext_32(bp_data.bits(12, 22), 11) / 255.0f);
                     }
                 } else {
+                    int idx = (bp_register - 0xe0) / 2;
                     if (bp_register.bit(0)) {
-                        int idx = (bp_register - 0xe1) / 2;
-                        // i dont trust D's memory layout
-                        final switch (idx) {
-                        case 0: 
-                            opengl_renderer.set_tev_reg(0, 2, bp_data.bits(0, 7) / 255.0f); 
-                            opengl_renderer.set_tev_reg(0, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 1:
-                            opengl_renderer.set_tev_reg(1, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(1, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 2:
-                            opengl_renderer.set_tev_reg(2, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(2, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 3:
-                            opengl_renderer.set_tev_reg(3, 2, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(3, 1, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        }
+                        opengl_renderer.set_tev_reg(idx, 2, sext_32(bp_data.bits(0, 10), 11) / 255.0f); 
+                        opengl_renderer.set_tev_reg(idx, 1, sext_32(bp_data.bits(12, 22), 11) / 255.0f);
                     } else {
-                        int idx = (bp_register - 0xe0) / 2;
-                        // i dont trust D's memory layout
-                        final switch (idx) {
-                        case 0: 
-                            opengl_renderer.set_tev_reg(0, 0, bp_data.bits(0, 7) / 255.0f); 
-                            opengl_renderer.set_tev_reg(0, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 1:
-                            opengl_renderer.set_tev_reg(1, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(1, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 2:
-                            opengl_renderer.set_tev_reg(2, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(2, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        case 3:
-                            opengl_renderer.set_tev_reg(3, 0, bp_data.bits(0, 7) / 255.0f);
-                            opengl_renderer.set_tev_reg(3, 3, bp_data.bits(12, 19) / 255.0f);
-                            break;
-                        }
+                        opengl_renderer.set_tev_reg(idx, 0, sext_32(bp_data.bits(0, 10), 11) / 255.0f); 
+                        opengl_renderer.set_tev_reg(idx, 3, sext_32(bp_data.bits(12, 22), 11) / 255.0f);
                     }
                 }
                 break;
@@ -1455,8 +1392,13 @@ final class Hollywood {
                 opengl_renderer.set_tev_alpha_ref1(opengl_renderer.get_alpha_ref1());
                 break;
             
-            case 0xf4: .. case 0xf5:
-                log_hollywood("TEV_Z_ENV_%x: %08x", bp_register - 0xf4, bp_data);
+            case 0xf4:
+                opengl_renderer.set_zbias(bp_data.bits(0, 24) / 16777216.0); 
+                break;
+
+            case 0xf5:
+                opengl_renderer.set_ztexture_fmt(bp_data.bits(0, 1));
+                opengl_renderer.set_ztexture_op(bp_data.bits(2, 3));
                 break;
 
             case 0x80: .. case 0x83:
@@ -2148,6 +2090,7 @@ final class Hollywood {
         for (int i = 0; i < opengl_renderer.get_tev_num_stages(); i++) {
             if (enabled_textures.bit(i)) {
                 auto j = opengl_renderer.get_tev_config().stages[i].texmap;
+                opengl_renderer.gl_debug_marker("Loading texture for TEV stage %d (texture type %x)", i, opengl_renderer.get_texture_descriptor(j).type);
                 opengl_renderer.set_texture_id(j, texture_manager.load_texture(opengl_renderer.get_texture_descriptor(j), mem, gl_object_manager));
             }
         }

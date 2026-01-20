@@ -173,6 +173,10 @@ final class OpenGLRenderer {
 
         int forced_alpha;
         int is_alpha_forced;
+
+        float zbias;
+        int ztexture_fmt;
+        int ztexture_op;
     }
 
     struct TexConfig {
@@ -277,6 +281,8 @@ final class OpenGLRenderer {
         int viewport_height;
         int viewport_x;
         int viewport_y;
+        float viewport_near;
+        float viewport_far;
 
         int scissor_top;
         int scissor_bottom;
@@ -1209,6 +1215,27 @@ final class OpenGLRenderer {
             render_state.texture_descriptors[desc_idx].tex_matrix_slot = value;
         }
     }
+
+    void set_zbias(float value) {
+        if (render_state.tev_config.zbias != value) {
+            flush();
+            render_state.tev_config.zbias = value;
+        }
+    }
+
+    void set_ztexture_fmt(int value) {
+        if (render_state.tev_config.ztexture_fmt != value) {
+            flush();
+            render_state.tev_config.ztexture_fmt = value;
+        }
+    }
+
+    void set_ztexture_op(int value) {
+        if (render_state.tev_config.ztexture_op != value) {
+            flush();
+            render_state.tev_config.ztexture_op = value;
+        }
+    }
     
     void init_opengl() {
         enum SEGMENTS = 8;
@@ -1595,7 +1622,7 @@ final class OpenGLRenderer {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-            final switch (render_state.texture_descriptors[i].wrap_s) {
+            final switch (render_state.texture_descriptors[i].wrap_t) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     break;
@@ -1609,7 +1636,7 @@ final class OpenGLRenderer {
                     break;
             }
 
-            final switch (render_state.texture_descriptors[i].wrap_t) {
+            final switch (render_state.texture_descriptors[i].wrap_s) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     break;
@@ -1669,6 +1696,11 @@ final class OpenGLRenderer {
         );
 
         glViewport(render_state.viewport_x, 528 - render_state.viewport_y - render_state.viewport_height, render_state.viewport_width, render_state.viewport_height);
+        glDepthRange(
+            1.0, 0.0
+        );
+        
+        glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
     }
     
     void submit_geometry_to_opengl(ShapeGroup geometry, RenderState render_state) {
@@ -1839,6 +1871,18 @@ final class OpenGLRenderer {
         render_state.viewport_height = gl_height;
         render_state.viewport_x = gl_x;
         render_state.viewport_y = gl_y;
+    }
+
+    void update_depth_range(float near, float far) {
+        if (render_state.viewport_near != near ||
+            render_state.viewport_far != far) {
+            flush();
+            import std.stdio;
+            writefln("Updating depth range to near=%.6f far=%.6f", near, far);
+        }
+
+        render_state.viewport_near = near;
+        render_state.viewport_far = far;
     }
     
     void render_xfb() {

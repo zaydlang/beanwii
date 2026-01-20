@@ -108,6 +108,35 @@ mat4x3 get_normal_matrix(int index) {
 	);
 }
 
+float calculate_light_factor(ChannelControl cc, Light l, vec3 pos_view, vec3 n) {
+	vec3 diff = l.position.xyz - pos_view;
+	float d = length(diff);
+	vec3 ln = normalize(diff);
+
+	float diffuse = 1.0;
+	if (cc.diffuse_fn == 2) {
+		diffuse = max(dot(n, ln), 0.0);
+	} else if (cc.diffuse_fn == 1) {
+		diffuse = 0.5 * dot(n, ln) + 0.5;
+	}
+
+	float atten = 1.0;
+	if (cc.attenuation_fn == 3) {
+		float cosTheta = dot(normalize(l.direction.xyz), ln);
+		float num = max(l.dist_atten[2] * cosTheta * cosTheta + l.dist_atten[1] * cosTheta + l.dist_atten[0], 0.0);
+		float den = l.spec_atten[2] * d * d + l.spec_atten[1] * d + l.spec_atten[0];
+		atten = (den != 0.0) ? num / den : 0.0;
+	} else if (cc.attenuation_fn == 1) {
+		float ndh = clamp(dot(n, normalize(l.direction.xyz)), -1.0, 1.0);
+		float num = max(l.dist_atten[2] * ndh * ndh + l.dist_atten[1] * ndh + l.dist_atten[0], 0.0);
+		float den = l.spec_atten[2] * ndh * ndh + l.spec_atten[1] * ndh + l.spec_atten[0];
+		atten = (den != 0.0) ? num / den : 0.0;
+		diffuse = 1.0;
+	}
+
+	return atten * diffuse;
+}
+
 vec3 calculate_light_rgb(int i, vec3 pos_view, vec3 n) {
 	ChannelControl cc = color_channel_controls[i];
 
@@ -119,39 +148,31 @@ vec3 calculate_light_rgb(int i, vec3 pos_view, vec3 n) {
 		if ((cc.light_mask & (1 << j)) == 0) continue;
 
 		Light l = lights[j];
-		vec3 diff = l.position.xyz - pos_view;
-		float d = length(diff);
-		vec3 ln = normalize(diff);
+		float factor = calculate_light_factor(cc, l, pos_view, n);
 
-		float diffuse = 1.0;
-		if (cc.diffuse_fn == 2) {
-			diffuse = max(dot(n, ln), 0.0);
-		} else if (cc.diffuse_fn == 1) {
-			diffuse = 0.5 * dot(n, ln) + 0.5;
-		} // GX_DF_NONE leaves it at 1.0
-
-		float atten = 1.0;
-		if (cc.attenuation_fn == 3) {
-			float cosTheta = dot(normalize(l.direction.xyz), ln);
-			float num = max(l.dist_atten[2] * cosTheta * cosTheta + l.dist_atten[1] * cosTheta + l.dist_atten[0], 0.0);
-			float den = l.spec_atten[2] * d * d + l.spec_atten[1] * d + l.spec_atten[0];
-			atten = (den != 0.0) ? num / den : 0.0;
-		} else if (cc.attenuation_fn == 1) {
-			float ndh = clamp(dot(n, normalize(l.direction.xyz)), -1.0, 1.0);
-			float num = max(l.dist_atten[2] * ndh * ndh + l.dist_atten[1] * ndh + l.dist_atten[0], 0.0);
-			float den = l.spec_atten[2] * ndh * ndh + l.spec_atten[1] * ndh + l.spec_atten[0];
-			atten = (den != 0.0) ? num / den : 0.0;
-			diffuse = 1.0;
-		} // GX_AF_NONE leaves it at 1.0
-
-		light_func += atten * diffuse * l.color.rgb;
+		light_func += factor * l.color.rgb;
 	}
 
 	return light_func;
 }
 
-float calculate_light_a(int i) {
-	return 0.0;
+float calculate_light_a(int i, vec3 pos_view, vec3 n) {
+	ChannelControl ca = alpha_channel_controls[i];
+
+	float ambient = ca.ambient_src == 0 ? ambient_colors[i].a : in_color[i].a;
+
+	float light_func = ambient;
+
+	for (int j = 0; j < 8; ++j) {
+		if ((ca.light_mask & (1 << j)) == 0) continue;
+
+		Light l = lights[j];
+		float factor = calculate_light_factor(ca, l, pos_view, n);
+
+		light_func += factor * l.color.a;
+	}
+
+	return light_func;
 }
 
 void main(void) {
@@ -169,7 +190,7 @@ void main(void) {
 	vec3 pos_view = transform_matrix * vec4(in_Position, 1.0);
 	vec3 n = normalize(normal_transform * vec4(normal, 0.0));
 	gl_Position = MVP * vec4(pos_view, 1.0);
-	// gl_Position.z = -gl_Position.z;
+	gl_Position.z = - gl_Position.z;
 	
 	// texcoord calculations
 	for (int i = 0; i < 8; i++) {
@@ -207,7 +228,7 @@ void main(void) {
 			
 			vec4 light_func = vec4(
 				cc.enable == 0 ? vec3(1.0) : calculate_light_rgb(i, pos_view, n),
-				ca.enable == 0 ? 1.0 : calculate_light_a(i)
+				ca.enable == 0 ? 1.0 : calculate_light_a(i, pos_view, n)
 			);
 				
 			color_output[i] = material * light_func;
