@@ -95,6 +95,7 @@ struct Texture {
     float[12] dualtex_matrix;
     float[12] tex_matrix;
     bool normalize_before_dualtex;
+    int max_level;
 }
 
 struct RenderState {

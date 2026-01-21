@@ -230,6 +230,15 @@ final class OpenGLRenderer {
         float[12] dualtex_matrix;
         float[12] tex_matrix;
         bool normalize_before_dualtex;
+        int max_level;
+        u8 min_filter;
+        u8 mag_filter;
+        float min_lod;
+        float max_lod;
+        float lod_bias;
+        bool edge_lod;
+        bool bias_clamp;
+        u8 max_aniso;
     }
 
     struct RenderState {
@@ -754,6 +763,13 @@ final class OpenGLRenderer {
             render_state.texture[tex_idx].texture_id = value;
         }
     }
+
+    void set_texture_max_level(int tex_idx, int value) {
+        if (render_state.texture[tex_idx].max_level != value) {
+            flush();
+            render_state.texture[tex_idx].max_level = value;
+        }
+    }
     
     // TexConfig setters (for tex_configs[0-7])
     void set_tex_config_dualtex_matrix(int config_idx, float[12] value) {
@@ -1216,6 +1232,62 @@ final class OpenGLRenderer {
         }
     }
 
+    void set_texture_descriptor_min_filter(int desc_idx, u8 value) {
+        if (render_state.texture_descriptors[desc_idx].min_filter != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].min_filter = value;
+        }
+    }
+
+    void set_texture_descriptor_mag_filter(int desc_idx, u8 value) {
+        if (render_state.texture_descriptors[desc_idx].mag_filter != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].mag_filter = value;
+        }
+    }
+
+    void set_texture_descriptor_min_lod(int desc_idx, float value) {
+        if (render_state.texture_descriptors[desc_idx].min_lod != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].min_lod = value;
+        }
+    }
+
+    void set_texture_descriptor_max_lod(int desc_idx, float value) {
+        if (render_state.texture_descriptors[desc_idx].max_lod != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].max_lod = value;
+        }
+    }
+
+    void set_texture_descriptor_lod_bias(int desc_idx, float value) {
+        if (render_state.texture_descriptors[desc_idx].lod_bias != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].lod_bias = value;
+        }
+    }
+
+    void set_texture_descriptor_edge_lod(int desc_idx, bool value) {
+        if (render_state.texture_descriptors[desc_idx].edge_lod != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].edge_lod = value;
+        }
+    }
+
+    void set_texture_descriptor_bias_clamp(int desc_idx, bool value) {
+        if (render_state.texture_descriptors[desc_idx].bias_clamp != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].bias_clamp = value;
+        }
+    }
+
+    void set_texture_descriptor_max_aniso(int desc_idx, u8 value) {
+        if (render_state.texture_descriptors[desc_idx].max_aniso != value) {
+            flush();
+            render_state.texture_descriptors[desc_idx].max_aniso = value;
+        }
+    }
+
     void set_zbias(float value) {
         if (render_state.tev_config.zbias != value) {
             flush();
@@ -1563,6 +1635,30 @@ final class OpenGLRenderer {
             case 15: return GL_SET;
         }
     }
+
+    private uint gx_min_filter_to_gl(u8 min_filter) {
+        switch (min_filter) {
+            case 0: return GL_NEAREST;
+            case 1: return GL_LINEAR;
+            case 2: return GL_NEAREST_MIPMAP_NEAREST;
+            case 3: return GL_LINEAR_MIPMAP_NEAREST;
+            case 4: return GL_NEAREST_MIPMAP_LINEAR;
+            case 5: return GL_LINEAR_MIPMAP_LINEAR;
+            default: return GL_NEAREST;
+        }
+    }
+
+    private uint gx_mag_filter_to_gl(u8 mag_filter) {
+        return mag_filter == 0 ? GL_NEAREST : GL_LINEAR;
+    }
+
+    private float gx_aniso_to_float(u8 max_aniso) {
+        switch (max_aniso) {
+            case 1: return 2.0f;
+            case 2: return 4.0f;
+            default: return 1.0f;
+        }
+    }
     
     void apply_opengl_state(RenderState render_state) {
         glUseProgram(gl_program);
@@ -1613,16 +1709,29 @@ final class OpenGLRenderer {
         }
 
 
-        while (render_state.enabled_textures_bitmap != 0) {
-            int i = cast(int) render_state.enabled_textures_bitmap.bfs;
-            render_state.enabled_textures_bitmap &= ~(1 << i);
+        int enabled = render_state.enabled_textures_bitmap;
+        while (enabled != 0) {
+            int i = cast(int) enabled.bfs;
+            enabled &= ~(1 << i);
 
             glActiveTexture(GL_TEXTURE0 + i);
             glBindTexture(GL_TEXTURE_2D, render_state.texture[i].texture_id);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            auto desc = render_state.texture_descriptors[i];
 
-            final switch (render_state.texture_descriptors[i].wrap_t) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gx_mag_filter_to_gl(desc.mag_filter));
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gx_min_filter_to_gl(desc.min_filter));
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, desc.min_lod);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, desc.max_lod);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, desc.lod_bias);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, max(render_state.texture[i].max_level, 0));
+            float aniso = gx_aniso_to_float(desc.max_aniso);
+            if (aniso > 1.0f) {
+                enum GL_TEXTURE_MAX_ANISOTROPY_EXT = 0x84FE;
+                glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+            }
+
+            final switch (desc.wrap_t) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     break;
@@ -1636,7 +1745,7 @@ final class OpenGLRenderer {
                     break;
             }
 
-            final switch (render_state.texture_descriptors[i].wrap_s) {
+            final switch (desc.wrap_s) {
                 case TextureWrap.Clamp:
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     break;

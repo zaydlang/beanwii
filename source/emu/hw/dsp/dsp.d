@@ -39,7 +39,7 @@ final class DSP {
         jit = new DspJit();
         jit.set_dsp_instance(this);
         dsp_state = DspState();
-        accelerator = new DSPAccelerator();
+        accelerator = new DSPAccelerator(&dsp_state);
 
         dsp_state.wr[0] = 0xffff;
         dsp_state.wr[1] = 0xffff;
@@ -192,12 +192,12 @@ final class DSP {
     T read_DSP_CSR(T)(int offset) {
         u16 csr_value = dsp_state.csr;
         
-        if (dsp_state.interrupt_pending) {
+        if (dsp_state.external_interrupt_pending()) {
             csr_value |= (1 << 3);
         }
         
         log_dsp("Read DSP_CSR<%s>[%d] -> 0x%x (interrupt_pending=%s) (PC=0x%08x LR=0x%08x)", 
-                T.stringof, offset, csr_value, dsp_state.interrupt_pending, 
+                T.stringof, offset, csr_value, dsp_state.external_interrupt_pending(), 
                 interrupt_controller.broadway.state.pc, interrupt_controller.broadway.state.lr);
         return cast(T) csr_value;
     }
@@ -218,7 +218,7 @@ final class DSP {
         if (value.bit(1)) {
             log_dsp("DSP IRQ: CPU raising an interrupt to the DSP!");
             if (dsp_state.phase == DspPhase.Running) {
-                dsp_state.raise_interrupt();
+                dsp_state.raise_exception(ExceptionType.ExternalInterrupt);
             }
         }
         

@@ -261,7 +261,7 @@ final class Hollywood {
         GLuint result_texture = opengl_renderer.copy_efb_to_texture(tex_copy_format, mipmap);
         
         texture_manager.invalidate_texture_at_address(dest_addr);
-        texture_manager.cache_gpu_texture(dest_addr, result_texture);
+        texture_manager.cache_gpu_texture(dest_addr, result_texture, 0);
         
         // Skip CPU-based processing since we're keeping texture on GPU
         
@@ -1123,6 +1123,26 @@ final class Hollywood {
         ubyte* ptr = mem.translate_address(address);
         process_fifo(ptr, size);
     }
+
+    private u8 decode_min_filter(u32 hw) {
+        switch (hw) {
+            case 0x0: return 0;
+            case 0x4: return 1;
+            case 0x1: return 2;
+            case 0x5: return 3;
+            case 0x2: return 4;
+            case 0x6: return 5;
+            default:  return 0;
+        }
+    }
+
+    private float decode_lod_bias(u32 bits) {
+        int raw = cast(int) bits;
+        if (raw & 0x80) {
+            raw -= 0x100;
+        }
+        return raw / 32.0f;
+    }
     
 
     void handle_new_bp_write(u32 value) {
@@ -1402,14 +1422,42 @@ final class Hollywood {
                 break;
 
             case 0x80: .. case 0x83:
-                opengl_renderer.set_texture_descriptor_wrap_s(bp_register - 0x80, cast(TextureWrap) bp_data.bits(0, 1));
-                opengl_renderer.set_texture_descriptor_wrap_t(bp_register - 0x80, cast(TextureWrap) bp_data.bits(2, 3));
+                int idx80 = bp_register - 0x80;
+                opengl_renderer.set_texture_descriptor_wrap_s(idx80, cast(TextureWrap) bp_data.bits(0, 1));
+                opengl_renderer.set_texture_descriptor_wrap_t(idx80, cast(TextureWrap) bp_data.bits(2, 3));
+                opengl_renderer.set_texture_descriptor_mag_filter(idx80, bp_data.bit(4));
+                opengl_renderer.set_texture_descriptor_min_filter(idx80, decode_min_filter(bp_data.bits(5, 7)));
+                opengl_renderer.set_texture_descriptor_edge_lod(idx80, bp_data.bit(8) == 0);
+                opengl_renderer.set_texture_descriptor_lod_bias(idx80, decode_lod_bias(bp_data.bits(9, 16)));
+                opengl_renderer.set_texture_descriptor_max_aniso(idx80, cast(u8) bp_data.bits(19, 20));
+                opengl_renderer.set_texture_descriptor_bias_clamp(idx80, bp_data.bit(21));
                 break;
 
             case 0xa0: .. case 0xa3:
-                opengl_renderer.set_texture_descriptor_wrap_s(bp_register - 0xa0 + 4, cast(TextureWrap) bp_data.bits(0, 1));
-                opengl_renderer.set_texture_descriptor_wrap_t(bp_register - 0xa0 + 4, cast(TextureWrap) bp_data.bits(2, 3));
+                int idxa0 = bp_register - 0xa0 + 4;
+                opengl_renderer.set_texture_descriptor_wrap_s(idxa0, cast(TextureWrap) bp_data.bits(0, 1));
+                opengl_renderer.set_texture_descriptor_wrap_t(idxa0, cast(TextureWrap) bp_data.bits(2, 3));
+                opengl_renderer.set_texture_descriptor_mag_filter(idxa0, bp_data.bit(4));
+                opengl_renderer.set_texture_descriptor_min_filter(idxa0, decode_min_filter(bp_data.bits(5, 7)));
+                opengl_renderer.set_texture_descriptor_edge_lod(idxa0, bp_data.bit(8) == 0);
+                opengl_renderer.set_texture_descriptor_lod_bias(idxa0, decode_lod_bias(bp_data.bits(9, 16)));
+                opengl_renderer.set_texture_descriptor_max_aniso(idxa0, cast(u8) bp_data.bits(19, 20));
+                opengl_renderer.set_texture_descriptor_bias_clamp(idxa0, bp_data.bit(21));
                 break;
+
+            case 0x84: .. case 0x87: {
+                int idx = bp_register - 0x84;
+                opengl_renderer.set_texture_descriptor_min_lod(idx, bp_data.bits(0, 7) / 16.0f);
+                opengl_renderer.set_texture_descriptor_max_lod(idx, bp_data.bits(8, 15) / 16.0f);
+                break;
+            }
+
+            case 0xa4: .. case 0xa7: {
+                int idx = bp_register - 0xa4 + 4;
+                opengl_renderer.set_texture_descriptor_min_lod(idx, bp_data.bits(0, 7) / 16.0f);
+                opengl_renderer.set_texture_descriptor_max_lod(idx, bp_data.bits(8, 15) / 16.0f);
+                break;
+            }
             
             case 0x45:
                 log_hollywood("PE interrupt: %08x", bp_data);
@@ -2091,7 +2139,9 @@ final class Hollywood {
             if (enabled_textures.bit(i)) {
                 auto j = opengl_renderer.get_tev_config().stages[i].texmap;
                 opengl_renderer.gl_debug_marker("Loading texture for TEV stage %d (texture type %x)", i, opengl_renderer.get_texture_descriptor(j).type);
-                opengl_renderer.set_texture_id(j, texture_manager.load_texture(opengl_renderer.get_texture_descriptor(j), mem, gl_object_manager));
+                auto loaded = texture_manager.load_texture(opengl_renderer.get_texture_descriptor(j), mem, gl_object_manager);
+                opengl_renderer.set_texture_id(j, loaded.texture_id);
+                opengl_renderer.set_texture_max_level(j, loaded.max_level);
             }
         }
 

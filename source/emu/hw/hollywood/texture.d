@@ -13,6 +13,8 @@ import util.lru;
 import util.number;
 import util.page_allocator;
 import util.perfect_bloom_filter_dict;
+import std.math;
+import std.algorithm;
 
 struct TextureDescriptor {
     size_t width;
@@ -27,6 +29,15 @@ struct TextureDescriptor {
 
     int dualtex_matrix_slot;
     int tex_matrix_slot;
+
+    u8 min_filter;
+    u8 mag_filter;
+    float min_lod;
+    float max_lod;
+    float lod_bias;
+    bool edge_lod;
+    bool bias_clamp;
+    u8 max_aniso;
 }
 
 enum TextureType {
@@ -72,6 +83,12 @@ enum TexcoordSource {
     struct TextureCacheEntry {
         int texture_id;
         u32 address;
+        int max_level;
+    }
+
+    struct LoadedTexture {
+        int texture_id;
+        int max_level;
     }
     
 final class TextureManager {
@@ -80,6 +97,7 @@ final class TextureManager {
     PageAllocator!(Color, false) texture_allocator;
     uint[256] gl_texture_ids;
     PerfectBloomFilterDict!GLuint gpu_texture_cache;
+    int[GLuint] texture_max_level;
     
     this() {
         glGenTextures(256, gl_texture_ids.ptr);
@@ -119,6 +137,13 @@ final class TextureManager {
         hash ^= height;
         hash ^= base_address;
         hash ^= cast(u64) descriptor.type;
+        hash ^= (cast(u64) descriptor.min_filter) << 32;
+        hash ^= (cast(u64) descriptor.mag_filter) << 36;
+        hash ^= (cast(u64) cast(int)(descriptor.min_lod * 256)) << 40;
+        hash ^= (cast(u64) cast(int)(descriptor.max_lod * 256)) << 48;
+        hash ^= (cast(u64) cast(int)(descriptor.lod_bias * 256)) << 54;
+        hash ^= (cast(u64) descriptor.edge_lod) << 60;
+        hash ^= (cast(u64) descriptor.max_aniso) << 61;
 
         return hash;
     }
@@ -531,57 +556,40 @@ final class TextureManager {
         return texture;
     }
 
-    int load_texture(TextureDescriptor descriptor, Mem mem, GlObjectManager gl_object_manager) {
+    LoadedTexture load_texture(TextureDescriptor descriptor, Mem mem, GlObjectManager gl_object_manager) {
         if (texture_allocator.length == 0) {
             texture_allocator = PageAllocator!(Color, false)(0);
         }
 
         u32 cached_texture_id;
         if (gpu_texture_cache.get(cast(u64) descriptor.base_address, cached_texture_id)) {
-            return cached_texture_id;
+            int cached_level = 0;
+            if (cached_texture_id in texture_max_level) {
+                cached_level = texture_max_level[cached_texture_id];
+            }
+            return LoadedTexture(cast(int) cached_texture_id, cached_level);
         }
 
         u64 hash = calculate_texture_hash(descriptor, mem);
         long cached_index = texture_cache.lookup(hash);
         if (cached_index != -1) {
             TextureCacheEntry entry = texture_cache.entries[cached_index].value;
-            return entry.texture_id;
+            return LoadedTexture(entry.texture_id, entry.max_level);
         }
 
         log_texture("Loading texture: %s", descriptor);
     
-        Color[] result;
-        switch (descriptor.type) {
-            case TextureType.I4:
-                result = load_texture_i4(descriptor, mem); break;
-            case TextureType.IA4:
-                result = load_texture_ia4(descriptor, mem); break;
-            case TextureType.I8:
-                result = load_texture_i8(descriptor, mem); break;
-            case TextureType.IA8:
-                result = load_texture_ia8(descriptor, mem); break;
-            case TextureType.Compressed:
-                result = load_texture_compressed(descriptor, mem); break;
-            case TextureType.RGB565:
-                result = load_texture_rgb565(descriptor, mem); break;
-            case TextureType.RGB5A3:
-                result = load_texture_rgb5a3(descriptor, mem); break;
-            case TextureType.RGBA32:
-                result = load_texture_rgba32(descriptor, mem); break;
-            default:
-                error_hollywood("Unsupported texture type: %d", descriptor.type);
-        }
-
         size_t cache_index = texture_cache.insert(hash);
         uint texture_id = gl_texture_ids[cache_index];
         
-        TextureCacheEntry entry = TextureCacheEntry(cast(int) texture_id, descriptor.base_address);
+        int level_count = upload_texture_levels(texture_id, descriptor, mem);
+
+        TextureCacheEntry entry = TextureCacheEntry(cast(int) texture_id, descriptor.base_address, level_count - 1);
         texture_cache.entries[cache_index].value = entry;
-        
-        glBindTexture(GL_TEXTURE_2D, texture_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cast(int) descriptor.width, cast(int) descriptor.height, 0, GL_BGRA, GL_UNSIGNED_BYTE, result.ptr);
+
+        texture_max_level[texture_id] = level_count - 1;
         // dump_texture_to_file(result, format("tex_%s_%s_%d_%d", descriptor.type, hash, descriptor.width, descriptor.height));
-        return cast(int) texture_id;
+        return LoadedTexture(cast(int) texture_id, level_count - 1);
     }
     
     void invalidate_texture_at_address(u32 address) {
@@ -594,9 +602,96 @@ final class TextureManager {
         }
     }
 
-    void cache_gpu_texture(u32 address, GLuint texture_id) {
+    void cache_gpu_texture(u32 address, GLuint texture_id, int max_level = 0) {
         gpu_texture_cache.set(address, texture_id);
+        texture_max_level[texture_id] = max_level;
         log_texture("Cached GPU texture %d at address 0x%08x", texture_id, address);
+    }
+
+private:
+    Color[] decode_texture_level(TextureDescriptor descriptor, Mem mem) {
+        final switch (descriptor.type) {
+            case TextureType.I4:       return load_texture_i4(descriptor, mem);
+            case TextureType.IA4:      return load_texture_ia4(descriptor, mem);
+            case TextureType.I8:       return load_texture_i8(descriptor, mem);
+            case TextureType.IA8:      return load_texture_ia8(descriptor, mem);
+            case TextureType.Compressed: return load_texture_compressed(descriptor, mem);
+            case TextureType.RGB565:   return load_texture_rgb565(descriptor, mem);
+            case TextureType.RGB5A3:   return load_texture_rgb5a3(descriptor, mem);
+            case TextureType.RGBA32:   return load_texture_rgba32(descriptor, mem);
+        }
+        error_hollywood("Unsupported texture type: %d", descriptor.type);
+        return null;
+    }
+
+    void block_info(TextureType type, out size_t block_w, out size_t block_h, out size_t bytes_per_block) {
+        final switch (type) {
+            case TextureType.I4:
+            case TextureType.Compressed:
+                block_w = 8; block_h = 8; bytes_per_block = 32; break;
+            case TextureType.I8:
+            case TextureType.IA4:
+                block_w = 8; block_h = 4; bytes_per_block = 32; break;
+            case TextureType.IA8:
+            case TextureType.RGB565:
+            case TextureType.RGB5A3:
+                block_w = 4; block_h = 4; bytes_per_block = 64; break;
+            case TextureType.RGBA32:
+                block_w = 4; block_h = 4; bytes_per_block = 128; break;
+        }
+    }
+
+    size_t calculate_mip_level_size(size_t width, size_t height, TextureType type) {
+        size_t block_w, block_h, bytes_per_block;
+        block_info(type, block_w, block_h, bytes_per_block);
+        size_t blocks_x = div_roundup(cast(int) width, cast(int) block_w);
+        size_t blocks_y = div_roundup(cast(int) height, cast(int) block_h);
+        return blocks_x * blocks_y * bytes_per_block;
+    }
+
+    int upload_texture_levels(uint texture_id, TextureDescriptor descriptor, Mem mem) {
+        glBindTexture(GL_TEXTURE_2D, texture_id);
+
+        bool wants_mips = descriptor.min_filter >= 2;
+
+        int max_possible_levels = 1;
+        size_t tmp_w = descriptor.width;
+        size_t tmp_h = descriptor.height;
+        while (tmp_w > 1 || tmp_h > 1) {
+            tmp_w = tmp_w > 1 ? (tmp_w >> 1) : 1;
+            tmp_h = tmp_h > 1 ? (tmp_h >> 1) : 1;
+            max_possible_levels++;
+        }
+
+        int max_level_from_desc = cast(int) floor(descriptor.max_lod + 0.5f);
+        if (max_level_from_desc < 0) {
+            max_level_from_desc = 0;
+        }
+
+        int level_limit = wants_mips ? min(max_possible_levels, max_level_from_desc + 1) : 1;
+
+        size_t width = descriptor.width;
+        size_t height = descriptor.height;
+        size_t offset = 0;
+        int level = 0;
+        for (; level < level_limit; level++) {
+            TextureDescriptor level_desc = descriptor;
+            level_desc.width = width;
+            level_desc.height = height;
+            level_desc.base_address = descriptor.base_address + cast(u32) offset;
+
+            auto data = decode_texture_level(level_desc, mem);
+            glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA, cast(int) width, cast(int) height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data.ptr);
+
+            offset += calculate_mip_level_size(width, height, descriptor.type);
+            width = width > 1 ? width / 2 : 1;
+            height = height > 1 ? height / 2 : 1;
+        }
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level - 1);
+
+        return level;
     }
 }
     

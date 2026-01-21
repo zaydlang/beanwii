@@ -1,5 +1,7 @@
 module emu.hw.dsp.accelerator;
 
+import core.bitop;
+import emu.hw.dsp.state;
 import emu.hw.memory.strategy.memstrategy;
 import util.number;
 import util.log;
@@ -20,8 +22,9 @@ final class DSPAccelerator {
     u16 acin_register;          // 0xFFDF
     
     Mem mem;
+    DspState* dsp_state;
 
-    this() {
+    this(DspState* dsp_state) {
         adpcm_coefficients[] = 0;
         format_register = 0;
         unknown1_register = 3;
@@ -34,6 +37,8 @@ final class DSPAccelerator {
         yn2_register = 0;
         gain_register = 0;
         acin_register = 0;
+
+        this.dsp_state = dsp_state;
     }
 
     u16 read_register(u16 address) {
@@ -186,6 +191,7 @@ final class DSPAccelerator {
         }
 
         if (current_addr >= end_addr) {
+            dsp_state.raise_exception(ExceptionType.AcceleratorSampleReadOverflow);
             done = true;
             current_addr = start_addr;
             return 0;

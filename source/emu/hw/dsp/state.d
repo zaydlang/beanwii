@@ -12,6 +12,15 @@ enum DspPhase {
     Running
 }
 
+enum ExceptionType {
+    Reset = 0,
+    StackOverflow = 1,
+    AcceleratorReadOverflow = 3,
+    AcceleratorWriteOverflow = 4,
+    AcceleratorSampleReadOverflow = 5,
+    ExternalInterrupt = 7
+}
+
 struct DspState {
     u16[4] ar;
     u16[4] ix;
@@ -96,18 +105,35 @@ struct DspState {
     u16 dsp_mailbox_hi = 0;
     u16 dsp_mailbox_lo = 0;
     
-    bool interrupt_pending;
 
-    void raise_interrupt() {
-        assert_dsp(!interrupt_pending, "Interrupt already pending");
-        interrupt_pending = true;
+    int pending_exceptions = 0;
+
+    void raise_exception(ExceptionType exception_type) {
+        pending_exceptions |= (1 << cast(int) exception_type);
     }
 
-    void handle_interrupt() {
+    bool external_interrupt_pending() {
+        return (pending_exceptions & (1 << cast(int) ExceptionType.ExternalInterrupt)) != 0;
+    }
+
+    bool should_take_exception() {
+        int allowed_exceptions = ~0;
+        if (!interrupts_enabled()) {
+            allowed_exceptions &= ~(1 << cast(int) ExceptionType.ExternalInterrupt);
+        }
+
+        return (pending_exceptions & allowed_exceptions) != 0;
+    }
+
+    void take_exception() {
+        assert_dsp(should_take_exception(), "No exception to take");
+
+        int exception_to_take = cast(int) bfs(pending_exceptions);
+        pending_exceptions &= ~(1 << exception_to_take);
+
         data_stack.push(peek_reg(19));
         call_stack.push(pc);
-        pc = 0xE;
-        interrupt_pending = false;
+        pc = cast(u16) (exception_to_take * 2);
     }
 
     bool interrupts_enabled() {

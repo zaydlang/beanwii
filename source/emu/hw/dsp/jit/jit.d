@@ -200,9 +200,8 @@ final class DspJit {
         u32 cycles_executed = 0;
         
         while (cycles_executed < max_cycles) {
-            if (state.interrupts_enabled() && state.interrupt_pending) {
-                // writefln("DSP JIT: Handling interrupt at PC=0x%04x", state.pc);
-                state.handle_interrupt();
+            if (state.should_take_exception()) {
+                state.take_exception();
                 cycles_executed++;
                 continue;
             }
