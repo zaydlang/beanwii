@@ -21,6 +21,7 @@ enum LogColor : string {
 
 enum Whitelist = [
     // LogSource.ACCELERATOR,
+    LogSource.APPLOADER,
     // LogSource.AI,
     // LogSource.USB,
     // LogSource.BLUETOOTH,
@@ -46,7 +47,7 @@ enum Whitelist = [
     // LogSource.TMP,
     // LogSource.USB,
     // LogSource.VI,
-    // LogSource.WBFS,
+    LogSource.WBFS,
     // LogSource.WII,
     // LogSource.WIIMOTE,
 
@@ -134,6 +135,7 @@ private noreturn error(LogSource log_source, Char, A...)(scope const(Char)[] fmt
     log!(log_source, Char, A)(fmt, color, args);
 
     version (unittest) {
+        assert(0);
     } else {
         auto trace = defaultTraceHandler(null);
         foreach (line; trace) {

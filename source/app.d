@@ -6,7 +6,9 @@ import emu.hw.disk.dol;
 import emu.hw.disk.readers.filereader;
 import emu.hw.disk.readers.dol;
 import emu.hw.disk.readers.wbfs;
+// import emu.hw.broadway.gdbstub;
 import emu.hw.wii;
+import config;
 import ui.cli;
 import ui.reng.device;
 import ui.sdl.device;
@@ -57,6 +59,14 @@ version (unittest) {} else {
 		}
 
 		parse_and_load_file(wii, disk_data);
+
+		if (config_enable_gdbstub) {
+			// if (cli_args.gdb_address) {
+				// start_gdbstub(wii, cli_args.gdb_address.get);
+				// log_gdb("GDB stub listening on %s", cli_args.gdb_address.get);
+			// }
+
+		}
 
 		bool hang_in_gdb_at_start = cli_args.hang_in_gdb_at_start;
 		if (hang_in_gdb_at_start) {

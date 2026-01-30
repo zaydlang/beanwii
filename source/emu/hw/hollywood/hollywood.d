@@ -70,7 +70,7 @@ final class Hollywood {
     private u32 display_list_size;
     
     private OpenGLRenderer opengl_renderer;
-    VertexDecodeState vertex_decode_state;
+    VertexFormat vertex_decode_state;
     VertexDecoder vertex_decoder;
 
     private int num_texgens;
@@ -928,7 +928,9 @@ final class Hollywood {
                     if (offset + 2 <= length) {
                         u16 data_value = read_from_fifo_data!u16(data, offset);
                         vertex_decode_state.number_of_expected_vertices = data_value;
-                        vertex_decode_state.bytes_per_vertex = size_of_incoming_vertex(vertex_decode_state.current_vat);
+                        vertex_decode_state.bytes_per_vertex = size_of_incoming_vertex(
+                            vertex_decode_state.vertex_descriptors[0],
+                            vertex_decode_state.vats[vertex_decode_state.current_vat]);
                         number_of_expected_bytes_for_shape = vertex_decode_state.bytes_per_vertex * vertex_decode_state.number_of_expected_vertices;
                         state = State.WaitingForVertexData;
                         cached_bytes_needed = number_of_expected_bytes_for_shape;
@@ -1632,98 +1634,6 @@ final class Hollywood {
         }
     }
 
-    private int size_of_incoming_vertex(int vat_idx) {
-        auto vcd = &vertex_decode_state.vertex_descriptors[0];
-        auto vat = &vertex_decode_state.vats[vat_idx];
-
-        int size = 0;
-
-        final switch (vcd.position_location) {
-            case VertexAttributeLocation.Direct:
-                size += vat.position_count * calculate_expected_size_of_coord(vat.position_format);
-                break;
-            case VertexAttributeLocation.Indexed8Bit:  
-                size += 1;
-                break;
-            case VertexAttributeLocation.Indexed16Bit: 
-                size += 2;
-                break;
-            case VertexAttributeLocation.NotPresent: break;
-        }
-
-        final switch (vcd.normal_location) {
-            case VertexAttributeLocation.Direct:
-                size += vat.normal_count * calculate_expected_size_of_normal(vat.normal_format);
-                break;
-            case VertexAttributeLocation.Indexed8Bit:
-                size += 1;
-                break;
-            case VertexAttributeLocation.Indexed16Bit:
-                size += 2;
-                break;
-            case VertexAttributeLocation.NotPresent: break;
-        }
-
-        final switch (vcd.position_normal_matrix_location) {
-            case VertexAttributeLocation.Direct:
-                size += 1;
-                // error_hollywood("Direct Matrix location not implemented");
-                break;
-    
-            case VertexAttributeLocation.Indexed8Bit:
-            case VertexAttributeLocation.Indexed16Bit: 
-                error_hollywood("Indexed Matrix location not implemented"); break;
-            case VertexAttributeLocation.NotPresent: break;
-        }
-
-        for (int i = 0; i < 8; i++) {
-            final switch (vcd.texcoord_matrix_location[i]) {
-                case VertexAttributeLocation.Direct:
-                    // error_hollywood("Direct Matrix location not implemented");
-                    size += 1;
-                    break;
-
-                case VertexAttributeLocation.Indexed8Bit:
-                case VertexAttributeLocation.Indexed16Bit:
-                    error_hollywood("Indexed Matrix location not implemented"); break;
-                
-                case VertexAttributeLocation.NotPresent: break;
-            }
-        }
-
-        for (int i = 0; i < 2; i++) {
-            final switch (vcd.color_location[i]) {
-                case VertexAttributeLocation.Direct:
-                    size += calculate_expected_size_of_color(vat.color_format[i]);
-                    break;
-                case VertexAttributeLocation.Indexed8Bit:
-                    size += 1;
-                    break;
-                case VertexAttributeLocation.Indexed16Bit:
-                    size += 2;
-                    break;
-                case VertexAttributeLocation.NotPresent: break;
-            }
-        }
-
-        for (int i = 0; i < 8; i++) {
-            final switch (vcd.texcoord_location[i]) {
-                case VertexAttributeLocation.Direct:
-                    size += vat.texcoord_count[i] * calculate_expected_size_of_coord(vat.texcoord_format[i]);
-                    break;
-                case VertexAttributeLocation.Indexed8Bit:
-                    size += 1;
-                    break;
-                case VertexAttributeLocation.Indexed16Bit:
-                    size += 2;
-                    break;
-                case VertexAttributeLocation.NotPresent: break;
-            }
-        }
-
-        return size;
-    }
-
     int the_men_we_see; 
     int the_men_you_see; 
     private void handle_new_transform_unit_write(u16 register, u32 value) {
@@ -2040,35 +1950,6 @@ final class Hollywood {
                     (cast(float) (value.bits(8, 15))) / 0xff,
                     (cast(float) (value.bits(0, 7))) / 0xff,
                 ];
-        }
-    }
-
-    private size_t calculate_expected_size_of_coord(CoordFormat format) {
-        final switch (format) {
-            case CoordFormat.U8:  return 1;
-            case CoordFormat.S8:  return 1;
-            case CoordFormat.U16: return 2;
-            case CoordFormat.S16: return 2;
-            case CoordFormat.F32: return 4;
-        }
-    }
-
-    private size_t calculate_expected_size_of_color(ColorFormat format) {
-        final switch (format) {
-            case ColorFormat.RGB565:   return 2;
-            case ColorFormat.RGB888:   return 3;
-            case ColorFormat.RGB888x:  return 4;
-            case ColorFormat.RGBA4444: return 2;
-            case ColorFormat.RGBA6666: return 3;
-            case ColorFormat.RGBA8888: return 4;
-        }
-    }
-
-    private size_t calculate_expected_size_of_normal(NormalFormat format) {
-        final switch (format) {
-            case NormalFormat.S8:  return 1;
-            case NormalFormat.S16: return 2;
-            case NormalFormat.F32: return 4;
         }
     }
 

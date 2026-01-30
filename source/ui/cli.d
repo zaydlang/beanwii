@@ -17,6 +17,7 @@ struct CliArgs {
     bool   install_segfault_handler;
     bool   use_bluetooth_wiimote;
     Nullable!WiimoteExtensionType extension;
+    // Nullable!string gdb_address;
 }
 
 CliArgs parse_cli_args(string[] args) {
@@ -31,6 +32,8 @@ CliArgs parse_cli_args(string[] args) {
         .add(new Option("e", "extension", "wiimote extension to attach (nunchuk)")
             .optional().defaultValue("none"))
         .add(new Flag("b", "bluetooth", "enable bluetooth wiimote support"))
+        .add(new Option("g", "gdb", "start gdbstub server (host:port)")
+            .optional())
         .parse(args);
 
     return CliArgs(
@@ -41,7 +44,8 @@ CliArgs parse_cli_args(string[] args) {
         to!bool(program.flag("record")),
         to!bool(program.flag("install_segfault_handler")),
         to!bool(program.flag("bluetooth")),
-        parse_extension(program.option("extension"))
+        parse_extension(program.option("extension")),
+        // program.option("gdb")
     );
 }
 

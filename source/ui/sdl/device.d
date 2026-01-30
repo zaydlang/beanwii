@@ -662,6 +662,14 @@ class SdlDevice : MultiMediaDevice, Window {
 
             logging_toggle_key_pressed = logging_toggle_key_current;
 
+            static bool error_toggle_key_pressed = false;
+            bool e_pressed = keyboard_state[SDL_SCANCODE_E] != 0;
+            bool error_toggle_key_current = ctrl_pressed && e_pressed;
+            if (error_toggle_key_current && !error_toggle_key_pressed) {
+                error_frontend("Frontend error requested via Ctrl+E");
+            }
+            error_toggle_key_pressed = error_toggle_key_current;
+
             static bool jit_dump_key_pressed = false;
             bool jit_dump_key_current = keyboard_state[SDL_SCANCODE_D] != 0 && 
                                        (keyboard_state[SDL_SCANCODE_LCTRL] != 0 || 

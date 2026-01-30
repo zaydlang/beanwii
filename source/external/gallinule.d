@@ -28,6 +28,10 @@ R8 cvt8(ushort T)(Reg!T r) {
     return cvt!(cast(ushort) 8, T)(r);
 }
 
+Reg!128 cvtxmm(ushort T)(Reg!T r) {
+    return cvt!(cast(ushort) 128, T)(r);
+}
+
 /* ====== ADDRESSING ====== */
 
 private enum Mode
@@ -127,18 +131,33 @@ ubyte[] generateModRM(ubyte OP, SRC, DST)(SRC src, DST dst)
 {
     import std.stdio;
     // // // //("generateModRM(ubyte OP, SRC, DST)(SRC src, DST dst) %x %s", src.size, dst);
+    if (src.rip) {
+        ModRM generateModRM;
+        generateModRM.src = 5 | OP;
+        generateModRM.dst = (dst.index % 8);
+        generateModRM.mod = cast(ubyte)Mode.Memory;
+        ubyte[] bytes;
+        bytes ~= cast(ubyte) generateModRM;
+        bytes ~= [cast(ubyte)0, cast(ubyte)0, cast(ubyte)0, cast(ubyte)0];
+        return bytes;
+    }
+
     if (src.size == 0)
-        return generateModRM!OP(DST(src.register), dst, Mode.Memory)~0x25~(cast(ubyte*)&src.offset)[0..uint.sizeof];
+        return generateModRM!OP(DST(src.register), dst, Mode.Memory)~
+            [cast(ubyte)0x25]~
+            (cast(ubyte*)&src.offset)[0..uint.sizeof];
     else
     {
-        if (src.offset == 0)
-            return generateModRM!OP(DST(src.register), dst, Mode.Memory);
-        else
+            if (src.offset == 0)
+                return generateModRM!OP(DST(src.register), dst, Mode.Memory);
+            else
         {
             if (src.offset < byte.max)
-                return generateModRM!OP(DST(src.register), dst, Mode.MemoryOffset8)~cast(ubyte)src.offset;
+                return generateModRM!OP(DST(src.register), dst, Mode.MemoryOffset8)~
+                    [cast(ubyte)src.offset];
             else
-                return generateModRM!OP(DST(src.register), dst, Mode.MemoryOffsetExt)~(cast(ubyte*)&src.offset)[0..uint.sizeof];
+                return generateModRM!OP(DST(src.register), dst, Mode.MemoryOffsetExt)~
+                    (cast(ubyte*)&src.offset)[0..uint.sizeof];
         }
     }
 }
@@ -156,7 +175,9 @@ ubyte[] generateModRM(ubyte OP, SRC, DST)(SRC src, DST dst, Mode mod = Mode.Regi
     generateModRM.mod = cast(ubyte)mod;
     import std.stdio;
     //("generateModRM(ubyte OP, SRC, DST)(SRC src, DST dst, Mode mod = Mode.Register) %x %x %x", generateModRM.b, src.index, dst.index);
-    return [generateModRM];
+    ubyte[] bytes;
+    bytes ~= cast(ubyte) generateModRM;
+    return bytes;
 }
 
 ubyte[] generateModRM(ubyte OP, SRC, DST)(SRC src, DST dst)
@@ -211,7 +232,7 @@ enum MSR = 7;
     Addresses: Address!(SIZE)
 
     If the instruction is an integer instruction: use VEXI, otherwise use VEX (like emit!(MODRM_OR, KIND)),
-    Emits are in the format emit(ubyte OP, ubyte SELECTOR = M, ubyte SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0)
+    Emits are in the format emit(ubyte OP, ubyte SELECTOR = M, ushort SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0)
     Map selection is specified by the part of the VEX prefix in docs after the width, ie:
         VEX.256.0F
             SIZE = 256
@@ -241,6 +262,9 @@ final:
     ubyte register;
     uint offset;
     ubyte segment = ds;
+    bool rip;
+    string rip_label;
+    ptrdiff_t rip_extra;
 
     this(T)(T register, ubyte segment, uint offset = 0)
         if (isInstanceOf!(Reg, T))
@@ -250,6 +274,7 @@ final:
         this.offset = offset;
         this.segment = segment;
         assert_gallinule(!(offset == 0 && register.index >= 8), "This is a known bug in gallinule.");
+        this.rip = false;
     }
 
     this(T)(T register, uint offset = 0)
@@ -262,6 +287,7 @@ final:
         assert_gallinule(!(offset == 0 && register.index >= 8), "This is a known bug in gallinule.");
         // // // //("Address(T)(T register, uint offset = 0) %x %x %s", this.size, this.offset, register);
         this.offset = offset;
+        this.rip = false;
     }
 
     this(uint offset, ubyte segment = ds)
@@ -270,6 +296,20 @@ final:
         this.register = 4;
         this.offset = offset;
         this.segment = segment;
+        this.rip = false;
+    }
+
+    static Address!SIZE ripAnchor(string label, ptrdiff_t extra = 0)
+    {
+        Address!SIZE result;
+        result.size = SIZE;
+        result.register = 5;
+        result.offset = 0;
+        result.segment = ds;
+        result.rip = true;
+        result.rip_label = label;
+        result.rip_extra = extra;
+        return result;
     }
 }
 
@@ -651,6 +691,13 @@ package:
 final:
     ptrdiff_t[string] labels;
     Tuple!(ptrdiff_t, string, string, bool)[] branches;
+    struct RipReference
+    {
+        ptrdiff_t position;
+        string label;
+        ptrdiff_t extra;
+    }
+    RipReference[] rip_references;
 
 public:
     ZaydAppender buffer;
@@ -658,9 +705,11 @@ public:
         buffer.deallocate();
         labels.clear();
         branches = [];
+        rip_references = [];
     }
 
-    template emit(ubyte OP, ubyte SELECTOR = M, ubyte SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0, bool cursed = false, bool imsolost = false)
+    template emit(ubyte OP, ubyte SELECTOR = M, ushort SIZE = 128, ubyte MAP = DEFAULT, ubyte PREFIX = 0, 
+        bool cursed = false, bool imsolost = false, bool fucking_wig = false)
     {
         size_t emit(ARGS...)(ARGS args)
         {
@@ -734,14 +783,14 @@ public:
                 {
                         // // // //("src.size %x", src.size);
 
-                    if ((X64 && src.size != 64) || (!X64 && src.size != 32))
+                    if (!src.rip && ((X64 && src.size != 64) || (!X64 && src.size != 32)))
                         buffer ~= 0x67;//~buffer;
                 }
 
                 static if (isInstanceOf!(Address, DST))
                 {
                         // // // //(".size %x", dst.size);
-                    if ((X64 && dst.size != 64) || (!X64 && dst.size != 32))
+                    if (!dst.rip && ((X64 && dst.size != 64) || (!X64 && dst.size != 32)))
                         buffer ~= 0x67;//~buffer;
                 }
 
@@ -872,14 +921,13 @@ public:
                 immutable bool l = SIZE != 128;
                 immutable ubyte pp = (PREFIX == 0x66) ? 1 : ((PREFIX == 0xf3) ? 2 : ((PREFIX == 0xf2) ? 3 : 0));
 
+                enum bool stor_is_rm = isInstanceOf!(Reg, STOR) || isInstanceOf!(Address, STOR);
                 static if (isInstanceOf!(Reg, STOR))
                 {
                     static if (isInstanceOf!(Reg, DST))
                         vvvv = cast(ubyte)~dst.index;
                     else static if (isInstanceOf!(Address, DST))
                         vvvv = cast(ubyte)~dst.register;
-
-                    dst = DST(stor.index);
                 }
                 else static if (isInstanceOf!(Address, STOR))
                 {
@@ -887,15 +935,24 @@ public:
                         vvvv = cast(ubyte)~dst.index;
                     else static if (isInstanceOf!(Address, DST))
                         vvvv = cast(ubyte)~dst.register;
-                        
-                    dst = DST(stor.register);
+                }
+                else static if (!stor_is_rm)
+                {
+                    // No NDS source; keep default vvvv (1111) unless DST implies otherwise.
                 }
 
                 bool has_address =  isInstanceOf!(Address, SRC) && !isInstanceOf!(Address, DST);
                 has_address |= cursed;
                 
                 // //("has_address: %s", has_address);
-                static if (isInstanceOf!(Reg, SRC))
+                static if (stor_is_rm)
+                {
+                    static if (isInstanceOf!(Reg, STOR))
+                        b |= stor.index >= 8;
+                    else static if (isInstanceOf!(Address, STOR))
+                        b |= stor.register >= 8;
+                }
+                else static if (isInstanceOf!(Reg, SRC))
                 {
                     // // //("    Reg1: %s %d", src, src.index);
                     // hasRex |= is(SRC == Reg!64) || (is(SRC == Reg!8) && src.extended) || src.index >= 8;
@@ -913,7 +970,14 @@ public:
                     b |= src.register >= 8;
                 }
                 
-                static if (isInstanceOf!(Reg, DST))
+                static if (stor_is_rm)
+                {
+                    static if (isInstanceOf!(Reg, SRC))
+                        r |= src.index >= 8;
+                    else static if (isInstanceOf!(Address, SRC))
+                        r |= src.register >= 8;
+                }
+                else static if (isInstanceOf!(Reg, DST))
                 {
                     // // //("  2  Reg: %s %d", dst, dst.index);
                     // hasRex |= is(DST == Reg!64) || (is(DST == Reg!8) && dst.extended) || dst.index >= 8;
@@ -969,7 +1033,9 @@ public:
                 // }
 
                 ubyte[] vex;
-                if (map_select != 1 || r || x || b || MAP == XOP)
+                // VEX2 can encode R (but not X/B or non-0F maps).
+                bool use_vex3 = map_select != 1 || x || b || MAP == XOP;
+                if (use_vex3)
                 {
                     static if (SELECTOR != VEXI)
                         we = false;
@@ -979,9 +1045,17 @@ public:
                 }
                 else
                     vex ~= 0xc5;
-                vex ~= we << 7 | (vvvv & 0b00001111) << 3 | (l ? 1 : 0) << 2 | (pp & 0b00000011);
+                
+                if (fucking_wig && use_vex3) {
+                    we = false;
+                }
+                ubyte vex_byte2 = (use_vex3 ? (we ? 0x80 : 0x00) : ((r ? 0 : 1) << 7));
+                vex_byte2 |= (vvvv & 0b00001111) << 3 | (l ? 1 : 0) << 2 | (pp & 0b00000011);
+                vex ~= vex_byte2;
+
+
                 buffer ~= vex;
-                // buffer = vex~buffer;
+
                 
                 // import std.stdio;
                 // static if (isInstanceOf!(Address, SRC))
@@ -1344,34 +1418,21 @@ import std.stdio;
             //     import std.stdio;
             //     //("%02x %02x %02x %02x %02x %02x %02x %02x", bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
             // }
-        // reverse(branches);
-        for (int i = cast(int) branches.length - 1; i >= 0; i--) {
+        import std.algorithm : sort;
+        branches.sort!((a, b) => a[0] < b[0]);
+        for (size_t i = 0; i < branches.length; i++) {
             auto branch = branches[i];
 
-            auto branch_address = labels[branch[1]];
-            auto next_instruction_address = branch[0];
-            auto rel = branch_address - next_instruction_address;
+            auto isRel8Only =
+                branch[2] == "loop" || branch[2] == "loope" || branch[2] == "loopne" ||
+                branch[2] == "jcxz" || branch[2] == "jecxz" || branch[2] == "jrcxz";
+            assert_gallinule(!isRel8Only, "rel8-only branch is not supported (forced rel32)");
 
-            bool isRel8 = rel <= byte.max && rel >= byte.min;
-            bool isRel16 = rel <= short.max && rel >= short.min;
-            auto opcode = branchMap[branch[2]~(isRel8 ? '1' : isRel16 ? '2' : '4')];
-
-            // For backward branches, subtract the size of the encoded instruction (opcode + disp)
-            // so the jump lands on the target instead of overshooting by its own length.
-            if (branch_address < next_instruction_address) {
-                auto disp_size = (isRel8 ? 1 : isRel16 ? 2 : 4);
-                rel -= (opcode.length + disp_size);
-            }
+            auto opcode = branchMap[branch[2]~'4'];
 
             ubyte[] jmp_buffer;
             jmp_buffer ~= opcode;
-
-            if (isRel8)
-                jmp_buffer ~= cast(ubyte)rel;
-            else if (isRel16)
-                jmp_buffer ~= (cast(ubyte*)&rel)[0..4];
-            else
-                jmp_buffer ~= (cast(ubyte*)&rel)[0..4];
+            jmp_buffer ~= [cast(ubyte)0, 0, 0, 0];
 
             this.buffer.insert_at(branch[0], jmp_buffer);
 
@@ -1380,10 +1441,66 @@ import std.stdio;
                     label += jmp_buffer.length;
                 }
             }
+
+            foreach (ref ripRef; rip_references) {
+                if (ripRef.position >= branch[0]) {
+                    ripRef.position += jmp_buffer.length;
+                }
+            }
+
+            for (size_t j = i + 1; j < branches.length; j++) {
+                if (branches[j][0] >= branch[0]) {
+                    branches[j][0] += jmp_buffer.length;
+                }
+            }
         }
 
+        foreach (ref branch; branches) {
+            auto isRel8Only =
+                branch[2] == "loop" || branch[2] == "loope" || branch[2] == "loopne" ||
+                branch[2] == "jcxz" || branch[2] == "jecxz" || branch[2] == "jrcxz";
+            assert_gallinule(!isRel8Only, "rel8-only branch is not supported (forced rel32)");
+
+            auto target_ptr = branch[1] in labels;
+            assert_gallinule(target_ptr !is null, "unknown label for branch");
+
+            auto opcode = branchMap[branch[2]~'4'];
+            auto target = *target_ptr;
+            ptrdiff_t rel = target - (cast(ptrdiff_t)branch[0] + opcode.length + 4);
+            auto relBytes = (cast(ubyte*)&rel)[0..4];
+            foreach (i; 0 .. relBytes.length) {
+                buffer.buffer[branch[0] + opcode.length + i] = relBytes[i];
+            }
+        }
+
+        foreach (ref ripRef; rip_references) {
+            auto target_ptr = ripRef.label in labels;
+            assert_gallinule(target_ptr !is null,
+                "unknown label for RIP reference");
+
+            auto target = *target_ptr;
+            ptrdiff_t rel = target + ripRef.extra - (ripRef.position + 4);
+            auto relBytes = (cast(ubyte*)&rel)[0..4];
+            foreach (i; 0 .. relBytes.length) {
+                buffer.buffer[ripRef.position + i] = relBytes[i];
+            }
+        }
+
+        rip_references = null;
         branches = null;
         return this.buffer.buffie();
+    }
+
+    void registerRipReference(ptrdiff_t position, string label, ptrdiff_t extra) {
+        rip_references ~= RipReference(position, label, extra);
+    }
+
+    void registerRipReferenceFrom(T)(T value) {
+        static if (isInstanceOf!(Address, T)) {
+            if (value.rip) {
+                registerRipReference(buffer.length - 4, value.rip_label, value.rip_extra);
+            }
+        }
     }
 
     auto label(string name) => labels[name] = buffer.length;
@@ -2386,6 +2503,8 @@ import std.stdio;
     auto unpcklpd(XMM dst, XMM src) => emit!(0, SSE)(0x66, 0x0f, 0x14, dst, src);
     auto shufps(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x0f, 0xc6, dst, src, imm8);
     auto shufpd(XMM dst, XMM src, ubyte imm8) => emit!(0, SSE)(0x66, 0x0f, 0xc6, dst, src, imm8);
+    auto vpunpcklqdq(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x6c, dst, src, stor);
+    auto vpunpcklqdq(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x6c, dst, src, stor);
 
     auto lfence() => emit!0(0x0f, 0xae, 0xe8);
     auto sfence() => emit!0(0x0f, 0xae, 0xf8);
@@ -2412,6 +2531,7 @@ import std.stdio;
     auto pmovsxwd(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE, 128, F38, 0x66)(0x23, dst, src);
     auto pmovzxbd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE, 128, F38, 0x66)(0x31, dst, src);
     auto pmovsxbd(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, SSE, 128, F38, 0x66)(0x21, dst, src);
+    auto vpshufb(RM)(YMM dst, YMM src, RM mask) if (valid!(RM, 256)) => emit!(0, VEX, 256, F38, 0x66, false, false, true)(0x00, dst, src, mask);
 
     auto rsqrtss(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, SSE)(0xf3, 0x0f, 0x52, dst, src);
     /* ====== SSE3 ====== */
@@ -2431,11 +2551,19 @@ import std.stdio;
     auto vpbroadcastq(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x59, dst, src);
     auto vpbroadcastd(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x58, dst, src);
     auto vbroadcastss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, VEX, 128, F38, 0x66)(0x18, dst, src);
+    auto vmovups(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0x10, dst, src);
+    auto vmovups(Address!128 dst, XMM src) => emit!(0, VEX, 128, DEFAULT, 0)(0x11, src, dst);
+    auto vmovups(RM)(YMM dst, RM src) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0)(0x10, dst, src);
+    auto vmovups(Address!256 dst, YMM src) => emit!(0, VEX, 256, DEFAULT, 0)(0x11, src, dst);
+    auto vcvtdq2ps(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0x5b, dst, src);
+    auto vcvtdq2ps(RM)(YMM dst, RM src) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0)(0x5b, dst, src);
     auto vaddpd(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x58, dst, src, stor);
     auto vaddpd(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x58, dst, src, stor);
      
     auto vaddps(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0x58, dst, src, stor);
     auto vaddps(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0)(0x58, dst, src, stor);
+    auto vmulps(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0x59, dst, src, stor);
+    auto vmulps(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0)(0x59, dst, src, stor);
 
     auto vaddsd(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128, 64)) => emit!(0, VEX, 128, DEFAULT, 0xf2)(0x58, dst, src, stor);
     auto vaddss(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128, 32)) => emit!(0, VEX, 128, DEFAULT, 0xf3)(0x58, dst, src, stor);
@@ -2445,6 +2573,19 @@ import std.stdio;
      
     auto vaddsubps(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0xf2)(0xd0, dst, src, stor);
     auto vaddsubps(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0xf2)(0xd0, dst, src, stor);
+
+    auto vblendps(RM)(XMM dst, XMM src, RM stor, ubyte imm8) if (valid!(RM, 128)) => emit!(0, VEX, 128, F3A, 0x66)(0x0c, dst, src, stor, imm8);
+    auto vblendps(RM)(YMM dst, YMM src, RM stor, ubyte imm8) if (valid!(RM, 256)) => emit!(0, VEX, 256, F3A, 0x66)(0x0c, dst, src, stor, imm8);
+    auto vpblendvb(RM)(XMM dst, XMM src, RM stor, XMM mask) if (valid!(RM, 128)) =>
+        emit!(0, VEX, 128, F3A, 0x66, false, false, true)(0x4C, dst, src, stor, cast(ubyte)(mask.index << 4));
+    auto vpblendvb(RM)(YMM dst, YMM src, RM stor, YMM mask) if (valid!(RM, 256)) =>
+        emit!(0, VEX, 256, F3A, 0x66, false, false, true)(0x4C, dst, src, stor, cast(ubyte)(mask.index << 4));
+    auto vcmpps(RM)(XMM dst, XMM src, RM stor, ubyte imm8) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0xc2, dst, src, stor, imm8);
+    auto vcmpps(RM)(YMM dst, YMM src, RM stor, ubyte imm8) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0)(0xc2, dst, src, stor, imm8);
+    auto vpcmpeqb(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x74, dst, src, stor);
+    auto vpcmpeqb(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x74, dst, src, stor);
+    auto vpcmpgtb(RM)(XMM dst, XMM src, RM stor) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0x66)(0x64, dst, src, stor);
+    auto vpcmpgtb(RM)(YMM dst, YMM src, RM stor) if (valid!(RM, 256)) => emit!(0, VEX, 256, DEFAULT, 0x66)(0x64, dst, src, stor);
 
     auto vmovq(RM)(XMM dst, RM src) if (valid!(RM, 128, 64)) => emit!(0, VEX, 128, DEFAULT, 0xf3)(0x7e, dst, src);
     auto vmovq(Address!64 dst, XMM src) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xd6, dst, src);
@@ -3561,6 +3702,208 @@ unittest {
         "F30F5AD3");
 }
 
+@("vcvtdq2ps")
+unittest {
+    Block!true block;
+    with (block) {
+        vcvtdq2ps(xmm0, xmm1);
+        vcvtdq2ps(ymm0, ymm1);
+        vcvtdq2ps(ymm8, ymm9);
+    }
+
+    assert(block.finalize().toHexString ==
+        "C5F85BC1" ~
+        "C5FC5BC1" ~
+        "C4417C5BC1");
+}
+
+@("vblendps")
+unittest {
+    Block!true block;
+    with (block) {
+        vblendps(xmm0, xmm1, xmm2, 0xAA);
+        vblendps(ymm0, ymm1, ymm2, 0x7F);
+        vblendps(ymm8, ymm9, ymm10, 0x11);
+    }
+
+    string actual = block.finalize().toHexString;
+    assert(actual ==
+        "C4E3710CC2AA" ~
+        "C4E3750CC27F" ~
+        "C443350CC211");
+}
+
+@("vblendps_vex_regmix")
+unittest {
+    Block!true block;
+    with (block) {
+        vblendps(ymm0, ymm1, ymm2, 0xAA);
+        vblendps(ymm8, ymm1, ymm2, 0xAA);
+        vblendps(ymm0, ymm9, ymm2, 0xAA);
+        vblendps(ymm8, ymm9, ymm2, 0xAA);
+        vblendps(ymm0, ymm1, ymm10, 0xAA);
+        vblendps(ymm8, ymm1, ymm10, 0xAA);
+        vblendps(ymm0, ymm9, ymm10, 0xAA);
+        vblendps(ymm8, ymm9, ymm10, 0xAA);
+    }
+
+    string actual = block.finalize().toHexString;
+    assert(actual ==
+        "C4E3750CC2AA" ~
+        "C463750CC2AA" ~
+        "C4E3350CC2AA" ~
+        "C463350CC2AA" ~
+        "C4C3750CC2AA" ~
+        "C443750CC2AA" ~
+        "C4C3350CC2AA" ~
+        "C443350CC2AA");
+}
+
+@("vpblendvb")
+unittest {
+    Block!true block;
+    with (block) {
+        vpblendvb(ymm0, ymm1, ymm2, ymm3);
+        vpblendvb(ymm8, ymm1, ymm2, ymm3);
+        vpblendvb(ymm0, ymm9, ymm2, ymm3);
+        vpblendvb(ymm8, ymm9, ymm2, ymm3);
+        vpblendvb(ymm0, ymm1, ymm10, ymm3);
+        vpblendvb(ymm8, ymm1, ymm10, ymm3);
+        vpblendvb(ymm0, ymm9, ymm10, ymm3);
+        vpblendvb(ymm8, ymm9, ymm10, ymm3);
+        vpblendvb(ymm0, ymm1, ymm2, ymm11);
+        vpblendvb(ymm8, ymm1, ymm2, ymm11);
+        vpblendvb(ymm0, ymm9, ymm2, ymm11);
+        vpblendvb(ymm8, ymm9, ymm2, ymm11);
+        vpblendvb(ymm0, ymm1, ymm10, ymm11);
+        vpblendvb(ymm8, ymm1, ymm10, ymm11);
+        vpblendvb(ymm0, ymm9, ymm10, ymm11);
+        vpblendvb(ymm8, ymm9, ymm10, ymm11);
+    }
+
+    assert(block.finalize().toHexString ==
+        "C4E3754CC230" ~
+        "C463754CC230" ~
+        "C4E3354CC230" ~
+        "C463354CC230" ~
+        "C4C3754CC230" ~
+        "C443754CC230" ~
+        "C4C3354CC230" ~
+        "C443354CC230" ~
+        "C4E3754CC2B0" ~
+        "C463754CC2B0" ~
+        "C4E3354CC2B0" ~
+        "C463354CC2B0" ~
+        "C4C3754CC2B0" ~
+        "C443754CC2B0" ~
+        "C4C3354CC2B0" ~
+        "C443354CC2B0");
+}
+
+@("vcmpps")
+unittest {
+    Block!true block;
+    with (block) {
+        vcmpps(xmm0, xmm1, xmm2, 0x33);
+        vcmpps(xmm3, xmm4, xmmwordPtr(rax), 0xAA);
+        vcmpps(ymm0, ymm1, ymm2, 0x55);
+        vcmpps(ymm3, ymm4, ymmwordPtr(rax), 0x80);
+    }
+
+    assert(block.finalize().toHexString ==
+        "C5F0C2C233" ~
+        "C5D8C218AA" ~
+        "C5F4C2C255" ~
+        "C5DCC21880");
+}
+
+@("vpcmpeqb")
+unittest {
+    Block!true block;
+    with (block) {
+        vpcmpeqb(ymm0, ymm1, ymm2);
+        vpcmpeqb(ymm8, ymm1, ymm2);
+        vpcmpeqb(ymm0, ymm9, ymm2);
+        vpcmpeqb(ymm8, ymm9, ymm2);
+        vpcmpeqb(ymm0, ymm1, ymm10);
+        vpcmpeqb(ymm8, ymm1, ymm10);
+        vpcmpeqb(ymm0, ymm9, ymm10);
+        vpcmpeqb(ymm8, ymm9, ymm10);
+    }
+
+    string actual = block.finalize().toHexString;
+    import std.stdio;
+    writefln("Actual: %s", actual);
+    assert(actual ==
+        "C5F574C2" ~
+        "C57574C2" ~
+        "C5B574C2" ~
+        "C53574C2" ~
+        "C4C17574C2" ~
+        "C4417574C2" ~
+        "C4C13574C2" ~
+        "C4413574C2");
+    
+}
+
+@("vmulps")
+unittest {
+    Block!true block;
+    with (block) {
+        vmulps(ymm0, ymm1, ymm2);
+        vmulps(ymm3, ymm4, ymm5);
+        vmulps(ymm8, ymm9, ymm10);
+        vmulps(ymm0, ymm1, ymmwordPtr(rax));
+    }
+
+    assert(block.finalize().toHexString ==
+        "C5F459C2" ~
+        "C5DC59DD" ~
+        "C4413459C2" ~
+        "C5F45900");
+}
+
+@("vmovups")
+unittest {
+    Block!true block;
+    with (block) {
+        vmovups(xmm0, xmm1);
+        vmovups(xmm8, xmm9);
+        vmovups(xmm0, xmmwordPtr(rax));
+        vmovups(xmmwordPtr(rax), xmm0);
+        vmovups(ymm0, ymm1);
+        vmovups(ymm8, ymm9);
+        vmovups(ymm0, ymmwordPtr(rax));
+        vmovups(ymmwordPtr(rax), ymm0);
+    }
+
+    assert(block.finalize().toHexString ==
+        "C5F810C1" ~
+        "C4417810C1" ~
+        "C5F81000" ~
+        "C5F81100" ~
+        "C5FC10C1" ~
+        "C4417C10C1" ~
+        "C5FC1000" ~
+        "C5FC1100");
+}
+
+@("gallinule_vmovups_ripanchor_read")
+unittest
+{
+    Block!true block;
+    auto addr = Address!256.ripAnchor("target");
+    with (block) {
+        vmovups(ymm0, addr);
+        registerRipReferenceFrom(addr);
+        nop();
+        label("target");
+        ret();
+    }
+
+    assert(block.finalize().toHexString == "C5FC10050100000090C3");
+}
+
 unittest {
     Block!true block;
     with (block) {
@@ -4208,4 +4551,138 @@ unittest
         "66410F3800C0" ~
         "66450F3800C1" ~
         "66450F3800C8");
+}
+
+@("gallinule_vpshufb")
+unittest
+{
+    Block!true block;
+    with (block) {
+        vpshufb(ymm0, ymm1, ymm2);
+        vpshufb(ymm8, ymm1, ymm2);
+        vpshufb(ymm0, ymm9, ymm2);
+        vpshufb(ymm8, ymm9, ymm2);
+        vpshufb(ymm0, ymm1, ymm10);
+        vpshufb(ymm8, ymm1, ymm10);
+        vpshufb(ymm0, ymm9, ymm10);
+        vpshufb(ymm8, ymm9, ymm10);
+    }
+
+    import tern.digest;
+    import std.stdio;
+    writefln(block.finalize().toHexString);
+    assert(block.finalize().toHexString ==
+        "C4E27500C2" ~
+        "C4627500C2" ~
+        "C4E23500C2" ~
+        "C4623500C2" ~
+        "C4C27500C2" ~
+        "C4427500C2" ~
+        "C4C23500C2" ~
+        "C4423500C2");
+}
+
+@("gallinule_ripanchor_forward")
+unittest
+{
+    Block!true block;
+    auto addr = Address!64.ripAnchor("target");
+    with (block) {
+        mov(rax, addr);
+        registerRipReferenceFrom(addr);
+        nop();
+        label("target");
+        ret();
+    }
+
+    assert(block.finalize().toHexString == "488B050100000090C3");
+}
+
+@("gallinule_ripanchor_extra")
+unittest
+{
+    Block!true block;
+    auto addr = Address!64.ripAnchor("start", 5);
+    with (block) {
+        label("start");
+        mov(rax, addr);
+        registerRipReferenceFrom(addr);
+        ret();
+    }
+
+    assert(block.finalize().toHexString == "488B05FEFFFFFFC3");
+}
+
+@("gallinule_branch_alignment_like_code")
+unittest
+{
+    Block!true block;
+    size_t jmp_licm_pos;
+    size_t jmp_done_pos;
+    size_t jmp_from_licm_pos;
+    with (block) {
+        mov(rax, 1);
+        jmp_licm_pos = block.buffer.length;
+        jmp("licm");
+
+        label("loop");
+        vmovups(ymm0, ymmwordPtr(rdi));
+        dec(rax);
+        jne("loop");
+
+        mov(rax, 1);
+        jmp_done_pos = block.buffer.length;
+        jmp("done");
+
+        label("licm");
+        auto addr = Address!256.ripAnchor("licm_data");
+        vmovups(ymm8, addr);
+        registerRipReferenceFrom(addr);
+        jmp_from_licm_pos = block.buffer.length;
+        jmp("loop");
+
+        label("done");
+        ret();
+
+        label("licm_data");
+        foreach (i; 0 .. 32) {
+            block.buffer ~= cast(ubyte)i;
+        }
+    }
+
+    auto bytes = block.finalize();
+    auto calc_target = (size_t pos) {
+        auto opcode = bytes[pos];
+        ptrdiff_t rel;
+        size_t next_ip;
+        if (opcode == 0xEB) {
+            rel = cast(byte)bytes[pos + 1];
+            next_ip = pos + 2;
+        } else {
+            assert(opcode == 0xE9);
+            rel = *cast(const(int)*)(&bytes[pos + 1]);
+            next_ip = pos + 5;
+        }
+        return cast(ptrdiff_t)next_ip + rel;
+    };
+
+    auto find_jump_to = (ptrdiff_t target) {
+        foreach (i; 0 .. bytes.length) {
+            auto op = bytes[i];
+            if (op == 0xEB && i + 1 < bytes.length) {
+                if (calc_target(i) == target) {
+                    return true;
+                }
+            } else if (op == 0xE9 && i + 4 < bytes.length) {
+                if (calc_target(i) == target) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    assert(find_jump_to(block.labels["licm"]));
+    assert(find_jump_to(block.labels["done"]));
+    assert(find_jump_to(block.labels["loop"]));
 }

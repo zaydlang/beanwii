@@ -11,7 +11,7 @@ import util.number;
 final class VertexInterpreterDecoder {
     VertexDecodeResult decode_vertices(const ubyte* stream,
                                        size_t length,
-                                       ref VertexDecodeState state,
+                                       ref VertexFormat state,
                                        Vertex* out_vertices,
                                        size_t max_vertices) {
         VertexDecodeResult result;
@@ -49,10 +49,53 @@ final class VertexInterpreterDecoder {
         }
 
         result.vertices_emitted = cast(uint) emitted;
+        result.dest_format = make_interpreter_dest_format(state);
         return result;
     }
 
 private:
+    DestFormat make_interpreter_dest_format(ref VertexFormat state) {
+        auto vcd = &state.vertex_descriptors[state.current_vat];
+        auto vat = &state.vats[state.current_vat];
+
+        DestFormat format = make_empty_dest_format();
+        format.stride = cast(int) Vertex.sizeof;
+
+        if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+            format.position_matrix_index_offset = cast(int) Vertex.position_matrix_index.offsetof;
+        }
+
+        if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+            format.position_offset = cast(int) Vertex.position.offsetof;
+            format.position_count = 1;
+        }
+
+        if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+            format.normal_offset = cast(int) Vertex.normal.offsetof;
+            format.normal_count = 1;
+        }
+
+        foreach (c; 0 .. 2) {
+            if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) {
+                continue;
+            }
+
+            format.color_offset[c] = cast(int) (Vertex.color.offsetof + c * 16);
+            format.color_count[c] = 1;
+        }
+
+        foreach (t; 0 .. 8) {
+            if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) {
+                continue;
+            }
+
+            format.texcoord_offset[t] = cast(int) (Vertex.texcoord.offsetof + t * 8);
+            format.texcoord_count[t] = 1;
+        }
+
+        return format;
+    }
+
     u32 read_from_shape_data_buffer_direct(const ubyte* data, size_t offset, size_t size) {
         u32 result = 0;
         for (int i = 0; i < size; i++) {
@@ -62,7 +105,7 @@ private:
         return result;
     }
 
-    u32 read_from_indexed_array(ref VertexDecodeState state, int array_num, int idx, int attr_offset, size_t size) {
+    u32 read_from_indexed_array(ref VertexFormat state, int array_num, int idx, int attr_offset, size_t size) {
         u32 array_addr = state.array_bases[array_num];
         u32 array_stride = state.array_strides[array_num];
         u32 array_offset = array_addr + (array_stride * idx) + (attr_offset * cast(int) size);
@@ -188,7 +231,7 @@ private:
         }
     }
 
-    void decode_position(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat, ref VertexDecodeState state, ref Vertex v) {
+    void decode_position(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat, ref VertexFormat state, ref Vertex v) {
         final switch (vcd.position_location) {
         case VertexAttributeLocation.Direct:
             for (int j = 0; j < vat.position_count; j++) {
@@ -227,12 +270,7 @@ private:
         }
     }
 
-    void decode_normal(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat, ref Vertex v, ref VertexDecodeState state) {
-        // Ensure we don't leak data when only a normal (3 comps) is provided.
-        v.normal = [0.0f, 0.0f, 0.0f];
-        v.binormal_t = [0.0f, 0.0f, 0.0f];
-        v.binormal_b = [0.0f, 0.0f, 0.0f];
-
+    void decode_normal(const ubyte* stream, ref size_t offset, VertexDescriptor* vcd, VertexAttributeTable* vat, ref Vertex v, ref VertexFormat state) {
         size_t size = calculate_expected_size_of_normal(vat.normal_format);
 
         final switch (vcd.normal_location) {
@@ -316,7 +354,7 @@ private:
                        VertexDescriptor* vcd,
                        VertexAttributeTable* vat,
                        ref Vertex v,
-                       ref VertexDecodeState state) {
+                       ref VertexFormat state) {
         for (int j = 0; j < 2; j++) {
             final switch (vcd.color_location[j]) {
             case VertexAttributeLocation.Direct: {
@@ -372,7 +410,7 @@ private:
                           VertexDescriptor* vcd,
                           VertexAttributeTable* vat,
                           ref Vertex v,
-                          ref VertexDecodeState state) {
+                          ref VertexFormat state) {
         for (int j = 0; j < 8; j++) {
             final switch (vcd.texcoord_location[j]) {
             case VertexAttributeLocation.Direct:

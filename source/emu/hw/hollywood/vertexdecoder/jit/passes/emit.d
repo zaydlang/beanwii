@@ -1,0 +1,814 @@
+module emu.hw.hollywood.vertexdecoder.jit.passes.emit;
+
+import core.bitop;
+import core.stdc.string;
+import emu.hw.hollywood.hollywood_types;
+import emu.hw.hollywood.vertexdecoder.jit.code;
+import emu.hw.hollywood.vertexdecoder.jit.passes.ir;
+import emu.hw.hollywood.vertexdecoder.types;
+import gallinule.x86;
+import util.bitop;
+import util.log;
+import util.number;
+
+struct Range {
+    u8 offset;
+    u8 length;
+
+    bool overlaps(Range other) {
+        return !(offset + length <= other.offset || other.offset + other.length <= offset);
+    }
+
+    bool contains(Range other) {
+        return offset <= other.offset && (offset + length) >= (other.offset + other.length);
+    }
+
+    void shift_right(u8 amount) {
+        offset += amount;
+    }
+}
+
+enum LocationType : u8 {
+    SourceBuffer,
+    Ymm,
+}
+
+struct SourceBufferLocation {
+    Range range;
+}
+
+struct YmmLocation {
+    u8    index;
+    Range range;
+}
+
+struct Location {
+    LocationType kind;
+
+    union {
+        SourceBufferLocation source_buffer;
+        YmmLocation          ymm;
+    }
+}
+
+enum AttributeStatus : u8 {
+    Unused,
+    AwaitingAlignment,
+    AwaitingFloatExpansion,
+    AwaitingDequantization,
+    AwaitingStore,
+    Stored
+}
+
+enum CMPGT_OQ = 0x1e;
+
+struct AttributeDecodeState {
+    AttributeStatus status;
+    Location        location;
+    u8              element_size;
+}
+
+struct VertexDecodeState {
+    AttributeDecodeState    position_matrix;
+    AttributeDecodeState[8] texcoord_matrix;
+    AttributeDecodeState    position;
+    AttributeDecodeState    normal;
+    AttributeDecodeState[2] color;
+    AttributeDecodeState[8] texcoord;
+
+    size_t source_stream_size;
+
+    // Tracking for YMM allocation and alignment passes.
+    YMM[]      allocated_ymms;
+
+    private static YMM make_ymm(ubyte index) {
+        return YMM(index, index >= 8);
+    }
+
+    YMM new_ymm() {
+        auto ymm = make_ymm(cast(ubyte) allocated_ymms.length);
+        allocated_ymms ~= ymm;
+        return ymm;
+    }
+
+    YMM tmp_ymm() {
+        // Reserve the last YMM as a temporary scratch register.
+        return make_ymm(15);
+    }
+
+    YMM tmp_ymm2() {
+        return make_ymm(13);
+    }
+
+    void foreach_attribute(scope void delegate(ref AttributeDecodeState) callback) {
+        callback(position_matrix);
+
+        foreach (ref tm; texcoord_matrix) {
+            callback(tm);
+        }
+
+        callback(position);
+        callback(normal);
+
+        foreach (ref c; color) {
+            callback(c);
+        }
+
+        foreach (ref t; texcoord) {
+            callback(t);
+        }
+    }
+
+    int opApply(scope int delegate(ref AttributeDecodeState) dg) {
+        int result;
+
+        auto applyOne = (ref AttributeDecodeState ads) {
+            if (result != 0) return;
+            result = dg(ads);
+        };
+
+        applyOne(position_matrix);
+
+        foreach (ref tm; texcoord_matrix) {
+            applyOne(tm);
+        }
+
+        applyOne(position);
+        applyOne(normal);
+
+        foreach (ref c; color) {
+            applyOne(c);
+        }
+
+        foreach (ref t; texcoord) {
+            applyOne(t);
+        }
+
+        return result;
+    }
+}
+
+private u8 coord_size(CoordFormat fmt) {
+    final switch (fmt) {
+        case CoordFormat.U8:
+        case CoordFormat.S8:  return 1;
+        case CoordFormat.U16:
+        case CoordFormat.S16: return 2;
+        case CoordFormat.F32: return 4;
+    }
+}
+
+private u8 normal_size(NormalFormat fmt) {
+    final switch (fmt) {
+        case NormalFormat.S8:  return 1;
+        case NormalFormat.S16: return 2;
+        case NormalFormat.F32: return 4;
+    }
+}
+
+private u8 color_size(ColorFormat fmt) {
+    final switch (fmt) {
+        case ColorFormat.RGB565:   return 2;
+        case ColorFormat.RGB888:   return 3;
+        case ColorFormat.RGB888x:  return 4;
+        case ColorFormat.RGBA4444: return 2;
+        case ColorFormat.RGBA6666: return 3;
+        case ColorFormat.RGBA8888: return 4;
+    }
+}
+
+private u64 make_mask(u64 offset, u64 len) {
+    assert_hollywood(offset + len <= 64, "vertex exceeds 64 bytes");
+    if (len == 0) return 0;
+    u64 m = (len == 64) ? ~cast(u64) 0 : ((1UL << len) - 1);
+    return m << offset;
+}
+
+private u64 mask_from_range(Range range) {
+    writefln("Making mask from range offset %d length %d", range.offset, range.length);
+    return make_mask(range.offset, range.length);
+}
+
+private Size size_from_bytes(u8 bytes) {
+    switch (bytes) {
+        case 1: return Size.Size8;
+        case 2: return Size.Size16;
+        case 4: return Size.Size32;
+        default: error_hollywood("unexpected element size");
+    }
+}
+
+private int size_to_bytes(Size size) {
+    switch (size) {
+        case Size.Size8:  return 1;
+        case Size.Size16: return 2;
+        case Size.Size32: return 4;
+        default: error_hollywood("unexpected size");
+    }
+}
+
+private AttributeDecodeState make_source_state(AttributeStatus status, u32 offset, u32 length, u8 element_size) {
+    AttributeDecodeState ads;
+    ads.status = status;
+    ads.location.kind = LocationType.SourceBuffer;
+    ads.location.source_buffer = SourceBufferLocation(Range(cast(u8) offset, cast(u8) length));
+    ads.element_size = element_size;
+    return ads;
+}
+
+private void push_sext(ref Op[] ops, u64 mask, Size from, u8 ymm_index) {
+    printf("Pushing sext mask %b from %d ymm %d\n", mask, size_to_bytes(from), ymm_index);
+    Op op;
+    op.kind = OpKind.Sext;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    op.sext.from = from;
+    ops ~= op;
+}
+
+private void push_zext(ref Op[] ops, u64 mask, Size from, u8 ymm_index) {
+    Op op;
+    op.kind = OpKind.Zext;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    op.zext.from = from;
+    ops ~= op;
+}
+
+private void push_cvt(ref Op[] ops, u64 mask, u8 ymm_index) {
+    Op op;
+    op.kind = OpKind.CvtToFloat;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    ops ~= op;
+}
+
+private void push_mul(ref Op[] ops, u64 mask, float factor, u8 ymm_index) {
+    Op op;
+    op.kind = OpKind.Mul;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    op.mul.factor = factor;
+    ops ~= op;
+}
+
+private void push_store(ref Op[] ops, u64 mask, u32 dest_offset, u8 ymm_index) {
+    Op op;
+    op.kind = OpKind.Store;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    op.store.dest_offset = dest_offset;
+    ops ~= op;
+}
+
+private void push_color(ref Op[] ops, u64 mask, ColorFormat fmt, u32 dest_offset, u8 ymm_index) {
+    Op op;
+    op.kind = OpKind.DequantizeColor;
+    op.source_mask = mask;
+    op.ymm_index = ymm_index;
+    op.dequantize_color.format = fmt;
+    ops ~= op;
+
+    push_store(ops, mask, dest_offset, ymm_index);
+}
+
+Op[] create_parallel_ops(VertexFormat state, VertexDecodeState* vds) {
+    Op[] ops;
+
+    auto vcd = &state.vertex_descriptors[state.current_vat];
+    auto vat = &state.vats[state.current_vat];
+
+    auto mask_from_ads = (ref AttributeDecodeState ads) {
+        assert_hollywood(ads.location.kind == LocationType.Ymm,
+            "expected YMM location after allocation");
+        return mask_from_range(ads.location.ymm.range);
+    };
+
+    auto mask_from_ads_with_stride = (ref AttributeDecodeState ads, u8 element_size_bytes) {
+        assert_hollywood(ads.location.kind == LocationType.Ymm,
+            "expected YMM location after allocation");
+
+        u64 mask = 0;
+        u8 offset = ads.location.ymm.range.offset;
+        for (u8 i = 0; i < ads.location.ymm.range.length; i += element_size_bytes) {
+            printf("Adding to mask offset %d element size %d\n", offset + i, element_size_bytes);
+            mask |= make_mask(offset, element_size_bytes);
+            offset += 4;
+        }
+
+        writefln("Mask from ads with stride element size %d: %b", element_size_bytes, mask);
+
+        return mask;
+    };
+
+    if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+        auto mask = mask_from_ads(vds.position_matrix);
+        push_store(ops, mask, Vertex.position_matrix_index.offsetof, vds.position_matrix.location.ymm.index);
+    }
+
+    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+        u8 size_bytes = coord_size(vat.position_format);
+        auto mask = mask_from_ads_with_stride(vds.position, size_bytes);
+
+        if (vat.position_format != CoordFormat.F32) {
+            if (vat.position_format == CoordFormat.S8 || vat.position_format == CoordFormat.S16) {
+                push_sext(ops, mask, size_from_bytes(size_bytes), vds.position.location.ymm.index);
+            } else {
+                push_zext(ops, mask, size_from_bytes(size_bytes), vds.position.location.ymm.index);
+            }
+        }
+
+        push_cvt(ops, mask, vds.position.location.ymm.index);
+
+        if (vat.position_shift != 0) {
+            writefln("Pushing mul mask %b factor %f ymm %d", mask, 1.0f / cast(float) (1u << vat.position_shift), vds.position.location.ymm.index);
+            push_mul(ops, mask, 1.0f / cast(float) (1u << vat.position_shift), vds.position.location.ymm.index);
+        }
+
+        push_store(ops, mask, Vertex.position.offsetof, vds.position.location.ymm.index);
+    }
+
+    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+        auto mask = mask_from_ads(vds.normal);
+        u8 size_bytes = normal_size(vat.normal_format);
+
+        if (vat.normal_format != NormalFormat.F32) {
+            push_sext(ops, mask, size_from_bytes(size_bytes), vds.normal.location.ymm.index);
+        }
+
+        push_cvt(ops, mask, vds.normal.location.ymm.index);
+
+        float factor = 1.0f;
+        final switch (vat.normal_format) {
+            case NormalFormat.S8:  factor = 1.0f / 64.0f; break;
+            case NormalFormat.S16: factor = 1.0f / 16384.0f; break;
+            case NormalFormat.F32: factor = 1.0f; break;
+        }
+        if (factor != 1.0f) {
+            push_mul(ops, mask, factor, vds.normal.location.ymm.index);
+        }
+
+        push_store(ops, mask, Vertex.normal.offsetof, vds.normal.location.ymm.index);
+    }
+
+    for (int c = 0; c < 2; c++) {
+        if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
+
+        auto mask = mask_from_ads(vds.color[c]);
+        u32 dest = cast(u32) (Vertex.color.offsetof + cast(size_t) (c * 16));
+        push_color(ops, mask, vat.color_format[c], dest, vds.color[c].location.ymm.index);
+    }
+
+    for (int t = 0; t < 8; t++) {
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
+
+        auto mask = mask_from_ads(vds.texcoord[t]);
+        u8 size_bytes = coord_size(vat.texcoord_format[t]);
+
+        if (vat.texcoord_format[t] != CoordFormat.F32) {
+            if (vat.texcoord_format[t] == CoordFormat.S8 || vat.texcoord_format[t] == CoordFormat.S16) {
+                push_sext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
+            } else {
+                push_zext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
+            }
+        }
+
+        push_cvt(ops, mask, vds.texcoord[t].location.ymm.index);
+
+        if (vat.texcoord_shift[t] != 0) {
+            writefln("Pushing mul mask %b factor %f ymm %d", mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
+            push_mul(ops, mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
+        }
+
+        push_store(ops, mask, cast(u32) (Vertex.texcoord.offsetof + cast(size_t) (t * 8)), vds.texcoord[t].location.ymm.index);
+    }
+
+    assert_hollywood(vds.source_stream_size <= 64, "vertex exceeds 64 bytes");
+    return ops;
+}
+
+VertexDecodeState construct_vertex_decode_state(VertexFormat format) {
+    VertexDecodeState vds;
+    auto vcd = &format.vertex_descriptors[format.current_vat];
+    auto vat = &format.vats[format.current_vat];
+
+    u32 offset = 0;
+
+    if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+        vds.position_matrix = make_source_state(AttributeStatus.AwaitingStore, offset, 1, 1);
+        offset += 1;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        if (vcd.texcoord_matrix_location[i] != VertexAttributeLocation.NotPresent) {
+            // Texcoord matrix indices are present in the stream but ignored by the decoder today.
+            vds.texcoord_matrix[i] = make_source_state(AttributeStatus.Unused, offset, 1, 1);
+            offset += 1;
+        }
+    }
+
+    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+        u32 len = cast(u32) coord_size(vat.position_format) * cast(u32) vat.position_count;
+        vds.position = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, coord_size(vat.position_format));
+        offset += len;
+    }
+
+    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+        u32 len = cast(u32) normal_size(vat.normal_format) * cast(u32) vat.normal_count;
+        vds.normal = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, normal_size(vat.normal_format));
+        offset += len;
+    }
+
+    for (int c = 0; c < 2; c++) {
+        if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
+
+        u32 len = color_size(vat.color_format[c]);
+        vds.color[c] = make_source_state(AttributeStatus.AwaitingDequantization, offset, len, color_size(vat.color_format[c]));
+        offset += len;
+    }
+
+    for (int t = 0; t < 8; t++) {
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
+
+        u32 len = cast(u32) coord_size(vat.texcoord_format[t]) * cast(u32) vat.texcoord_count[t];
+        vds.texcoord[t] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, coord_size(vat.texcoord_format[t]));
+        offset += len;
+    }
+
+    vds.source_stream_size = offset;
+
+    return vds;
+}
+
+void allocate_ymms_for_attributes_unaligned(Code code, VertexDecodeState* vds) {
+    int attributes_collected_for_current_ymm = 0;
+    int current_offset_within_source_stream  = 0;
+    int offset_for_ymm_load                  = 0;
+
+    AttributeDecodeState*[8] attributes_in_current_ymm;
+
+    auto mark_and_load_attributes = () {
+        auto ymm = vds.new_ymm();
+        code.vmovups(ymm, code.ymmwordPtr(rdi, offset_for_ymm_load));
+
+        int offset_within_current_ymm_load = offset_for_ymm_load;
+        for (int i = 0; i < attributes_collected_for_current_ymm; i++) {
+            auto ads = attributes_in_current_ymm[i];
+            auto length = ads.location.source_buffer.range.length;
+
+            ads.location.kind = LocationType.Ymm;
+            ads.location.ymm.range.length = cast(u8) ads.location.source_buffer.range.length;
+            ads.location.ymm.range.offset = cast(u8) offset_within_current_ymm_load;
+            printf("offset: %d length: %d\n", ads.location.ymm.range.offset, ads.location.ymm.range.length);
+            ads.location.ymm.index = ymm.index;
+
+            offset_within_current_ymm_load += length;
+        }
+
+        attributes_collected_for_current_ymm = 0;
+        current_offset_within_source_stream  = 0;
+        offset_for_ymm_load                  = 0;
+    };
+
+    vds.foreach_attribute((ref AttributeDecodeState ads) {
+        if (ads.status == AttributeStatus.Unused) {
+            return;
+        }
+
+        current_offset_within_source_stream += ads.location.source_buffer.range.length;
+        attributes_in_current_ymm[attributes_collected_for_current_ymm] = &ads;
+        attributes_collected_for_current_ymm++;
+
+        if (attributes_collected_for_current_ymm == 4) {
+            enum bytes_in_ymm = 32;
+            enum bytes_in_xmm = bytes_in_ymm / 2;
+
+            offset_for_ymm_load = bytes_in_xmm - current_offset_within_source_stream;
+        }
+
+        if (attributes_collected_for_current_ymm == 8) {
+            writefln("YMM full, marking and loading attributes");
+            mark_and_load_attributes();
+        }
+    });
+
+    if (attributes_collected_for_current_ymm != 0) {
+        writefln("Final YMM partially full, marking and loading attributes");
+        mark_and_load_attributes();
+    }
+}
+
+void align_attributes_for_float_expansion(Code code, VertexDecodeState* vds) {
+    int ymms_to_align = 0; // bitmask of YMM indices to align
+    int ymms_seen = 0;
+
+    vds.foreach_attribute((ref AttributeDecodeState ads) {
+        writefln("Checking attribute for alignment: %s", ads);
+
+        if (ads.status == AttributeStatus.AwaitingAlignment) {
+            ymms_to_align |= 1 << ads.location.ymm.index;
+        }
+
+        bool ymm_seen = ymms_seen.bit(ads.location.ymm.index);
+        if (!ymm_seen) {
+            // horrible code but ill fix later
+            YMM licm_ymm = code.register_licm_ymm([
+                3,  2,  1,  0,
+                7,  6,  5,  4,
+                11, 10, 9,  8,
+                15, 14, 13, 12,
+                19, 18, 17, 16,
+                23, 22, 21, 20,
+                27, 26, 25, 24,
+                31, 30, 29, 28
+            ]);
+
+            code.assign_vpshufb_mask_to_ymm(YMM(ads.location.ymm.index), licm_ymm);
+
+            ymms_seen |= 1 << ads.location.ymm.index;
+        }
+    });
+
+    while (ymms_to_align != 0) {
+        writefln("Aligning YMMs, remaining bitmask: %b", ymms_to_align);
+        int ymm_to_align = cast(int) ymms_to_align.bfs();
+
+        // Build the vpshufb control mask for this YMM
+        u8[32] vpshufb_control_mask;
+
+        // Initialize vpshufb control mask to all 0xFF (which zeroes out the bytes in the result)
+        for (u8 i = 0; i < 32; i++) {
+            vpshufb_control_mask[i] = 0xff;
+        }
+
+        // We need to find all fields in the vds that live in this YMM, and find a new home for them
+        // within this YMM. We will pack them towards the start of the YMM, bump-allocator style.
+        u8 next_free_byte = 0;
+        vds.foreach_attribute((ref AttributeDecodeState ads) {
+            if (ads.status != AttributeStatus.AwaitingAlignment) {
+                return;
+            }
+
+            if (ads.location.ymm.index != ymm_to_align) {
+                return;
+            }
+
+            writefln("debjit?");
+
+            // This attribute lives in the YMM we are aligning
+            u8 attribute_length = ads.location.ymm.range.length;
+            u8 attribute_offset = ads.location.ymm.range.offset;
+            u8 element_size     = ads.element_size;
+
+            u8 alignment = 4;
+
+            // Align the next free byte to the attribute's alignment requirement
+            if (next_free_byte % alignment != 0) {
+                next_free_byte += alignment - (next_free_byte % alignment);
+            }
+
+            // Update the attribute's location to its new offset
+            ads.location.ymm.range.offset = next_free_byte;
+
+            // Copy all elements from their old location to their new location in the control mask,
+            // while swapping endianness at the same time
+            for (u8 i = 0; i < attribute_length; i += element_size) {
+                for (u8 j = 0; j < element_size; j++) {
+                    vpshufb_control_mask[next_free_byte + j] = cast(u8) (attribute_offset + (element_size - 1 - j) + i);
+                }
+             
+                next_free_byte += 4; // float expansion to 4 bytes
+            }
+            printf("offset: %d length: %d\n", ads.location.ymm.range.offset, ads.location.ymm.range.length);
+
+            next_free_byte += attribute_length;
+        });
+
+        writefln("vpshufb control mask for YMM %d: %s", ymm_to_align, vpshufb_control_mask);
+        YMM licm_ymm = code.vpshufb_mask_for(YMM(cast(u8) ymm_to_align));
+        code.update_licm_ymm(licm_ymm, vpshufb_control_mask);
+
+        ymms_to_align &= ~(1 << ymm_to_align);
+    }
+}
+
+private bool ops_equivalent(ref Op a, ref Op b) {
+    if (a.kind != b.kind) {
+        return false;
+    }
+
+    final switch (a.kind) {
+        case OpKind.Sext:
+            return a.sext.from == b.sext.from;
+        case OpKind.Zext:
+            return a.zext.from == b.zext.from;
+        case OpKind.Mul:
+            return a.mul.factor == b.mul.factor;
+        case OpKind.DequantizeColor:
+            return a.dequantize_color.format == b.dequantize_color.format;
+        case OpKind.CvtToFloat:
+            return true;
+        case OpKind.Store:
+            return a.store.dest_offset == b.store.dest_offset;
+    }
+}
+
+void dequantize_ops(Code code, VertexDecodeState* vds, VertexFormat format) {
+    // // First, create all the ops needed to dequantize a given vertex format and decode state.
+    auto ops = create_parallel_ops(format, vds);
+
+    // // Merge identical ops that touch disjoint regions by OR-ing their masks.
+    // Op[] merged;
+    // foreach (ref op; ops) {
+    //     bool merged_existing = false;
+    //     foreach (ref existing; merged) {
+    //         if (!ops_equivalent(existing, op) || op.ymm_index != existing.ymm_index) {
+    //             continue;
+    //         }
+
+    //         assert_hollywood((existing.source_mask & op.source_mask) == 0,
+    //             "expected disjoint masks when merging identical ops");
+    //         existing.source_mask |= op.source_mask;
+    //         merged_existing = true;
+    //         break;
+    //     }
+
+    //     if (!merged_existing) {
+    //         merged ~= op;
+    //     }
+    // }
+
+    int current_dest_stream_offset = 0;
+    foreach (ymm; vds.allocated_ymms) {
+        // Let's handle extension first. Zero-extension was already handled by align_attributes_for_float_expansion.
+        // But we need to do sign_extension.
+
+        bool needs_sign_extension      = false;
+        bool needs_scaling             = false;
+
+        u64 active_fields_in_ymm = 0;
+        foreach (ref op; ops) {
+            if (op.ymm_index == ymm.index) {
+                active_fields_in_ymm |= op.source_mask;
+            }
+        }
+
+        u64 active_fields_in_ymm_that_need_vcvtdq2ps = 0;
+        
+        int blend_control = 0;
+        auto licm_entry = code.vpshufb_mask_for(YMM(ymm.index));
+        auto licm_value = code.licm_value_for_entry(licm_entry);
+
+        u8[32] vpblendvb_mask;
+        memset(&vpblendvb_mask[0], 0, vpblendvb_mask.length);
+
+        foreach (ref op; ops) {
+            if (op.kind == OpKind.Sext && op.ymm_index == ymm.index) {
+                needs_sign_extension = true;
+                writefln("Sexting your mom");
+
+                // Modify the vpshufb mask to duplciate the upper byte of this attribute into the bytes above it
+                int attribute_bytes = size_to_bytes(op.sext.from);
+                int num_bytes_to_duplicate = 4 - attribute_bytes;
+                u64 mask_to_process = op.source_mask;
+
+                while (mask_to_process != 0) {
+                    writefln("Processing mask %x", mask_to_process);
+                    int source_index = cast(int) mask_to_process.bsf();
+
+                    u8 licm_to_dupe = licm_value[source_index + (attribute_bytes - 1)];
+                    for (int j = 0; j <= num_bytes_to_duplicate - 1; j++) {
+                        writefln("Duplicating byte %02x into index %d %d %d", licm_to_dupe, source_index + attribute_bytes + j, source_index, attribute_bytes);
+                        licm_value[source_index + attribute_bytes + j] = licm_to_dupe;
+                        vpblendvb_mask[source_index + attribute_bytes + j] = 0xFF;
+                    }
+
+                    mask_to_process &= ~(0xFUL << (source_index));
+                }
+
+                
+                // for (u8 i = 0; i < attribute_bytes; i++) {
+                //     u8 source_byte_index = cast(u8) (op.source_mask >> (i * 8)) & 0xFF;
+                //     for (int j = i + 1; j < attribute_bytes; j++) {
+                //         licm_value[source_byte_index + j] = cast(u8) (source_byte_index + (attribute_bytes - 1));
+                //         blend_control |= (1 << (source_byte_index + j));
+                //     }
+                // }
+
+                printf("blend control now %02x\n", blend_control);
+            }
+
+            if (op.kind == OpKind.CvtToFloat && op.ymm_index == ymm.index) {
+                active_fields_in_ymm_that_need_vcvtdq2ps |= op.source_mask;
+            }
+
+            needs_scaling |= op.kind == OpKind.Mul && op.ymm_index == ymm.index;
+        }
+
+
+        bool needs_vcvtdq2ps           = active_fields_in_ymm_that_need_vcvtdq2ps != 0;
+        bool all_fields_need_vcvtdq2ps = active_fields_in_ymm_that_need_vcvtdq2ps == active_fields_in_ymm;
+        
+        code.update_licm_ymm(licm_entry, licm_value);
+        code.vpshufb(ymm, ymm, licm_entry);
+
+
+        if (needs_sign_extension) {
+            code.vpcmpgtb(vds.tmp_ymm(), code.ymmzero(), ymm);
+            code.vpblendvb(ymm, ymm, vds.tmp_ymm(), code.register_licm_ymm(vpblendvb_mask));
+        }
+
+        if (needs_vcvtdq2ps) {
+            // Now to convert all the ints to floats
+            code.vcvtdq2ps(ymm, ymm);
+        }
+
+        if (needs_scaling) {
+            printf("Scaling needed for YMM %d\n", ymm.index);
+            // Let's form the YMM scale factor
+            float[8] scale_factors = [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f];
+
+            foreach (ref op; ops) {
+                if (op.kind == OpKind.Mul && op.ymm_index == ymm.index) {
+                    // Loop through all elements that this op touches, and set their scale factor
+                    u64 mask = op.source_mask;
+                    while (mask != 0) {
+                        int byte_index = cast(int) mask.bfs();
+                        int element_index = byte_index / 4;
+                        scale_factors[element_index] = op.mul.factor;
+
+                        mask &= ~(0xFUL << (byte_index & ~0x3));
+                    }
+                }
+            }
+
+            YMM scale_ymm = code.register_licm_ymm(cast(u8[32]) scale_factors);
+            writefln("Scale factors for YMM %d: %s", ymm.index, scale_factors);
+            code.vmulps(ymm, ymm, scale_ymm);
+        }
+
+        // And store!
+        code.vmovups(code.ymmwordPtr(rsi, current_dest_stream_offset), ymm);
+        current_dest_stream_offset += 32;
+    }
+
+    // We'll handle quantization constants later.
+}
+
+DestFormat make_dest_format(VertexFormat format) {
+    DestFormat dest_format = make_empty_dest_format();
+
+    auto vcd = &format.vertex_descriptors[format.current_vat];
+    auto vat = &format.vats[format.current_vat];
+    int current_offset;
+
+    if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+        dest_format.position_matrix_index_offset = current_offset;
+        current_offset += 4;
+    }
+
+    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+        dest_format.position_offset = current_offset;
+        dest_format.position_count  = 1;
+
+        current_offset += 4 * vat.position_count;
+    }
+
+    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+        dest_format.normal_offset = current_offset;
+        dest_format.normal_count  = 1;
+
+        current_offset += 4 * vat.normal_count;
+    }
+
+    for (int c = 0; c < 2; c++) {
+        if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
+
+        dest_format.color_offset[c] = current_offset;
+        dest_format.color_count[c]  = 1;
+
+        current_offset += 4 * 4;
+    }
+
+    for (int t = 0; t < 8; t++) {
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
+
+        dest_format.texcoord_offset[t] = current_offset;
+        dest_format.texcoord_count[t]  = 1;
+
+        current_offset += 4 * vat.texcoord_count[t];
+    }
+
+    dest_format.stride = current_offset;
+    return dest_format;
+}
+
+DestFormat emit_vertex(Code code, VertexFormat format) {
+    VertexDecodeState vds = construct_vertex_decode_state(format);
+    allocate_ymms_for_attributes_unaligned(code, &vds);
+    align_attributes_for_float_expansion(code, &vds);
+    dequantize_ops(code, &vds, format);
+
+    writefln("Dest format: %s", make_dest_format(format));
+    return make_dest_format(format);
+}

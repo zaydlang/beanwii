@@ -180,6 +180,9 @@ final class Jit {
 
     // returns the number of instructions executed
     pragma(inline, true) public JitReturnValue run(BroadwayState* state) {
+        // if (state.pc == 0x80065990) {
+            // import std.stdio; writefln("rp1menezes %x = %x + %x", state.r[3] + state.r[24], state.r[3], state.r[24]);
+        // }
         u32 jit_key = create_jit_key(state);
 
         JitReturnValue ret;

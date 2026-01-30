@@ -1,9 +1,12 @@
 module emu.hw.hollywood.vertexdecoder.jit.code;
 
 import core.bitop;
+import core.stdc.string;
 import emu.hw.hollywood.hollywood_types;
+import emu.hw.hollywood.vertexdecoder.jit.passes.emit;
 import emu.hw.hollywood.vertexdecoder.types;
 import gallinule.x86;
+import std.conv;
 import util.log;
 import util.number;
 import util.force_cast;
@@ -19,11 +22,11 @@ final class Code {
     enum DEST_REG64   = rsi;
     enum DEST_REG32   = esi;
 
-    enum XMM BYTESWAP_U32_MASK = xmm14;
-    enum XMM BYTESWAP_U16_MASK = xmm15;
-    enum POSITION_LICM_REG = xmm4;
-    enum TEXCOORD_LICM_REGS = [xmm5, xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12];
-    enum COLOR_LICM_REGS = [xmm3, xmm13];
+    enum MAX_LICM_VALUES = 4;
+    static immutable YMM[MAX_LICM_VALUES] LICM_REGISTERS = [ymm8, ymm9, ymm10, ymm11];
+    alias LicmValue = u8[32];
+    LicmValue[MAX_LICM_VALUES] licm_values;
+    int                        licm_value_count;
 
     u16 allocated_regs;
 
@@ -38,213 +41,150 @@ final class Code {
         emit_prologue();
     }
 
-    void emit(VertexDecodeState state) {
-        setup_licm_state(state);
+    DestFormat emit(VertexFormat state) {
+        init_licm_state();
+        int source_stride = size_of_incoming_vertex(
+            state.vertex_descriptors[state.current_vat],
+            state.vats[state.current_vat]);
+        DestFormat dest_format;
 
         mov(rax, state.number_of_expected_vertices);
-        label("vertex_decode_loop");
+        jmp("licm");
 
-            process_vertex(state);
-            add(DEST_REG64, cast(uint) Vertex.sizeof);
+        label("vertex_decode_loop");
+            dest_format = emit_vertex(this, state);
+            add(SOURCE_REG64, cast(uint) source_stride);
+            add(DEST_REG64, cast(uint) dest_format.stride);
 
             dec(rax);
             jne("vertex_decode_loop");
-        
+
         mov(rax, state.number_of_expected_vertices);
+        jmp("done");
+
+        // We only have the LICM data after emit_vertex runs.
+        label("licm");
+        emit_licm_block();
+
+        jmp("vertex_decode_loop");
+        label("done");
+
+        return dest_format;
     }
 
-    void setup_licm_state(VertexDecodeState state) {
-        auto vcd = &state.vertex_descriptors[state.current_vat];
+    void init_licm_state() {
+        licm_value_count = 0;
+    }
 
-        setup_byteswap_masks();
+    YMM register_licm_ymm(const(LicmValue) value) {
+        licm_values[licm_value_count][] = value[];
+        return LICM_REGISTERS[licm_value_count++];
+    }
 
-        if (vcd.position_location != VertexAttributeLocation.NotPresent) {
-            setup_position_parsing(state);
-        }
-
-        for (int i = 0; i < 2; i++) {
-            if (vcd.color_location[i] != VertexAttributeLocation.NotPresent) {
-                setup_color_parsing(state, i);
+    void update_licm_ymm(YMM ymm, const(LicmValue) value) {
+        int ymm_index = -1;
+        foreach (i; 0 .. licm_value_count) {
+            if (LICM_REGISTERS[i] == ymm) {
+                ymm_index = i;
             }
         }
 
-        for (int i = 0; i < 8; i++) {
-            if (vcd.texcoord_location[i] != VertexAttributeLocation.NotPresent) {
-                setup_texcoord_parsing(state, i);
-            }
-        }
+        assert_vertex_jit(ymm_index != -1, "vertex JIT LICM YMM not found");
+
+        licm_values[ymm_index][] = value[];
     }
 
-    void setup_byteswap_masks() {
-        mov(rax, 0x0405_0607_0001_0203UL);
-        movq(BYTESWAP_U32_MASK, rax);
-        mov(rax, 0x0C0D_0E0F_0809_0A0BUL);
-        movq(xmm0, rax);
-        punpcklqdq(BYTESWAP_U32_MASK, xmm0);
-
-        mov(rax, 0x0706_0504_0302_0100UL);
-        movq(BYTESWAP_U16_MASK, rax);
-        mov(rax, 0x0E0F_0C0D_0A0B_0809UL);
-        movq(xmm0, rax);
-        punpcklqdq(BYTESWAP_U16_MASK, xmm0);
-    }
-
-    void process_vertex(VertexDecodeState state) {
-        auto vcd = &state.vertex_descriptors[state.current_vat];
-
-        parse_position_matrix_index(state);
-        parse_texcoord_matrix_indices(state);
-
-        if (vcd.position_location != VertexAttributeLocation.NotPresent) {
-            parse_position(state);
-        }
-
-        for (int i = 0; i < 2; i++) {
-            if (vcd.color_location[i] != VertexAttributeLocation.NotPresent) {
-                parse_colors(state, i);
+    LicmValue licm_value_for_entry(YMM ymm) {
+        int ymm_index = -1;
+        foreach (i; 0 .. licm_value_count) {
+            if (LICM_REGISTERS[i] == ymm) {
+                ymm_index = i;
             }
         }
 
-        for (int i = 0; i < 8; i++) {
-            if (vcd.texcoord_location[i] != VertexAttributeLocation.NotPresent) {
-                parse_texcoord(state, i);
-            }
-        }
+        assert_vertex_jit(ymm_index != -1, "vertex JIT LICM YMM not found");
+
+        return licm_values[ymm_index];
     }
 
-    void parse_position_matrix_index(VertexDecodeState state) {
-        auto vcd = &state.vertex_descriptors[state.current_vat];
-        if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
-            movzx(eax, bytePtr(SOURCE_REG64));
-            mov(dwordPtr(DEST_REG64, cast(uint) Vertex.position_matrix_index.offsetof), eax);
-            add(SOURCE_REG64, 1);
-        } else {
-            mov(dwordPtr(DEST_REG64, cast(uint) Vertex.position_matrix_index.offsetof), -1);
-        }
+    u8* licm_value_for_entry(int entry) {
+        assert_vertex_jit(entry >= 0 && entry < licm_value_count,
+            "vertex JIT LICM entry out of range");
+        return &licm_values[entry][0];
     }
 
-    void parse_texcoord_matrix_indices(VertexDecodeState state) {
-        auto vcd = &state.vertex_descriptors[state.current_vat];
-        for (int i = 0; i < 8; i++) {
-            if (vcd.texcoord_matrix_location[i] != VertexAttributeLocation.NotPresent) {
-                add(SOURCE_REG64, 1);
-            }
+    void emit_licm_block() {
+        foreach (entry; 0 .. licm_value_count) {
+            auto label_name = licm_value_label(entry);
+            writefln("Emitting LICM load for entry %d at label %s", entry, label_name);
+            auto addr = Address!256.ripAnchor(label_name);
+            vmovups(LICM_REGISTERS[entry], addr);
+            registerRipReferenceFrom(addr);
         }
+
+        auto addr = Address!256.ripAnchor("ymm_zero_data");
+        vmovups(ymmzero(), addr);
+        registerRipReferenceFrom(addr);
     }
 
-    void setup_position_parsing(VertexDecodeState state) {
-        auto vat = &state.vats[state.current_vat];
-        
-        if (vat.position_shift != 0) {
-            mov(eax, force_cast!u32(1.0f / (cast(float) (1u << vat.position_shift))));
-            movd(POSITION_LICM_REG, eax);
-            vbroadcastss(POSITION_LICM_REG, POSITION_LICM_REG);
+    void emit_licm_value_data() {
+        foreach (entry; 0 .. licm_value_count) {
+            auto label_name = licm_value_label(entry);
+            label(label_name);
+            block.buffer ~= licm_values[entry][0 .. licm_values[entry].length];
         }
+
+        label("ymm_zero_data");
+        u8[32] zero_data;
+        memset(&zero_data[0], 0, zero_data.length);
+        block.buffer ~= zero_data[0 .. zero_data.length];
     }
 
-    void parse_position(VertexDecodeState state) {
-        auto vat = &state.vats[state.current_vat];
-
-        movdqu(xmm1, xmmwordPtr(SOURCE_REG64));
-        
-        final switch (vat.position_format) {
-            case CoordFormat.F32: pshufb(xmm1, BYTESWAP_U32_MASK); break;
-            case CoordFormat.U16: 
-            case CoordFormat.S16: pshufb(xmm1, BYTESWAP_U16_MASK); break;
-            case CoordFormat.U8:
-            case CoordFormat.S8: break;
-        }
-        
-        final switch (vat.position_format) {
-            case CoordFormat.F32: break;
-            case CoordFormat.U16: pmovzxwd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.S16: pmovsxwd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.U8:  pmovzxbd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.S8:  pmovsxbd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-        }
-
-        if (vat.position_shift != 0) {
-            mulps(xmm1, POSITION_LICM_REG);
-        }
-
-        movups(xmmwordPtr(DEST_REG64, cast(uint) Vertex.position.offsetof), xmm1);
-        if (vat.position_count == 2) {
-            mov(dwordPtr(DEST_REG64, cast(uint) (Vertex.position.offsetof + 8)), 0);
-        }
-
-        add(SOURCE_REG64, cast(uint) (vat.position_count * coord_format_to_bytes(vat.position_format)));
+    import std.stdio;
+    u64 vpshufb_mask_map;
+    void assign_vpshufb_mask_to_ymm(YMM ymm, YMM mask) {
+        writefln("Assigning vpshufb mask %s to ymm %s", mask, ymm);
+        vpshufb_mask_map &= ~(0xF << (ymm.index * 4));
+        vpshufb_mask_map |= (mask.index & 0xF) << (ymm.index * 4);
     }
 
-    void setup_color_parsing(VertexDecodeState state, int index) {
-        auto licm_reg = COLOR_LICM_REGS[index];
-        auto vat = &state.vats[state.current_vat];
-
-        if (vat.color_shift[index] != 0) {
-            mov(eax, force_cast!u32(1.0f / (cast(float) (1u << vat.color_shift[index]))));
-            movd(licm_reg, eax);
-            vbroadcastss(licm_reg, licm_reg);
-        }
+    YMM vpshufb_mask_for(YMM ymm) {
+        writefln("Getting vpshufb mask for ymm %s", ymm);
+        return YMM((vpshufb_mask_map >> (ymm.index * 4)) & 0xF);
     }
 
-    void parse_colors(VertexDecodeState state, int index) {
-        auto vat = &state.vats[state.current_vat];
+    private string licm_value_label(int entry) {
+        return "licm_value_" ~ to!string(entry);
+    }
 
-        mov(eax, dwordPtr(SOURCE_REG64));
+    YMM ymmzero() {
+        // Reserve the second last YMM as a 7f register.
+        return YMM(14);
+    }
 
-        final switch (vat.color_format[index]) {
-        case ColorFormat.RGB565:
-        case ColorFormat.RGBA4444:
-            this.bswap(eax);
-            break;
+    void process_vertex(VertexFormat state) {
+        // First thing's first, lets extract the attributes into floats.
 
-        case ColorFormat.RGBA8888:
-        case ColorFormat.RGB888x:
-            this.bswap(eax);
-            break;
+    //     auto vcd = &state.vertex_descriptors[state.current_vat];
 
-        case ColorFormat.RGBA6666:
-        case ColorFormat.RGB888:
-            this.bswap(eax);
-            shr(eax, 8);
-            break;
-        }
+    //     parse_position_matrix_index(state);
+    //     parse_texcoord_matrix_indices(state);
 
-        final switch (vat.color_format[index]) {
-        case ColorFormat.RGB565:
-            mov(ebx, 0x00_F8_FC_F8);
-            pdep(eax, eax, ebx);
-            break;
-        
-        case ColorFormat.RGBA4444:
-            mov(ebx, 0xF0_F0_F0_F0);
-            pdep(eax, eax, ebx);
-            break;
-        
-        case ColorFormat.RGBA6666:
-            mov(ebx, 0xFC_FC_FC_FC);
-            pdep(eax, eax, ebx);
-            break;
-        
-        case ColorFormat.RGB888x:
-            break;
-        
-        case ColorFormat.RGBA8888:
-            break;
-        
-        case ColorFormat.RGB888:
-            break;
-        }
+    //     if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+    //         parse_position(state);
+    //     }
 
-        movd(xmm1, eax);
-        pmovzxbd(xmm1, xmm1);
-        cvtdq2ps(xmm1, xmm1);
+    //     for (int i = 0; i < 2; i++) {
+    //         if (vcd.color_location[i] != VertexAttributeLocation.NotPresent) {
+    //             parse_colors(state, i);
+    //         }
+    //     }
 
-        if (vat.color_shift[index] != 0) {
-            mulps(xmm1, COLOR_LICM_REGS[index]);
-        }
-
-        movq(qwordPtr(DEST_REG64, cast(uint) (Vertex.color.offsetof + index * 16)), xmm1);
-        add(SOURCE_REG64, cast(uint) color_format_to_bytes(vat.color_format[index]));
+    //     for (int i = 0; i < 8; i++) {
+    //         if (vcd.texcoord_location[i] != VertexAttributeLocation.NotPresent) {
+    //             parse_texcoord(state, i);
+    //         }
+    //     }
     }
 
     size_t color_format_to_bytes(ColorFormat format) {
@@ -256,51 +196,6 @@ final class Code {
             case ColorFormat.RGBA6666: return 3;
             case ColorFormat.RGBA8888: return 4;
         }
-    }
-
-    void setup_texcoord_parsing(VertexDecodeState state, int index) {
-        auto licm_reg = TEXCOORD_LICM_REGS[index];
-        auto vat = &state.vats[state.current_vat];
-
-        if (vat.texcoord_shift[index] != 0) {
-            mov(eax, force_cast!u32(1.0f / (cast(float) (1u << vat.texcoord_shift[index]))));
-            movd(licm_reg, eax);
-            vbroadcastss(licm_reg, licm_reg);
-        }
-    }
-
-    void parse_texcoord(VertexDecodeState state, int index) {
-        auto licm_reg = TEXCOORD_LICM_REGS[index];
-        auto vat = &state.vats[state.current_vat];
-
-        movdqu(xmm1, xmmwordPtr(SOURCE_REG64));
-        
-        final switch (vat.position_format) {
-            case CoordFormat.F32: pshufb(xmm1, BYTESWAP_U32_MASK); break;
-            case CoordFormat.U16: 
-            case CoordFormat.S16: pshufb(xmm1, BYTESWAP_U16_MASK); break;
-            case CoordFormat.U8:
-            case CoordFormat.S8: break;
-        }
-        
-        final switch (vat.texcoord_format[index]) {
-            case CoordFormat.F32: break;
-            case CoordFormat.U16: pmovzxwd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.S16: pmovsxwd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.U8:  pmovzxbd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-            case CoordFormat.S8:  pmovsxbd(xmm1, xmm1); cvtdq2ps(xmm1, xmm1); break;
-        }
-
-        if (vat.texcoord_shift[index] != 0) {
-           mulps(xmm1, licm_reg);
-        }
-
-        movq(qwordPtr(DEST_REG64, cast(uint) (Vertex.texcoord.offsetof + index * 4)), xmm1);
-        if (vat.texcoord_count[index] == 1) {
-            mov(dwordPtr(DEST_REG64, cast(uint) (Vertex.texcoord.offsetof + index * 4 + 4)), 0);
-        }
-
-        add(SOURCE_REG64, cast(uint) (vat.texcoord_count[index] * coord_format_to_bytes(vat.texcoord_format[index])));
     }
 
     void emit_prologue() {
@@ -323,6 +218,7 @@ final class Code {
 
     u8[] get() {
         emit_epilogue();
+        emit_licm_value_data();
         return block.finalize();
     }
 

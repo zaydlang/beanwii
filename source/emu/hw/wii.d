@@ -149,8 +149,6 @@ static if (config_enable_debugger) {
         this.ipc.load_file_reader(file_reader);
         this.setup_global_memory_value(wii_disk_data);
 
-        log_wii("FileSystem start: %x", cast(u32) wii_disk_data.read_be!u32(0x420) << 2);
-        log_wii("FileSystem size:  %x", cast(u32) wii_disk_data.read_be!u32(0x424));
         WiiApploader* apploader = cast(WiiApploader*) &wii_disk_data[WII_APPLOADER_OFFSET];
         this.run_apploader(apploader, wii_disk_data);
     }
@@ -190,7 +188,7 @@ static if (config_enable_debugger) {
         this.broadway.set_gpr(4, 0x8000_4004);
         this.broadway.set_gpr(5, 0x8000_4008);
 
-        log_apploader("Running apploader...");
+        log_apploader("Running apploader at pc %x...", cast(u32) apploader.header.entry_point);
         this.broadway.set_pc(cast(u32) apploader.header.entry_point);
         this.broadway.run_until_return();
 
@@ -202,8 +200,6 @@ static if (config_enable_debugger) {
         log_apploader("Apploader init  ptr = %08x", init_ptr);
         log_apploader("Apploader main  ptr = %08x", main_ptr);
         log_apploader("Apploader close ptr = %08x", close_ptr);
-
-        import util.dump;
 
         this.broadway.set_pc(init_ptr);
         u32 hle_func_addr = this.broadway.get_hle_context().add_hle_func(&hle_os_report, &this.mem);

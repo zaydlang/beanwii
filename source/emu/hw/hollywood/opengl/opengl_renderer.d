@@ -18,6 +18,11 @@ import std.math;
 
 alias GLBool = u32;
 
+struct BufferWaitStats {
+    size_t total_waits;
+    size_t[] per_segment;
+}
+
 template SegmentedPersistentBuffer(T) {
     final class SegmentedPersistentBuffer {
         private {
@@ -30,15 +35,24 @@ template SegmentedPersistentBuffer(T) {
             size_t used_in_segment = 0;
             GLsync[] fences;
             GLenum target;
+            string debug_name;
+            BufferWaitStats wait_stats;
         }
 
-        this(GLenum target, size_t element_count, size_t segment_count) {
+        this(GLenum target, size_t element_count, size_t segment_count, string debug_name) {
             this.target = target;
             this.element_count = element_count;
             this.segment_count = segment_count;
             this.segment_size = element_count / segment_count;
+            this.debug_name = debug_name;
             fences.length = segment_count;
             fences[] = null;
+            
+            static if (config_enable_opengl_buffer_wait_stats) {
+                wait_stats.per_segment.length = segment_count;
+                wait_stats.per_segment[] = 0;
+                wait_stats.total_waits = 0;
+            }
 
             glGenBuffers(1, &buffer);
             glBindBuffer(target, buffer);
@@ -46,6 +60,10 @@ template SegmentedPersistentBuffer(T) {
                             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
             mapped_ptr = cast(T*) glMapBufferRange(target, 0, element_count * T.sizeof,
                                                   GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT);
+            static if (config_enable_opengl_buffer_wait_stats) {
+                writefln("SegmentedPersistentBuffer created: name=%s target=0x%x elements=%d segment_count=%d segment_size=%d total_bytes=%d",
+                         debug_name, target, element_count, segment_count, segment_size, element_count * T.sizeof);
+            }
         }
 
         T* acquire(size_t count) {
@@ -57,6 +75,10 @@ template SegmentedPersistentBuffer(T) {
                 glClientWaitSync(fences[current_segment], GL_SYNC_FLUSH_COMMANDS_BIT, GLuint.max);
                 glDeleteSync(fences[current_segment]);
                 fences[current_segment] = null;
+                
+                static if (config_enable_opengl_buffer_wait_stats) {
+                    record_wait_for_segment(current_segment);
+                }
             }
 
             if (used_in_segment + count > segment_size) {
@@ -92,6 +114,23 @@ template SegmentedPersistentBuffer(T) {
             return buffer;
         }
 
+        string get_debug_name() const {
+            return debug_name;
+        }
+
+        BufferWaitStats consume_wait_stats() {
+            static if (!config_enable_opengl_buffer_wait_stats) {
+                assert(0, "consume_wait_stats called while config_enable_opengl_buffer_wait_stats is false");
+            }
+            
+            BufferWaitStats result;
+            result.total_waits = wait_stats.total_waits;
+            result.per_segment = wait_stats.per_segment.dup;
+            wait_stats.total_waits = 0;
+            wait_stats.per_segment[] = 0;
+            return result;
+        }
+
         private void advance_segment() {
             mark_segment_submitted();
             size_t next_segment = (current_segment + 1) % segment_count;
@@ -100,10 +139,20 @@ template SegmentedPersistentBuffer(T) {
                 glClientWaitSync(fences[next_segment], GL_SYNC_FLUSH_COMMANDS_BIT, GLuint.max);
                 glDeleteSync(fences[next_segment]);
                 fences[next_segment] = null;
+                static if (config_enable_opengl_buffer_wait_stats) {
+                    record_wait_for_segment(next_segment);
+                }
             }
 
             current_segment = next_segment;
             used_in_segment = 0;
+        }
+
+        private void record_wait_for_segment(size_t segment) {
+            if (segment < wait_stats.per_segment.length) {
+                wait_stats.per_segment[segment] += 1;
+            }
+            wait_stats.total_waits += 1;
         }
     }
 }
@@ -476,7 +525,6 @@ final class OpenGLRenderer {
     // RenderState setters
     void set_position_matrix(float[12] value) {
         if (render_state.position_matrix != value) {
-            gl_debug_marker("Position matrix %f %f %f %f %f %f %f %f %f %f %f %f".format(value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7], value[8], value[9], value[10], value[11]));
             flush();
             render_state.position_matrix = value;
         }
@@ -512,7 +560,6 @@ final class OpenGLRenderer {
 
     void set_geometry_matrix_idx(int value) {
         if (render_state.geometry_matrix_idx != value) {
-            gl_debug_marker("Geometry Matrix Index Change: %d -> %d".format(render_state.geometry_matrix_idx, value));
             flush();
             render_state.geometry_matrix_idx = value;
         }
@@ -1310,9 +1357,8 @@ final class OpenGLRenderer {
     }
     
     void init_opengl() {
-        enum SEGMENTS = 8;
-        vertex_buffer        = new SegmentedPersistentBuffer!Vertex(GL_ARRAY_BUFFER,          MAX_VERTICES,                SEGMENTS);
-        index_buffer         = new SegmentedPersistentBuffer!uint  (GL_ELEMENT_ARRAY_BUFFER, MAX_INDICES,                 SEGMENTS);
+        vertex_buffer = new SegmentedPersistentBuffer!Vertex(GL_ARRAY_BUFFER,         MAX_VERTICES, config_opengl_persistent_buffer_segments, "vertex");
+        index_buffer  = new SegmentedPersistentBuffer!uint  (GL_ELEMENT_ARRAY_BUFFER, MAX_INDICES,  config_opengl_persistent_buffer_segments, "index");
 
         glGenBuffers(1, &persistent_tev_buffer);
         glBindBuffer(GL_UNIFORM_BUFFER, persistent_tev_buffer);
@@ -1849,21 +1895,11 @@ final class OpenGLRenderer {
         glUniformBlockBinding(gl_program, vertex_config_block_index, 0);
         glBindBufferBase(GL_UNIFORM_BUFFER, 0, persistent_vertex_config_buffer);
 
-        for (int i = 0; i < 8; i++) {
-            if (render_state.enabled_textures_bitmap & (1 << i)) {
-                auto desc = render_state.texture_descriptors[i];
-
-                if (is_tracked_efb_address(desc.base_address)) {
-                    gl_debug_marker("Draw uses EFB copy texture addr=0x%x slot=%d", desc.base_address, i);
-                }
-            }
-        }
-
         glDrawElements(GL_TRIANGLES, cast(int) geometry.shared_index_count, GL_UNSIGNED_INT,
                        cast(void*) (geometry.shared_index_start * uint.sizeof));
 
-        vertex_buffer.mark_segment_submitted();
-        index_buffer.mark_segment_submitted();
+        // vertex_buffer.mark_segment_submitted();
+        // index_buffer.mark_segment_submitted();
     }
     
     void flush_and_render(T)(T geometry) {
@@ -1931,7 +1967,6 @@ final class OpenGLRenderer {
         // glColorMask(true, true, true, true);
         glReadBuffer(GL_COLOR_ATTACHMENT0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, efb_fbo);
-
         gl_debug_marker("EFB copy to texture addr=0x%x fmt=%d from (%d, %d) to (%d %d) {%d %d} to {%d %d} [%d]", 
             copy_addr, copy_format, 
             render_state.efb_src_x, 
@@ -2077,6 +2112,25 @@ final class OpenGLRenderer {
 
             writefln("Draw call stats: count=%d mean=%.2f median=%.2f mode=%d range=%d stddev=%.2f efb_copies=%d",
                      draw_call_count, mean, median, mode_value, range, stddev, efb_copies);
+        }
+        
+        static if (config_enable_opengl_buffer_wait_stats) {
+            log_buffer_wait_stats();
+        }
+    }
+    
+    static if (config_enable_opengl_buffer_wait_stats) {
+        private void log_buffer_wait_stats() {
+            auto vertex_waits = vertex_buffer.consume_wait_stats();
+            auto index_waits = index_buffer.consume_wait_stats();
+
+            if (vertex_waits.total_waits == 0 && index_waits.total_waits == 0) {
+                return;
+            }
+
+            writefln("Buffer wait stats: %s total=%d per_segment=%(%d %) ; %s total=%d per_segment=%(%d %)",
+                     vertex_buffer.get_debug_name(), vertex_waits.total_waits, vertex_waits.per_segment,
+                     index_buffer.get_debug_name(),  index_waits.total_waits,  index_waits.per_segment);
         }
     }
 }
