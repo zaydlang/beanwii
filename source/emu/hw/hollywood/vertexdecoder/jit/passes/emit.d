@@ -177,6 +177,10 @@ private u8 color_size(ColorFormat fmt) {
     }
 }
 
+private bool is_rgb8_color(ColorFormat fmt) {
+    return fmt == ColorFormat.RGB888 || fmt == ColorFormat.RGB888x || fmt == ColorFormat.RGBA8888;
+}
+
 private u64 make_mask(u64 offset, u64 len) {
     assert_hollywood(offset + len <= 64, "vertex exceeds 64 bytes");
     if (len == 0) return 0;
@@ -423,7 +427,7 @@ VertexDecodeState construct_vertex_decode_state(VertexFormat format) {
         if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
 
         u32 len = color_size(vat.color_format[c]);
-        vds.color[c] = make_source_state(AttributeStatus.AwaitingDequantization, offset, len, color_size(vat.color_format[c]));
+        vds.color[c] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, color_size(vat.color_format[c]));
         offset += len;
     }
 
@@ -698,6 +702,49 @@ void dequantize_ops(Code code, VertexDecodeState* vds, VertexFormat format) {
                 printf("blend control now %02x\n", blend_control);
             }
 
+            if (op.kind == OpKind.DequantizeColor && op.ymm_index == ymm.index) {
+                // The alignment pass endian-swapped these bytes into [last, ..., first].
+                // For colors, the big-endian value's bits(0,7) = last stream byte = R (MSB of u32).
+                // The endian swap already produces the correct LE u32 for RGBA8888 (passthrough).
+                // For RGB888/RGB888x, we need to fix up the alpha byte and drop the pad.
+                int n = cast(int) op.source_mask.bsf();
+                final switch (op.dequantize_color.format) {
+                    case ColorFormat.RGB888: {
+                        // Endian swap: [o+2, o+1, o+0, 0xFF].
+                        // Need LE u32 [A, B, G, R] = [0x80, o+0, o+1, o+2].
+                        u8 b0 = licm_value[n+0]; // o+2
+                        u8 b1 = licm_value[n+1]; // o+1
+                        u8 b2 = licm_value[n+2]; // o+0
+                        licm_value[n+0] = 0x80;
+                        licm_value[n+1] = b2;    // o+0
+                        licm_value[n+2] = b1;    // o+1
+                        licm_value[n+3] = b0;    // o+2
+                        break;
+                    }
+                    case ColorFormat.RGB888x: {
+                        // Endian swap: [o+3, o+2, o+1, o+0]. Pad byte is o+0 (first stream byte).
+                        // Need LE u32 [A, B, G, R] = [0x80, o+1, o+2, o+3].
+                        u8 x0 = licm_value[n+0]; // o+3
+                        u8 x1 = licm_value[n+1]; // o+2
+                        u8 x2 = licm_value[n+2]; // o+1
+                        licm_value[n+0] = 0x80;
+                        licm_value[n+1] = x2;    // o+1
+                        licm_value[n+2] = x1;    // o+2
+                        licm_value[n+3] = x0;    // o+3
+                        break;
+                    }
+                    case ColorFormat.RGBA8888:
+                        // Endian swap already correct — passthrough.
+                        break;
+                    case ColorFormat.RGB565:
+                    case ColorFormat.RGBA4444:
+                    case ColorFormat.RGBA6666:
+                        // Dequantization for these will be handled in GPR-land,
+                        // following what clang emits for similar operations.
+                        break;
+                }
+            }
+
             if (op.kind == OpKind.CvtToFloat && op.ymm_index == ymm.index) {
                 active_fields_in_ymm_that_need_vcvtdq2ps |= op.source_mask;
             }
@@ -749,6 +796,119 @@ void dequantize_ops(Code code, VertexDecodeState* vds, VertexFormat format) {
 
         // And store!
         code.vmovups(code.ymmwordPtr(rsi, current_dest_stream_offset), ymm);
+
+        // Post-store fixups for color attributes in this YMM.
+        foreach (ref op; ops) {
+            if (op.kind != OpKind.DequantizeColor || op.ymm_index != ymm.index)
+                continue;
+
+            int n = cast(int) op.source_mask.bsf();
+            int color_offset = current_dest_stream_offset + n;
+
+            final switch (op.dequantize_color.format) {
+                case ColorFormat.RGB888:
+                case ColorFormat.RGB888x:
+                    // Alpha byte fixup: write 0xFF to the alpha byte position.
+                    code.mov(code.bytePtr(rsi, color_offset), cast(u8) 0xFF);
+                    break;
+
+                case ColorFormat.RGBA8888:
+                    // Already correct from vpshufb endian swap.
+                    break;
+
+                case ColorFormat.RGB565: {
+                    // Dequantize packed RGB565 u16 → R<<24 | G<<16 | B<<8 | 0xFF
+                    auto val = code.allocate_register(); // input value
+                    auto res = code.allocate_register(); // result accumulator
+                    auto t1  = code.allocate_register(); // temp
+
+                    code.mov(val, code.dwordPtr(rsi, color_offset));
+
+                    code.mov(res, val);
+                    code.shl(res, 27);          // res = (val & 0x1F) << 27   (R bits)
+                    code.mov(t1, val);
+                    code.and(t1, cast(uint) 63488);      // t1 = val & 0xF800        (B bits)
+                    code.shl(val, 13);
+                    code.and(val, cast(uint) 16515072);  // val = (val << 13) & 0xFC0000 (G bits)
+                    code.or(val, res);           // val = R | G
+                    code.mov(res, t1);
+                    code.add(res, val);          // res = R | G | B
+                    code.add(res, cast(uint) 255); // res |= 0xFF (alpha)
+
+                    code.mov(code.dwordPtr(rsi, color_offset), res);
+
+                    code.free_register(val);
+                    code.free_register(res);
+                    code.free_register(t1);
+                    break;
+                }
+
+                case ColorFormat.RGBA4444: {
+                    // Dequantize packed RGBA4444 u16 → R<<24 | G<<16 | B<<8 | A
+                    auto val = code.allocate_register(); // input value
+                    auto res = code.allocate_register(); // result accumulator
+                    auto t1  = code.allocate_register(); // temp
+                    auto t2  = code.allocate_register(); // temp
+
+                    code.mov(val, code.dwordPtr(rsi, color_offset));
+
+                    code.mov(t1, val);
+                    code.shl(t1, 28);            // t1 = (val & 0xF) << 28    (R bits)
+                    code.mov(t2, val);
+                    code.shr(t2, 8);
+                    code.and(t2, cast(uint) 0xFFFFFFF0); // t2 = (val >> 8) & ~0xF  (A bits)
+                    code.mov(res, val);
+                    code.shl(res, 16);
+                    code.and(res, cast(uint) 15728640);  // res = (val << 16) & 0xF00000 (G bits)
+                    code.or(res, t1);            // res = R | G
+                    code.shl(val, 4);
+                    code.and(val, cast(uint) 61440);     // val = (val << 4) & 0xF000 (B bits)
+                    code.or(res, val);           // res = R | G | B
+                    code.or(res, t2);            // res = R | G | B | A
+
+                    code.mov(code.dwordPtr(rsi, color_offset), res);
+
+                    code.free_register(val);
+                    code.free_register(res);
+                    code.free_register(t1);
+                    code.free_register(t2);
+                    break;
+                }
+
+                case ColorFormat.RGBA6666: {
+                    // Dequantize packed RGBA6666 u24 → R<<24 | G<<16 | B<<8 | A
+                    auto val = code.allocate_register(); // input value
+                    auto res = code.allocate_register(); // result accumulator
+                    auto t1  = code.allocate_register(); // temp
+                    auto t2  = code.allocate_register(); // temp
+
+                    code.mov(val, code.dwordPtr(rsi, color_offset));
+
+                    code.mov(t1, val);
+                    code.shl(t1, 26);            // t1 = (val & 0x3F) << 26   (R bits)
+                    code.mov(t2, val);
+                    code.shr(t2, 16);
+                    code.and(t2, cast(uint) 252);        // t2 = (val >> 16) & 0xFC (A bits)
+                    code.mov(res, val);
+                    code.shl(res, 12);
+                    code.and(res, cast(uint) 16515072);  // res = (val << 12) & 0xFC0000 (G bits)
+                    code.or(res, t1);            // res = R | G
+                    code.shr(val, 2);
+                    code.and(val, cast(uint) 64512);     // val = (val >> 2) & 0xFC00 (B bits)
+                    code.or(res, val);           // res = R | G | B
+                    code.or(res, t2);            // res = R | G | B | A
+
+                    code.mov(code.dwordPtr(rsi, color_offset), res);
+
+                    code.free_register(val);
+                    code.free_register(res);
+                    code.free_register(t1);
+                    code.free_register(t2);
+                    break;
+                }
+            }
+        }
+
         current_dest_stream_offset += 32;
     }
 
@@ -787,7 +947,7 @@ DestFormat make_dest_format(VertexFormat format) {
         dest_format.color_offset[c] = current_offset;
         dest_format.color_count[c]  = 1;
 
-        current_offset += 4 * 4;
+        current_offset += 4;
     }
 
     for (int t = 0; t < 8; t++) {

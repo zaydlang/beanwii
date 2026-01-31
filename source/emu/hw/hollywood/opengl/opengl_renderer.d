@@ -1876,9 +1876,9 @@ final class OpenGLRenderer {
         glEnableVertexAttribArray(texcoord_attr_location);
         glVertexAttribPointer(texcoord_attr_location, 2, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 12 * float.sizeof));
         glEnableVertexAttribArray(color_attr_location);
-        glVertexAttribPointer(color_attr_location, 4, GL_FLOAT, GL_FALSE, Vertex.sizeof, cast(void*) (base_offset + 28 * float.sizeof));
+        glVertexAttribPointer(color_attr_location, 4, GL_UNSIGNED_BYTE, GL_TRUE, Vertex.sizeof, cast(void*) (base_offset + Vertex.color.offsetof));
         glEnableVertexAttribArray(matrix_index_attr_location);
-        glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + 36 * float.sizeof));
+        glVertexAttribIPointer(matrix_index_attr_location, 1, GL_INT, Vertex.sizeof, cast(void*) (base_offset + Vertex.position_matrix_index.offsetof));
             
         if (render_state.uses_per_vertex_matrices) {
             glUniform1fv(matrix_data_uniform_location, 256, general_matrix_ram.ptr);

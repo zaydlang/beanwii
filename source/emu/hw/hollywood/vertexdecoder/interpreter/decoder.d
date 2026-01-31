@@ -80,7 +80,7 @@ private:
                 continue;
             }
 
-            format.color_offset[c] = cast(int) (Vertex.color.offsetof + c * 16);
+            format.color_offset[c] = cast(int) (Vertex.color.offsetof + c * u32.sizeof);
             format.color_count[c] = 1;
         }
 
@@ -179,55 +179,40 @@ private:
         }
     }
 
-    float[4] dequantize_color(u32 value, ColorFormat format, int index) {
+    u32 dequantize_color(u32 value, ColorFormat format) {
         final switch (format) {
             case ColorFormat.RGB565:
-                return [
-                    (cast(float) (value.bits(0, 4) << 3)) / 0xff,
-                    (cast(float) (value.bits(5, 10) << 2)) / 0xff,
-                    (cast(float) (value.bits(11, 15) << 3)) / 0xff,
-                    1.0
-                ];
-            
+                return (value.bits(0, 4) << 3) << 24
+                     | (value.bits(5, 10) << 2) << 16
+                     | (value.bits(11, 15) << 3) << 8
+                     | 0xFF;
+
             case ColorFormat.RGB888:
-                return [
-                    (cast(float) (value.bits(0, 7))) / 0xff,
-                    (cast(float) (value.bits(8, 15))) / 0xff,
-                    (cast(float) (value.bits(16, 23))) / 0xff,
-                    1.0
-                ];
-            
+                return value.bits(0, 7) << 24
+                     | value.bits(8, 15) << 16
+                     | value.bits(16, 23) << 8
+                     | 0xFF;
+
             case ColorFormat.RGB888x:
-                return [
-                    (cast(float) (value.bits(0, 7))) / 0xff,
-                    (cast(float) (value.bits(8, 15))) / 0xff,
-                    (cast(float) (value.bits(16, 23))) / 0xff,
-                    1.0
-                ];
-            
+                return value.bits(0, 7) << 24
+                     | value.bits(8, 15) << 16
+                     | value.bits(16, 23) << 8
+                     | 0xFF;
+
             case ColorFormat.RGBA4444:
-                return [
-                    (cast(float) (value.bits(0, 3) << 4)) / 0xff,
-                    (cast(float) (value.bits(4, 7) << 4)) / 0xff,
-                    (cast(float) (value.bits(8, 11) << 4)) / 0xff,
-                    (cast(float) (value.bits(12, 15) << 4)) / 0xff,
-                ];
-            
+                return (value.bits(0, 3) << 4) << 24
+                     | (value.bits(4, 7) << 4) << 16
+                     | (value.bits(8, 11) << 4) << 8
+                     | (value.bits(12, 15) << 4);
+
             case ColorFormat.RGBA6666:
-                return [
-                    (cast(float) (value.bits(0, 5) << 2)) / 0xff,
-                    (cast(float) (value.bits(6, 11) << 2)) / 0xff,
-                    (cast(float) (value.bits(12, 17) << 2)) / 0xff,
-                    (cast(float) (value.bits(18, 23) << 2)) / 0xff,
-                ];
-            
+                return (value.bits(0, 5) << 2) << 24
+                     | (value.bits(6, 11) << 2) << 16
+                     | (value.bits(12, 17) << 2) << 8
+                     | (value.bits(18, 23) << 2);
+
             case ColorFormat.RGBA8888:
-                return [
-                    (cast(float) (value.bits(24, 31))) / 0xff,
-                    (cast(float) (value.bits(16, 23))) / 0xff,
-                    (cast(float) (value.bits(8, 15))) / 0xff,
-                    (cast(float) (value.bits(0, 7))) / 0xff,
-                ];
+                return value;
         }
     }
 
@@ -360,46 +345,31 @@ private:
             case VertexAttributeLocation.Direct: {
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_shape_data_buffer_direct(stream, offset, size);
-                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
-
-                if (vat.color_count[j] == 3) {
-                    v.color[j][3] = 1.0;
-                }
-
+                v.color[j] = dequantize_color(color_data, vat.color_format[j]);
                 offset += size;
                 break;
             }
-            
+
             case VertexAttributeLocation.Indexed8Bit: {
                 auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 1);
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_indexed_array(state, j + 2, array_offset, 0, size);
-                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
-
-                if (vat.color_count[j] == 3) {
-                    v.color[j][3] = 1.0;
-                }
-
+                v.color[j] = dequantize_color(color_data, vat.color_format[j]);
                 offset += 1;
                 break;
             }
-            
+
             case VertexAttributeLocation.Indexed16Bit: {
                 auto array_offset = read_from_shape_data_buffer_direct(stream, offset, 2);
                 size_t size = calculate_expected_size_of_color(vat.color_format[j]);
                 u32 color_data = read_from_indexed_array(state, j + 2, array_offset, 0, size);
-                v.color[j] = dequantize_color(color_data, vat.color_format[j], j);
-
-                if (vat.color_count[j] == 3) {
-                    v.color[j][3] = 1.0;
-                }
-
+                v.color[j] = dequantize_color(color_data, vat.color_format[j]);
                 offset += 2;
                 break;
             }
-            
+
             case VertexAttributeLocation.NotPresent:
-                v.color[j] = [1.0, 1.0, 1.0, 1.0];
+                v.color[j] = 0xFFFFFFFF;
                 break;
             }
         }

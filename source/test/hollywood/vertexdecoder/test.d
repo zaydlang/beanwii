@@ -152,8 +152,8 @@ void print_vec(string label,
 }
 
 void print_int(string label, int actual, int expected, bool mismatch) {
-    cwritefln("Expected %s: %s", label, colorize_value(format("%d", expected), mismatch, true));
-    cwritefln("Actual   %s: %s", label, colorize_value(format("%d", actual), mismatch, false));
+    cwritefln("Expected %s: %s", label, colorize_value(format("0x%08x", expected), mismatch, true));
+    cwritefln("Actual   %s: %s", label, colorize_value(format("0x%08x", actual), mismatch, false));
 }
 
 float read_f32(const ubyte[] buffer, size_t offset) {
@@ -163,6 +163,10 @@ float read_f32(const ubyte[] buffer, size_t offset) {
 
 int read_s32(const ubyte[] buffer, size_t offset) {
     return *cast(const int*) (buffer.ptr + offset);
+}
+
+u32 read_u32(const ubyte[] buffer, size_t offset) {
+    return *cast(const u32*) (buffer.ptr + offset);
 }
 
 Vertex[] materialize_vertices(const ubyte[] buffer,
@@ -212,10 +216,7 @@ Vertex[] materialize_vertices(const ubyte[] buffer,
             if (format.color_offset[c] < 0) {
                 continue;
             }
-            int components = vat.color_count[c] == 3 ? 3 : 4;
-            foreach (j; 0 .. components) {
-                v.color[c][j] = read_f32(buffer, base + cast(size_t) format.color_offset[c] + j * 4);
-            }
+            v.color[c] = read_u32(buffer, base + cast(size_t) format.color_offset[c]);
         }
 
         foreach (t; 0 .. 8) {
@@ -243,7 +244,7 @@ void assert_vertex_matches(Vertex actual,
     bool[3] normal_diff;
     bool[3] binormal_t_diff;
     bool[3] binormal_b_diff;
-    bool[4][2] color_diff;
+    bool[2] color_diff;
     bool[2][8] texcoord_diff;
     bool position_matrix_index_diff = false;
 
@@ -280,11 +281,8 @@ void assert_vertex_matches(Vertex actual,
 
     foreach (c; 0 .. 2) {
         if (vcd.color_location[c] != VertexAttributeLocation.NotPresent) {
-            int components = vat.color_count[c] == 3 ? 3 : 4;
-            foreach (i; 0 .. components) {
-                color_diff[c][i] = !close_enough(actual.color[c][i], expected.color[c][i]);
-                failed = failed || color_diff[c][i];
-            }
+            color_diff[c] = actual.color[c] != expected.color[c];
+            failed = failed || color_diff[c];
         }
     }
 
@@ -325,13 +323,10 @@ void assert_vertex_matches(Vertex actual,
 
     foreach (c; 0 .. 2) {
         if (vcd.color_location[c] != VertexAttributeLocation.NotPresent) {
-            int components = vat.color_count[c] == 3 ? 3 : 4;
-            print_vec(
-                format("color[%d]", c),
-                actual.color[c][],
-                expected.color[c][],
-                color_diff[c][],
-                components);
+            print_int(format("color[%d]", c),
+                cast(int) actual.color[c],
+                cast(int) expected.color[c],
+                color_diff[c]);
         }
     }
 
@@ -391,7 +386,10 @@ struct VertexBuilder {
     }
 
     ref VertexBuilder color(int idx, float r, float g, float b, float a) {
-        v.color[idx] = [r, g, b, a];
+        v.color[idx] = (cast(u32)(r * 255.0f + 0.5f) << 24)
+                     | (cast(u32)(g * 255.0f + 0.5f) << 16)
+                     | (cast(u32)(b * 255.0f + 0.5f) << 8)
+                     | cast(u32)(a * 255.0f + 0.5f);
         return this;
     }
 

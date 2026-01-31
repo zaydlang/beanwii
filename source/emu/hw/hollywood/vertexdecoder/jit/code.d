@@ -254,5 +254,7 @@ final class Code {
     void free_all_registers() {
         allocated_regs = 0;
         reserve_register(SOURCE_REG32);
+        reserve_register(DEST_REG32);
+        reserve_register(eax); // rax is the vertex loop counter
     }
 }

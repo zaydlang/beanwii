@@ -132,7 +132,7 @@ struct Vertex {
     float[3] binormal_t;
     float[3] binormal_b;
     float[2][8] texcoord;
-    float[4][2] color;
+    u32[2] color;
     int position_matrix_index;
 }
 
