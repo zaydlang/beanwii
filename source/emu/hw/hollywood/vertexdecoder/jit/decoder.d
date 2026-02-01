@@ -8,7 +8,12 @@ import emu.hw.hollywood.vertexdecoder.types;
 import util.log;
 import util.number;
 
-alias VertexJitFunction = extern(C) void function(const ubyte* stream, Vertex* out_vertices);
+struct ArrayInfo {
+    ulong[16] host_bases;  // pre-resolved host pointers
+    u32[16]   strides;
+}
+
+alias VertexJitFunction = extern(C) void function(const ubyte* stream, Vertex* out_vertices, const ArrayInfo* array_info);
 
 struct VertexJitEntry {
     VertexJitFunction func;
@@ -44,7 +49,15 @@ final class VertexJitDecoder {
         }
 
         auto jit_func = entry.func;
-        jit_func(stream, out_vertices);
+
+        ArrayInfo array_info;
+        foreach (i; 0 .. 16) {
+            if (state.array_bases[i] != 0)
+                array_info.host_bases[i] = cast(ulong) state.mem.translate_address(state.array_bases[i]);
+            array_info.strides[i] = state.array_strides[i];
+        }
+
+        jit_func(stream, out_vertices, &array_info);
         return VertexDecodeResult(cast(uint) state.number_of_expected_vertices, entry.dest_format);
     }
 

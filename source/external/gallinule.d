@@ -2550,6 +2550,7 @@ import std.stdio;
     auto vshufpd(XMM dst, XMM src1, XMM src2, ubyte imm8) => emit!(0, VEX, 128, DEFAULT, 0x66)(0xc6, dst, src1, src2, imm8);
     auto vpbroadcastq(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x59, dst, src);
     auto vpbroadcastd(XMM dst, XMM src) => emit!(0, VEX, 128, F38, 0x66)(0x58, dst, src);
+    auto vpbroadcastd(YMM dst, XMM src) => emit!(0, VEX, 256, F38, 0x66)(0x58, dst, src);
     auto vbroadcastss(RM)(XMM dst, RM src) if (valid!(RM, 128, 32)) => emit!(0, VEX, 128, F38, 0x66)(0x18, dst, src);
     auto vmovups(RM)(XMM dst, RM src) if (valid!(RM, 128)) => emit!(0, VEX, 128, DEFAULT, 0)(0x10, dst, src);
     auto vmovups(Address!128 dst, XMM src) => emit!(0, VEX, 128, DEFAULT, 0)(0x11, src, dst);
@@ -2747,6 +2748,13 @@ import std.stdio;
 
     auto bswap(R32 dst) => emit!(0, NRM)(0x0f, 0xc8, dst);
     auto bswap(R64 dst) => emit!(0, NRM)(0x0f, 0xc8, dst);
+
+    auto movbe(RM)(R16 dst, RM src) if (valid!(RM, 16)) => emit!0(0x0f, 0x38, 0xf0, src, dst);
+    auto movbe(RM)(R32 dst, RM src) if (valid!(RM, 32)) => emit!0(0x0f, 0x38, 0xf0, src, dst);
+    auto movbe(RM)(R64 dst, RM src) if (valid!(RM, 64)) => emit!0(0x0f, 0x38, 0xf0, src, dst);
+    auto movbe(RM)(RM dst, R16 src) if (valid!(RM, 16)) => emit!0(0x0f, 0x38, 0xf1, dst, src);
+    auto movbe(RM)(RM dst, R32 src) if (valid!(RM, 32)) => emit!0(0x0f, 0x38, 0xf1, dst, src);
+    auto movbe(RM)(RM dst, R64 src) if (valid!(RM, 64)) => emit!0(0x0f, 0x38, 0xf1, dst, src);
 
     auto bt(RM)(RM dst, R16 src) if (valid!(RM, 16)) => emit!0(0x0f, 0xa3, dst, src); 
     auto bt(RM)(RM dst, R32 src) if (valid!(RM, 32)) => emit!0(0x0f, 0xa3, dst, src); 

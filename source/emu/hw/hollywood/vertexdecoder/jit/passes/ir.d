@@ -9,7 +9,14 @@ enum OpKind : u8 {
     Mul,
     DequantizeColor,
     CvtToFloat,
-    Store
+    Store,
+    IndexedLoad,
+}
+
+enum IndexedAttrKind : u8 {
+    Coord,
+    Normal,
+    Color,
 }
 
 enum Size : u8 {
@@ -34,6 +41,7 @@ struct Op {
         DequantizeColor dequantize_color;
         // no parameters for CvtToFloat
         Store           store;
+        IndexedLoad     indexed_load;
     }    
 }
 
@@ -57,6 +65,24 @@ struct DequantizeColor {
 
 struct Store {
     u32 dest_offset;
+}
+
+struct IndexedLoad {
+    u8              stream_offset;
+    u8              index_size;       // 1 or 2
+    u8              array_number;
+    IndexedAttrKind attr_kind;
+    u8              component_count;
+    float           scale;            // 1.0 if no scaling
+
+    u8              ymm_index;
+    u8              ymm_byte_offset;
+
+    union {
+        CoordFormat  coord_format;
+        NormalFormat normal_format;
+        ColorFormat  color_format;
+    }
 }
 
 // Describes a contiguous 32-byte window in the source stream that should

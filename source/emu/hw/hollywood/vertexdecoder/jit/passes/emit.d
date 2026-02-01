@@ -8,6 +8,7 @@ import emu.hw.hollywood.vertexdecoder.jit.passes.ir;
 import emu.hw.hollywood.vertexdecoder.types;
 import gallinule.x86;
 import util.bitop;
+import util.force_cast;
 import util.log;
 import util.number;
 
@@ -57,6 +58,7 @@ enum AttributeStatus : u8 {
     AwaitingFloatExpansion,
     AwaitingDequantization,
     AwaitingStore,
+    AwaitingIndexedInsert,
     Stored
 }
 
@@ -276,6 +278,61 @@ private void push_color(ref Op[] ops, u64 mask, ColorFormat fmt, u32 dest_offset
     push_store(ops, mask, dest_offset, ymm_index);
 }
 
+private bool is_indexed(VertexAttributeLocation loc) {
+    return loc == VertexAttributeLocation.Indexed8Bit || loc == VertexAttributeLocation.Indexed16Bit;
+}
+
+private void push_indexed_coord(ref Op[] ops, ref AttributeDecodeState ads, u8 stream_offset,
+                                 VertexAttributeLocation loc, u8 array_number,
+                                 u8 component_count, float scale, CoordFormat fmt) {
+    Op op;
+    op.kind = OpKind.IndexedLoad;
+    op.indexed_load.stream_offset = stream_offset;
+    op.indexed_load.index_size = (loc == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+    op.indexed_load.array_number = array_number;
+    op.indexed_load.attr_kind = IndexedAttrKind.Coord;
+    op.indexed_load.component_count = component_count;
+    op.indexed_load.scale = scale;
+    op.indexed_load.ymm_index = ads.location.ymm.index;
+    op.indexed_load.ymm_byte_offset = ads.location.ymm.range.offset;
+    op.indexed_load.coord_format = fmt;
+    ops ~= op;
+}
+
+private void push_indexed_normal(ref Op[] ops, ref AttributeDecodeState ads, u8 stream_offset,
+                                  VertexAttributeLocation loc, u8 array_number,
+                                  u8 component_count, float scale, NormalFormat fmt) {
+    Op op;
+    op.kind = OpKind.IndexedLoad;
+    op.indexed_load.stream_offset = stream_offset;
+    op.indexed_load.index_size = (loc == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+    op.indexed_load.array_number = array_number;
+    op.indexed_load.attr_kind = IndexedAttrKind.Normal;
+    op.indexed_load.component_count = component_count;
+    op.indexed_load.scale = scale;
+    op.indexed_load.ymm_index = ads.location.ymm.index;
+    op.indexed_load.ymm_byte_offset = ads.location.ymm.range.offset;
+    op.indexed_load.normal_format = fmt;
+    ops ~= op;
+}
+
+private void push_indexed_color(ref Op[] ops, ref AttributeDecodeState ads, u8 stream_offset,
+                                 VertexAttributeLocation loc, u8 array_number,
+                                 float scale, ColorFormat fmt) {
+    Op op;
+    op.kind = OpKind.IndexedLoad;
+    op.indexed_load.stream_offset = stream_offset;
+    op.indexed_load.index_size = (loc == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+    op.indexed_load.array_number = array_number;
+    op.indexed_load.attr_kind = IndexedAttrKind.Color;
+    op.indexed_load.component_count = 1;
+    op.indexed_load.scale = scale;
+    op.indexed_load.ymm_index = ads.location.ymm.index;
+    op.indexed_load.ymm_byte_offset = ads.location.ymm.range.offset;
+    op.indexed_load.color_format = fmt;
+    ops ~= op;
+}
+
 Op[] create_parallel_ops(VertexFormat state, VertexDecodeState* vds) {
     Op[] ops;
 
@@ -305,12 +362,73 @@ Op[] create_parallel_ops(VertexFormat state, VertexDecodeState* vds) {
         return mask;
     };
 
+    // Recompute stream offsets for indexed attributes (original source_buffer.range.offset
+    // was overwritten during YMM allocation).
+    u8 stream_offset = 0;
+
+    if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
+        stream_offset += 1;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        if (vcd.texcoord_matrix_location[i] != VertexAttributeLocation.NotPresent) {
+            stream_offset += 1;
+        }
+    }
+
+    // --- Position ---
+    u8 position_stream_offset = stream_offset;
+    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+        if (vcd.position_location == VertexAttributeLocation.Direct) {
+            stream_offset += cast(u8)(coord_size(vat.position_format) * vat.position_count);
+        } else {
+            stream_offset += is_indexed(vcd.position_location) ?
+                ((vcd.position_location == VertexAttributeLocation.Indexed8Bit) ? 1 : 2) : 0;
+        }
+    }
+
+    // --- Normal ---
+    u8 normal_stream_offset = stream_offset;
+    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+        if (vcd.normal_location == VertexAttributeLocation.Direct) {
+            stream_offset += cast(u8)(normal_size(vat.normal_format) * vat.normal_count);
+        } else {
+            stream_offset += (vcd.normal_location == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+        }
+    }
+
+    // --- Colors ---
+    u8[2] color_stream_offsets;
+    for (int c = 0; c < 2; c++) {
+        color_stream_offsets[c] = stream_offset;
+        if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
+        if (vcd.color_location[c] == VertexAttributeLocation.Direct) {
+            stream_offset += color_size(vat.color_format[c]);
+        } else {
+            stream_offset += (vcd.color_location[c] == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+        }
+    }
+
+    // --- Texcoords ---
+    u8[8] texcoord_stream_offsets;
+    for (int t = 0; t < 8; t++) {
+        texcoord_stream_offsets[t] = stream_offset;
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.Direct) {
+            stream_offset += cast(u8)(coord_size(vat.texcoord_format[t]) * vat.texcoord_count[t]);
+        } else {
+            stream_offset += (vcd.texcoord_location[t] == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+        }
+    }
+
+    // --- Now generate ops ---
+
     if (vcd.position_normal_matrix_location != VertexAttributeLocation.NotPresent) {
         auto mask = mask_from_ads(vds.position_matrix);
         push_store(ops, mask, Vertex.position_matrix_index.offsetof, vds.position_matrix.location.ymm.index);
     }
 
-    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+    if (vcd.position_location == VertexAttributeLocation.Direct) {
         u8 size_bytes = coord_size(vat.position_format);
         auto mask = mask_from_ads_with_stride(vds.position, size_bytes);
 
@@ -330,9 +448,13 @@ Op[] create_parallel_ops(VertexFormat state, VertexDecodeState* vds) {
         }
 
         push_store(ops, mask, Vertex.position.offsetof, vds.position.location.ymm.index);
+    } else if (is_indexed(vcd.position_location)) {
+        float scale = (vat.position_shift != 0) ? 1.0f / cast(float)(1u << vat.position_shift) : 1.0f;
+        push_indexed_coord(ops, vds.position, position_stream_offset,
+            vcd.position_location, 0, cast(u8) vat.position_count, scale, vat.position_format);
     }
 
-    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+    if (vcd.normal_location == VertexAttributeLocation.Direct) {
         auto mask = mask_from_ads(vds.normal);
         u8 size_bytes = normal_size(vat.normal_format);
 
@@ -353,38 +475,58 @@ Op[] create_parallel_ops(VertexFormat state, VertexDecodeState* vds) {
         }
 
         push_store(ops, mask, Vertex.normal.offsetof, vds.normal.location.ymm.index);
+    } else if (is_indexed(vcd.normal_location)) {
+        float scale = 1.0f;
+        final switch (vat.normal_format) {
+            case NormalFormat.S8:  scale = 1.0f / 64.0f; break;
+            case NormalFormat.S16: scale = 1.0f / 16384.0f; break;
+            case NormalFormat.F32: scale = 1.0f; break;
+        }
+        push_indexed_normal(ops, vds.normal, normal_stream_offset,
+            vcd.normal_location, 1, cast(u8) vat.normal_count, scale, vat.normal_format);
     }
 
     for (int c = 0; c < 2; c++) {
         if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
 
-        auto mask = mask_from_ads(vds.color[c]);
-        u32 dest = cast(u32) (Vertex.color.offsetof + cast(size_t) (c * 16));
-        push_color(ops, mask, vat.color_format[c], dest, vds.color[c].location.ymm.index);
+        if (vcd.color_location[c] == VertexAttributeLocation.Direct) {
+            auto mask = mask_from_ads(vds.color[c]);
+            u32 dest = cast(u32) (Vertex.color.offsetof + cast(size_t) (c * 16));
+            push_color(ops, mask, vat.color_format[c], dest, vds.color[c].location.ymm.index);
+        } else {
+            push_indexed_color(ops, vds.color[c], color_stream_offsets[c],
+                vcd.color_location[c], cast(u8)(c + 2), 1.0f, vat.color_format[c]);
+        }
     }
 
     for (int t = 0; t < 8; t++) {
         if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
 
-        auto mask = mask_from_ads(vds.texcoord[t]);
-        u8 size_bytes = coord_size(vat.texcoord_format[t]);
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.Direct) {
+            auto mask = mask_from_ads(vds.texcoord[t]);
+            u8 size_bytes = coord_size(vat.texcoord_format[t]);
 
-        if (vat.texcoord_format[t] != CoordFormat.F32) {
-            if (vat.texcoord_format[t] == CoordFormat.S8 || vat.texcoord_format[t] == CoordFormat.S16) {
-                push_sext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
-            } else {
-                push_zext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
+            if (vat.texcoord_format[t] != CoordFormat.F32) {
+                if (vat.texcoord_format[t] == CoordFormat.S8 || vat.texcoord_format[t] == CoordFormat.S16) {
+                    push_sext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
+                } else {
+                    push_zext(ops, mask, size_from_bytes(size_bytes), vds.texcoord[t].location.ymm.index);
+                }
             }
+
+            push_cvt(ops, mask, vds.texcoord[t].location.ymm.index);
+
+            if (vat.texcoord_shift[t] != 0) {
+                writefln("Pushing mul mask %b factor %f ymm %d", mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
+                push_mul(ops, mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
+            }
+
+            push_store(ops, mask, cast(u32) (Vertex.texcoord.offsetof + cast(size_t) (t * 8)), vds.texcoord[t].location.ymm.index);
+        } else {
+            float scale = (vat.texcoord_shift[t] != 0) ? 1.0f / cast(float)(1u << vat.texcoord_shift[t]) : 1.0f;
+            push_indexed_coord(ops, vds.texcoord[t], texcoord_stream_offsets[t],
+                vcd.texcoord_location[t], cast(u8)(t + 4), cast(u8) vat.texcoord_count[t], scale, vat.texcoord_format[t]);
         }
-
-        push_cvt(ops, mask, vds.texcoord[t].location.ymm.index);
-
-        if (vat.texcoord_shift[t] != 0) {
-            writefln("Pushing mul mask %b factor %f ymm %d", mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
-            push_mul(ops, mask, 1.0f / cast(float) (1u << vat.texcoord_shift[t]), vds.texcoord[t].location.ymm.index);
-        }
-
-        push_store(ops, mask, cast(u32) (Vertex.texcoord.offsetof + cast(size_t) (t * 8)), vds.texcoord[t].location.ymm.index);
     }
 
     assert_hollywood(vds.source_stream_size <= 64, "vertex exceeds 64 bytes");
@@ -411,32 +553,58 @@ VertexDecodeState construct_vertex_decode_state(VertexFormat format) {
         }
     }
 
-    if (vcd.position_location != VertexAttributeLocation.NotPresent) {
+    if (vcd.position_location == VertexAttributeLocation.Direct) {
         u32 len = cast(u32) coord_size(vat.position_format) * cast(u32) vat.position_count;
         vds.position = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, coord_size(vat.position_format));
         offset += len;
+    } else if (vcd.position_location == VertexAttributeLocation.Indexed8Bit
+            || vcd.position_location == VertexAttributeLocation.Indexed16Bit) {
+        u8 index_size = (vcd.position_location == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+        u32 output_len = cast(u32) coord_size(vat.position_format) * cast(u32) vat.position_count;
+        vds.position = make_source_state(AttributeStatus.AwaitingIndexedInsert, offset, output_len, index_size);
+        offset += index_size;
     }
 
-    if (vcd.normal_location != VertexAttributeLocation.NotPresent) {
+    if (vcd.normal_location == VertexAttributeLocation.Direct) {
         u32 len = cast(u32) normal_size(vat.normal_format) * cast(u32) vat.normal_count;
         vds.normal = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, normal_size(vat.normal_format));
         offset += len;
+    } else if (vcd.normal_location == VertexAttributeLocation.Indexed8Bit
+            || vcd.normal_location == VertexAttributeLocation.Indexed16Bit) {
+        u8 index_size = (vcd.normal_location == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+        u32 output_len = cast(u32) normal_size(vat.normal_format) * cast(u32) vat.normal_count;
+        vds.normal = make_source_state(AttributeStatus.AwaitingIndexedInsert, offset, output_len, index_size);
+        offset += index_size;
     }
 
     for (int c = 0; c < 2; c++) {
         if (vcd.color_location[c] == VertexAttributeLocation.NotPresent) continue;
 
-        u32 len = color_size(vat.color_format[c]);
-        vds.color[c] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, color_size(vat.color_format[c]));
-        offset += len;
+        if (vcd.color_location[c] == VertexAttributeLocation.Direct) {
+            u32 len = color_size(vat.color_format[c]);
+            vds.color[c] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, color_size(vat.color_format[c]));
+            offset += len;
+        } else {
+            u8 index_size = (vcd.color_location[c] == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+            u32 output_len = color_size(vat.color_format[c]);
+            vds.color[c] = make_source_state(AttributeStatus.AwaitingIndexedInsert, offset, output_len, index_size);
+            offset += index_size;
+        }
     }
 
     for (int t = 0; t < 8; t++) {
         if (vcd.texcoord_location[t] == VertexAttributeLocation.NotPresent) continue;
 
-        u32 len = cast(u32) coord_size(vat.texcoord_format[t]) * cast(u32) vat.texcoord_count[t];
-        vds.texcoord[t] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, coord_size(vat.texcoord_format[t]));
-        offset += len;
+        if (vcd.texcoord_location[t] == VertexAttributeLocation.Direct) {
+            u32 len = cast(u32) coord_size(vat.texcoord_format[t]) * cast(u32) vat.texcoord_count[t];
+            vds.texcoord[t] = make_source_state(AttributeStatus.AwaitingAlignment, offset, len, coord_size(vat.texcoord_format[t]));
+            offset += len;
+        } else {
+            u8 index_size = (vcd.texcoord_location[t] == VertexAttributeLocation.Indexed8Bit) ? 1 : 2;
+            u32 output_len = cast(u32) coord_size(vat.texcoord_format[t]) * cast(u32) vat.texcoord_count[t];
+            vds.texcoord[t] = make_source_state(AttributeStatus.AwaitingIndexedInsert, offset, output_len, index_size);
+            offset += index_size;
+        }
     }
 
     vds.source_stream_size = offset;
@@ -479,7 +647,11 @@ void allocate_ymms_for_attributes_unaligned(Code code, VertexDecodeState* vds) {
             return;
         }
 
-        current_offset_within_source_stream += ads.location.source_buffer.range.length;
+        if (ads.status == AttributeStatus.AwaitingIndexedInsert) {
+            current_offset_within_source_stream += ads.element_size;
+        } else {
+            current_offset_within_source_stream += ads.location.source_buffer.range.length;
+        }
         attributes_in_current_ymm[attributes_collected_for_current_ymm] = &ads;
         attributes_collected_for_current_ymm++;
 
@@ -509,7 +681,8 @@ void align_attributes_for_float_expansion(Code code, VertexDecodeState* vds) {
     vds.foreach_attribute((ref AttributeDecodeState ads) {
         writefln("Checking attribute for alignment: %s", ads);
 
-        if (ads.status == AttributeStatus.AwaitingAlignment) {
+        if (ads.status == AttributeStatus.AwaitingAlignment
+         || ads.status == AttributeStatus.AwaitingIndexedInsert) {
             ymms_to_align |= 1 << ads.location.ymm.index;
         }
 
@@ -549,7 +722,8 @@ void align_attributes_for_float_expansion(Code code, VertexDecodeState* vds) {
         // within this YMM. We will pack them towards the start of the YMM, bump-allocator style.
         u8 next_free_byte = 0;
         vds.foreach_attribute((ref AttributeDecodeState ads) {
-            if (ads.status != AttributeStatus.AwaitingAlignment) {
+            if (ads.status != AttributeStatus.AwaitingAlignment
+             && ads.status != AttributeStatus.AwaitingIndexedInsert) {
                 return;
             }
 
@@ -557,9 +731,6 @@ void align_attributes_for_float_expansion(Code code, VertexDecodeState* vds) {
                 return;
             }
 
-            writefln("debjit?");
-
-            // This attribute lives in the YMM we are aligning
             u8 attribute_length = ads.location.ymm.range.length;
             u8 attribute_offset = ads.location.ymm.range.offset;
             u8 element_size     = ads.element_size;
@@ -574,13 +745,20 @@ void align_attributes_for_float_expansion(Code code, VertexDecodeState* vds) {
             // Update the attribute's location to its new offset
             ads.location.ymm.range.offset = next_free_byte;
 
+            if (ads.status == AttributeStatus.AwaitingIndexedInsert) {
+                // Reserve dword-aligned space but leave vpshufb mask as 0xFF (zeroed output).
+                // Scalar code will insert the dequantized data later.
+                next_free_byte += attribute_length;
+                return;
+            }
+
             // Copy all elements from their old location to their new location in the control mask,
             // while swapping endianness at the same time
             for (u8 i = 0; i < attribute_length; i += element_size) {
                 for (u8 j = 0; j < element_size; j++) {
                     vpshufb_control_mask[next_free_byte + j] = cast(u8) (attribute_offset + (element_size - 1 - j) + i);
                 }
-             
+
                 next_free_byte += 4; // float expansion to 4 bytes
             }
             printf("offset: %d length: %d\n", ads.location.ymm.range.offset, ads.location.ymm.range.length);
@@ -614,6 +792,253 @@ private bool ops_equivalent(ref Op a, ref Op b) {
             return true;
         case OpKind.Store:
             return a.store.dest_offset == b.store.dest_offset;
+        case OpKind.IndexedLoad:
+            return false; // IndexedLoad ops are never merged
+    }
+}
+
+// Resolve the address of an indexed array element into addr_reg.
+// Reads the index from [rdi + stream_offset], then computes:
+//   addr_reg = host_bases[array_number] + index * strides[array_number]
+private void emit_resolve_indexed_address(Code code, ref IndexedLoad il, R64 addr_reg) {
+    auto idx = code.allocate_register();
+
+    // Load index from vertex stream
+    if (il.index_size == 1) {
+        code.movzx(idx, code.bytePtr(Code.SOURCE_REG64, il.stream_offset));
+    } else {
+        code.movbe(idx.cvt16(), code.wordPtr(Code.SOURCE_REG64, il.stream_offset));
+        code.movzx(idx, idx.cvt16());
+    }
+
+    // Multiply index by stride: idx *= strides[array_number]
+    code.imul(idx, code.dwordPtr(Code.ARRAY_INFO_REG64, 128 + il.array_number * 4));
+
+    // Load host base pointer and add offset: addr_reg = host_bases[array_number] + idx
+    code.mov(addr_reg, code.qwordPtr(Code.ARRAY_INFO_REG64, il.array_number * 8));
+    code.add(addr_reg, idx.cvt64());
+
+    code.free_register(idx);
+}
+
+// Emit scalar loads for an indexed coord or normal attribute.
+// For each component, loads from [addr_reg + i*comp_size], endian-swaps,
+// sign/zero extends, converts to float, optionally scales, and inserts
+// into the target YMM lane via vmovd -> vpbroadcastd -> vblendps.
+private void emit_indexed_coord_or_normal(Code code, ref IndexedLoad il, YMM ymm,
+                                           R64 addr_reg, VertexDecodeState* vds) {
+    u8 comp_size;
+    bool is_signed;
+    bool is_float;
+
+    if (il.attr_kind == IndexedAttrKind.Coord) {
+        comp_size = coord_size(il.coord_format);
+        is_signed = (il.coord_format == CoordFormat.S8 || il.coord_format == CoordFormat.S16);
+        is_float = (il.coord_format == CoordFormat.F32);
+    } else {
+        comp_size = normal_size(il.normal_format);
+        is_signed = true; // normals are always signed
+        is_float = (il.normal_format == NormalFormat.F32);
+    }
+
+    auto val = code.allocate_register();
+    auto xmm_tmp = XMM(vds.tmp_ymm().index, vds.tmp_ymm().extended);
+    auto ymm_tmp = vds.tmp_ymm();
+
+    // Set up scale factor if needed
+    bool needs_scale = !is_float && il.scale != 1.0f;
+    auto xmm_scale = XMM(vds.tmp_ymm2().index, vds.tmp_ymm2().extended);
+    if (needs_scale) {
+        auto scale_reg = code.allocate_register();
+        code.mov(scale_reg, force_cast!uint(il.scale));
+        code.vmovd(xmm_scale, scale_reg);
+        code.free_register(scale_reg);
+    }
+
+    int base_lane = il.ymm_byte_offset / 4;
+
+    for (int i = 0; i < il.component_count; i++) {
+        int offset = i * comp_size;
+
+        // Load + endian swap + sign/zero extend
+        if (comp_size == 1) {
+            if (is_signed) {
+                code.movsx(val, code.bytePtr(addr_reg, offset));
+            } else {
+                code.movzx(val, code.bytePtr(addr_reg, offset));
+            }
+        } else if (comp_size == 2) {
+            code.movbe(val.cvt16(), code.wordPtr(addr_reg, offset));
+            if (is_signed) {
+                code.movsx(val, val.cvt16());
+            } else {
+                code.movzx(val, val.cvt16());
+            }
+        } else {
+            // 4-byte: F32, just movbe to get big-endian float bits
+            code.movbe(val, code.dwordPtr(addr_reg, offset));
+        }
+
+        // Int->float conversion (skip for F32)
+        code.vmovd(xmm_tmp, val);
+        if (!is_float) {
+            code.vcvtdq2ps(xmm_tmp, xmm_tmp);
+            if (needs_scale) {
+                code.vmulps(xmm_tmp, xmm_tmp, xmm_scale);
+            }
+        }
+
+        // Insert into YMM lane: vpbroadcastd -> vblendps
+        code.vpbroadcastd(ymm_tmp, xmm_tmp);
+        code.vblendps(ymm, ymm, ymm_tmp, cast(u8)(1 << (base_lane + i)));
+    }
+
+    code.free_register(val);
+}
+
+// Emit scalar load + dequant for an indexed color attribute.
+// Loads raw color data from [addr_reg], dequantizes to RGBA u32,
+// and inserts into the target YMM lane.
+private void emit_indexed_color_dequant(Code code, ref IndexedLoad il, YMM ymm,
+                                         R64 addr_reg, VertexDecodeState* vds) {
+    auto val = code.allocate_register();
+    auto res = code.allocate_register();
+    auto t1  = code.allocate_register();
+    auto xmm_tmp = XMM(vds.tmp_ymm().index, vds.tmp_ymm().extended);
+    auto ymm_tmp = vds.tmp_ymm();
+
+    int lane = il.ymm_byte_offset / 4;
+
+    final switch (il.color_format) {
+        case ColorFormat.RGBA8888: {
+            // 4 bytes, just movbe for endian swap
+            code.movbe(val, code.dwordPtr(addr_reg, 0));
+            break;
+        }
+        case ColorFormat.RGB888: {
+            // 3 bytes: load R, G, B separately, form R<<24 | G<<16 | B<<8 | 0xFF
+            code.movzx(val, code.bytePtr(addr_reg, 0));
+            code.shl(val, 24);
+            code.movzx(res, code.bytePtr(addr_reg, 1));
+            code.shl(res, 16);
+            code.or(val, res);
+            code.movzx(res, code.bytePtr(addr_reg, 2));
+            code.shl(res, 8);
+            code.or(val, res);
+            code.or(val, cast(uint) 0xFF);
+            break;
+        }
+        case ColorFormat.RGB888x: {
+            // 4 bytes: R, G, B, pad. Form R<<24 | G<<16 | B<<8 | 0xFF
+            code.movzx(val, code.bytePtr(addr_reg, 0));
+            code.shl(val, 24);
+            code.movzx(res, code.bytePtr(addr_reg, 1));
+            code.shl(res, 16);
+            code.or(val, res);
+            code.movzx(res, code.bytePtr(addr_reg, 2));
+            code.shl(res, 8);
+            code.or(val, res);
+            code.or(val, cast(uint) 0xFF);
+            break;
+        }
+        case ColorFormat.RGB565: {
+            // 2 bytes: load big-endian u16, dequant to R<<24 | G<<16 | B<<8 | 0xFF
+            code.movbe(val.cvt16(), code.wordPtr(addr_reg, 0));
+            code.movzx(val, val.cvt16());
+
+            code.mov(res, val);
+            code.shl(res, 27);
+            code.mov(t1, val);
+            code.and(t1, cast(uint) 63488);
+            code.shl(val, 13);
+            code.and(val, cast(uint) 16515072);
+            code.or(val, res);
+            code.mov(res, t1);
+            code.add(res, val);
+            code.add(res, cast(uint) 255);
+            code.mov(val, res);
+            break;
+        }
+        case ColorFormat.RGBA4444: {
+            // 2 bytes: load big-endian u16, dequant to R<<24 | G<<16 | B<<8 | A
+            code.movbe(val.cvt16(), code.wordPtr(addr_reg, 0));
+            code.movzx(val, val.cvt16());
+
+            code.mov(t1, val);
+            code.shl(t1, 28);
+            auto t2 = code.allocate_register();
+            code.mov(t2, val);
+            code.shr(t2, 8);
+            code.and(t2, cast(uint) 0xFFFFFFF0);
+            code.mov(res, val);
+            code.shl(res, 16);
+            code.and(res, cast(uint) 15728640);
+            code.or(res, t1);
+            code.shl(val, 4);
+            code.and(val, cast(uint) 61440);
+            code.or(res, val);
+            code.or(res, t2);
+            code.mov(val, res);
+            code.free_register(t2);
+            break;
+        }
+        case ColorFormat.RGBA6666: {
+            // 3 bytes: load and form 24-bit value, dequant to R<<24 | G<<16 | B<<8 | A
+            code.movzx(val, code.bytePtr(addr_reg, 0));
+            code.shl(val, 16);
+            code.movzx(res, code.bytePtr(addr_reg, 1));
+            code.shl(res, 8);
+            code.or(val, res);
+            code.movzx(res, code.bytePtr(addr_reg, 2));
+            code.or(val, res);
+
+            code.mov(t1, val);
+            code.shl(t1, 26);
+            auto t2 = code.allocate_register();
+            code.mov(t2, val);
+            code.shr(t2, 16);
+            code.and(t2, cast(uint) 252);
+            code.mov(res, val);
+            code.shl(res, 12);
+            code.and(res, cast(uint) 16515072);
+            code.or(res, t1);
+            code.shr(val, 2);
+            code.and(val, cast(uint) 64512);
+            code.or(res, val);
+            code.or(res, t2);
+            code.mov(val, res);
+            code.free_register(t2);
+            break;
+        }
+    }
+
+    // Insert color u32 into YMM lane
+    code.vmovd(xmm_tmp, val);
+    code.vpbroadcastd(ymm_tmp, xmm_tmp);
+    code.vblendps(ymm, ymm, ymm_tmp, cast(u8)(1 << lane));
+
+    code.free_register(val);
+    code.free_register(res);
+    code.free_register(t1);
+}
+
+// Emit all indexed loads targeting a given YMM register.
+private void emit_indexed_loads_for_ymm(Code code, ref Op[] ops, YMM ymm, VertexDecodeState* vds) {
+    foreach (ref op; ops) {
+        if (op.kind != OpKind.IndexedLoad || op.ymm_index != ymm.index) {
+            continue;
+        }
+
+        auto addr_reg = code.allocate_register();
+        emit_resolve_indexed_address(code, op.indexed_load, addr_reg.cvt64());
+
+        if (op.indexed_load.attr_kind == IndexedAttrKind.Color) {
+            emit_indexed_color_dequant(code, op.indexed_load, ymm, addr_reg.cvt64(), vds);
+        } else {
+            emit_indexed_coord_or_normal(code, op.indexed_load, ymm, addr_reg.cvt64(), vds);
+        }
+
+        code.free_register(addr_reg);
     }
 }
 
@@ -793,6 +1218,9 @@ void dequantize_ops(Code code, VertexDecodeState* vds, VertexFormat format) {
             writefln("Scale factors for YMM %d: %s", ymm.index, scale_factors);
             code.vmulps(ymm, ymm, scale_ymm);
         }
+
+        // Insert any indexed attribute values into the YMM before storing.
+        emit_indexed_loads_for_ymm(code, ops, ymm, vds);
 
         // And store!
         code.vmovups(code.ymmwordPtr(rsi, current_dest_stream_offset), ymm);

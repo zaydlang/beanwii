@@ -17,10 +17,12 @@ final class Code {
     Block!true block;
     alias block this;
 
-    enum SOURCE_REG64 = rdi;
-    enum SOURCE_REG32 = edi;
-    enum DEST_REG64   = rsi;
-    enum DEST_REG32   = esi;
+    enum SOURCE_REG64     = rdi;
+    enum SOURCE_REG32     = edi;
+    enum DEST_REG64       = rsi;
+    enum DEST_REG32       = esi;
+    enum ARRAY_INFO_REG64 = rdx;
+    enum ARRAY_INFO_REG32 = edx;
 
     enum MAX_LICM_VALUES = 4;
     static immutable YMM[MAX_LICM_VALUES] LICM_REGISTERS = [ymm8, ymm9, ymm10, ymm11];
@@ -255,6 +257,7 @@ final class Code {
         allocated_regs = 0;
         reserve_register(SOURCE_REG32);
         reserve_register(DEST_REG32);
+        reserve_register(ARRAY_INFO_REG32);
         reserve_register(eax); // rax is the vertex loop counter
     }
 }
