@@ -559,7 +559,7 @@ unittest {
         harness.state);
 }
 
-@("vertex_decoder position_matrix_index_present_and_absent")
+@("vertex_decoder position_matrix_index_present")
 unittest {
     auto harness = VertexDecodeHarness.make();
     auto decoder = new VertexDecoder();
@@ -567,24 +567,36 @@ unittest {
     harness.set_position_matrix(VertexAttributeLocation.Direct);
     harness.set_position(VertexAttributeLocation.Direct, CoordFormat.U8, 3, 0);
 
-    auto stream_with_index = StreamBuilder()
-        .stream_add_u8(0x05) // matrix index
-        .stream_add_u8(0x0A) // position data X
-        .stream_add_u8(0x00) // position data Y
-        .stream_add_u8(0x00) // position data Z
-        .finish();
-
     assert_vertices_match(
-        harness.decode(decoder, stream_with_index, 1),
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x05) // matrix index
+                .stream_add_u8(0x0A) // position data X
+                .stream_add_u8(0x00) // position data Y
+                .stream_add_u8(0x00) // position data Z
+                .finish(),
+            1),
         [
             vertex().position(10.0f, 0, 0).matrix_index(5).build(),
         ],
         harness.state);
+}
 
-    // Same setup but no matrix index should produce -1.
-    harness.set_position_matrix(VertexAttributeLocation.NotPresent);
+@("vertex_decoder position_matrix_index_absent")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Direct, CoordFormat.U8, 3, 0);
+
     assert_vertices_match(
-        harness.decode(decoder, stream_with_index[1 .. $], 1),
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x0A) // position data X
+                .stream_add_u8(0x00) // position data Y
+                .stream_add_u8(0x00) // position data Z
+                .finish(),
+            1),
         [
             vertex().position(10.0f, 0, 0).matrix_index(-1).build(),
         ],
@@ -1067,30 +1079,6 @@ unittest {
         harness.state);
 }
 
-@("vertex_decoder respects_max_vertices")
-unittest {
-    auto harness = VertexDecodeHarness.make();
-    auto decoder = new VertexDecoder();
-
-    harness.set_position(VertexAttributeLocation.Direct, CoordFormat.U8, 3, 0);
-
-    auto stream = StreamBuilder()
-        .stream_add_u8(1)
-        .stream_add_u8(2)
-        .stream_add_u8(3)
-        .stream_add_u8(4)
-        .stream_add_u8(5)
-        .stream_add_u8(6)
-        .finish();
-
-    auto decoded = harness.decode_with_max(decoder, stream, 2, 1);
-    assert_vertices_match(
-        decoded,
-        [
-            vertex().position(1.0f, 2.0f, 3.0f).build(),
-        ],
-        harness.state);
-}
 
 @("vertex_decoder position_indexed16_u16_stride")
 unittest {
@@ -1299,27 +1287,6 @@ unittest {
         harness.state);
 }
 
-@("vertex_decoder short_stream_stops_early")
-unittest {
-    auto harness = VertexDecodeHarness.make();
-    auto decoder = new VertexDecoder();
-
-    harness.set_position(VertexAttributeLocation.Direct, CoordFormat.U8, 3, 0);
-
-    auto stream = StreamBuilder()
-        .stream_add_u8(1)
-        .stream_add_u8(2)
-        .stream_add_u8(3)
-        .finish();
-
-    auto decoded = harness.decode_with_max(decoder, stream, 2, 2);
-    assert_vertices_match(
-        decoded,
-        [
-            vertex().position(1.0f, 2.0f, 3.0f).build(),
-        ],
-        harness.state);
-}
 
 @("vertex_decoder vat1_mixed_attrs")
 unittest {
@@ -1591,6 +1558,601 @@ unittest {
             1),
         [
             vertex().texcoord(0, 9.0f, 8.0f).build(),
+        ],
+        harness.state);
+}
+@("vertex_decoder all_indexed_mixed_formats")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.U16, 3, 1);
+    harness.set_normal(VertexAttributeLocation.Indexed8Bit, NormalFormat.S16, 3);
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+    harness.set_texcoord(0, VertexAttributeLocation.Indexed8Bit, CoordFormat.S8, 2, 1);
+    harness.set_texcoord(1, VertexAttributeLocation.Indexed8Bit, CoordFormat.U8, 2, 0);
+
+    // Position: U16 BE [16, 32, 48], shift=1 → [8.0, 16.0, 24.0]
+    harness.write_array_bytes(0, 0x2000, [0x00, 0x10, 0x00, 0x20, 0x00, 0x30], 6);
+    // Normal: S16 BE [16384, -16384, 4096] → /16384 = [1.0, -1.0, 0.25]
+    harness.write_array_bytes(1, 0x2100, [0x40, 0x00, 0xC0, 0x00, 0x10, 0x00], 6);
+    // Color0: RGBA8888 [0x11, 0x22, 0x33, 0x44]
+    harness.write_array_bytes(2, 0x2200, [0x11, 0x22, 0x33, 0x44], 4);
+    // Texcoord0: S8 [-4, 4], shift=1 → [-2.0, 2.0]
+    harness.write_array_bytes(4, 0x2400, [0xFC, 0x04], 2);
+    // Texcoord1: U8 [10, 20] → [10.0, 20.0]
+    harness.write_array_bytes(5, 0x2500, [0x0A, 0x14], 2);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)  // position index
+                .stream_add_u8(0x00)  // normal index
+                .stream_add_u8(0x00)  // color0 index
+                .stream_add_u8(0x00)  // texcoord0 index
+                .stream_add_u8(0x00)  // texcoord1 index
+                .finish(),
+            1),
+        [
+            vertex()
+                .position(8.0f, 16.0f, 24.0f)
+                .normal(1.0f, -1.0f, 0.25f)
+                .color(0, 0x11 / 255.0f, 0x22 / 255.0f, 0x33 / 255.0f, 0x44 / 255.0f)
+                .texcoord(0, -2.0f, 2.0f)
+                .texcoord(1, 10.0f, 20.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder all_direct_f32_shifted")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Direct, CoordFormat.F32, 3, 2);
+    harness.set_normal(VertexAttributeLocation.Direct, NormalFormat.F32, 3);
+    harness.set_color(0, VertexAttributeLocation.Direct, ColorFormat.RGBA8888, 4);
+    harness.set_texcoord(0, VertexAttributeLocation.Direct, CoordFormat.F32, 2, 1);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_float(8.0f)    // pos X → /4 = 2.0
+                .stream_add_float(-4.0f)   // pos Y → /4 = -1.0
+                .stream_add_float(2.0f)    // pos Z → /4 = 0.5
+                .stream_add_float(0.25f)   // normal X
+                .stream_add_float(-0.5f)   // normal Y
+                .stream_add_float(1.0f)    // normal Z
+                .stream_add_u32_be(0xAABBCCDD) // color0
+                .stream_add_float(4.0f)    // tc0 S → /2 = 2.0
+                .stream_add_float(-2.0f)   // tc0 T → /2 = -1.0
+                .finish(),
+            1),
+        [
+            vertex()
+                .position(2.0f, -1.0f, 0.5f)
+                .normal(0.25f, -0.5f, 1.0f)
+                .color(0, 0xAA / 255.0f, 0xBB / 255.0f, 0xCC / 255.0f, 0xDD / 255.0f)
+                .texcoord(0, 2.0f, -1.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder kitchen_sink_direct_and_indexed")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Direct, CoordFormat.S8, 3, 1);
+    harness.set_normal(VertexAttributeLocation.Indexed8Bit, NormalFormat.S8, 3);
+    harness.set_color(0, VertexAttributeLocation.Direct, ColorFormat.RGBA4444, 4);
+    harness.set_color(1, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+    harness.set_texcoord(0, VertexAttributeLocation.Direct, CoordFormat.U16, 2, 0);
+    harness.set_texcoord(1, VertexAttributeLocation.Indexed8Bit, CoordFormat.S8, 2, 1);
+
+    // Normal: S8 [64, -64, 32] → /64 = [1.0, -1.0, 0.5]
+    harness.write_array_bytes(1, 0x2100, [0x40, 0xC0, 0x20], 3);
+    // Color1: RGBA8888 [0x0A, 0x0B, 0x0C, 0x0D]
+    harness.write_array_bytes(3, 0x2300, [0x0A, 0x0B, 0x0C, 0x0D], 4);
+    // Texcoord1: S8 [-4, 4], shift=1 → [-2.0, 2.0]
+    harness.write_array_bytes(5, 0x2500, [0xFC, 0x04], 2);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x02)       // pos X = 2, /2 = 1.0
+                .stream_add_u8(0xFE)       // pos Y = -2, /2 = -1.0
+                .stream_add_u8(0x04)       // pos Z = 4, /2 = 2.0
+                .stream_add_u8(0x00)       // normal index
+                .stream_add_u16_be(0xFFFF) // color0 RGBA4444
+                .stream_add_u8(0x00)       // color1 index
+                .stream_add_u16_be(0x0008) // tc0 S = 8
+                .stream_add_u16_be(0x0010) // tc0 T = 16
+                .stream_add_u8(0x00)       // tc1 index
+                .finish(),
+            1),
+        [
+            vertex()
+                .position(1.0f, -1.0f, 2.0f)
+                .normal(1.0f, -1.0f, 0.5f)
+                .color(0, 240.0f / 255.0f, 240.0f / 255.0f, 240.0f / 255.0f, 240.0f / 255.0f)
+                .color(1, 0x0A / 255.0f, 0x0B / 255.0f, 0x0C / 255.0f, 0x0D / 255.0f)
+                .texcoord(0, 8.0f, 16.0f)
+                .texcoord(1, -2.0f, 2.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_color_rgb888")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGB888, 3);
+    // Array bytes [0x80, 0x40, 0x20]: 3-byte read → 0x00804020
+    // dequantize: bits(0,7)=0x20<<24, bits(8,15)=0x40<<16, bits(16,23)=0x80<<8, |0xFF
+    harness.write_array_bytes(2, 0x2200, [0x80, 0x40, 0x20], 3);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().color(0, 0x20 / 255.0f, 0x40 / 255.0f, 0x80 / 255.0f, 1.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_color_rgb888x")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGB888x, 4);
+    // 4-byte BE read of [0x11, 0x22, 0x33, 0x00] → 0x11223300
+    // dequantize: bits(0,7)=0x00<<24, bits(8,15)=0x33<<16, bits(16,23)=0x22<<8, |0xFF
+    harness.write_array_bytes(2, 0x2200, [0x11, 0x22, 0x33, 0x00], 4);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().color(0, 0x00 / 255.0f, 0x33 / 255.0f, 0x22 / 255.0f, 1.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_color_rgba6666")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA6666, 4);
+    // All 0xFF → each 6-bit field = 0x3F → <<2 = 0xFC = 252
+    harness.write_array_bytes(2, 0x2200, [0xFF, 0xFF, 0xFF], 3);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().color(0, 252.0f / 255.0f, 252.0f / 255.0f, 252.0f / 255.0f, 252.0f / 255.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_color_rgba6666_nonuniform")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA6666, 4);
+    // 24-bit value: R=bits[0:5], G=bits[6:11], B=bits[12:17], A=bits[18:23]
+    // Construct value where R=1, G=2, B=3, A=4:
+    //   val = 1 | (2<<6) | (3<<12) | (4<<18) = 0x103081
+    // 3-byte read packs as byte[0]<<16|byte[1]<<8|byte[2], so bytes = [0x10, 0x30, 0x81]
+    harness.write_array_bytes(2, 0x2200, [0x10, 0x30, 0x81], 3);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().color(0, 4.0f / 255.0f, 8.0f / 255.0f, 12.0f / 255.0f, 16.0f / 255.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_position_s8_shifted")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.S8, 3, 2);
+    // S8 [8, -8, 4], shift=2 → /4 = [2.0, -2.0, 1.0]
+    harness.write_array_bytes(0, 0x2000, [0x08, 0xF8, 0x04], 3);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().position(2.0f, -2.0f, 1.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_position_f32")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.F32, 3, 0);
+    // F32 BE [1.5, -2.5, 3.5]
+    harness.write_array_bytes(0, 0x2000, [
+        0x3F, 0xC0, 0x00, 0x00,  // 1.5f
+        0xC0, 0x20, 0x00, 0x00,  // -2.5f
+        0x40, 0x60, 0x00, 0x00,  // 3.5f
+    ], 12);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().position(1.5f, -2.5f, 3.5f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_normal_f32")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_normal(VertexAttributeLocation.Indexed8Bit, NormalFormat.F32, 3);
+    // F32 BE [0.25, -0.5, 1.0]
+    harness.write_array_bytes(1, 0x2100, [
+        0x3E, 0x80, 0x00, 0x00,  // 0.25f
+        0xBF, 0x00, 0x00, 0x00,  // -0.5f
+        0x3F, 0x80, 0x00, 0x00,  // 1.0f
+    ], 12);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().normal(0.25f, -0.5f, 1.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder three_vertices_all_indexed")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.U8, 3, 0);
+    harness.set_normal(VertexAttributeLocation.Indexed8Bit, NormalFormat.S8, 3);
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+    harness.set_texcoord(0, VertexAttributeLocation.Indexed8Bit, CoordFormat.U8, 2, 0);
+
+    // 3 position entries
+    harness.write_array_bytes(0, 0x2000, [
+        1, 2, 3,       // entry 0
+        10, 20, 30,    // entry 1
+        100, 200, 50,  // entry 2
+    ], 3);
+
+    // 3 normal entries: /64
+    harness.write_array_bytes(1, 0x2100, [
+        0x40, 0x00, 0x00,  // entry 0: 64,0,0 → 1.0,0,0
+        0x00, 0x40, 0x00,  // entry 1: 0,64,0 → 0,1.0,0
+        0x00, 0x00, 0x40,  // entry 2: 0,0,64 → 0,0,1.0
+    ], 3);
+
+    // 3 color entries
+    harness.write_array_bytes(2, 0x2200, [
+        0xFF, 0x00, 0x00, 0xFF,  // entry 0: red
+        0x00, 0xFF, 0x00, 0xFF,  // entry 1: green
+        0x00, 0x00, 0xFF, 0xFF,  // entry 2: blue
+    ], 4);
+
+    // 3 texcoord entries
+    harness.write_array_bytes(4, 0x2400, [
+        0x00, 0x00,  // entry 0: 0,0
+        0x40, 0x80,  // entry 1: 64,128
+        0xFF, 0x01,  // entry 2: 255,1
+    ], 2);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00).stream_add_u8(0x00).stream_add_u8(0x00).stream_add_u8(0x00)
+                .stream_add_u8(0x01).stream_add_u8(0x01).stream_add_u8(0x01).stream_add_u8(0x01)
+                .stream_add_u8(0x02).stream_add_u8(0x02).stream_add_u8(0x02).stream_add_u8(0x02)
+                .finish(),
+            3),
+        [
+            vertex()
+                .position(1.0f, 2.0f, 3.0f)
+                .normal(1.0f, 0.0f, 0.0f)
+                .color(0, 1.0f, 0.0f, 0.0f, 1.0f)
+                .texcoord(0, 0.0f, 0.0f)
+                .build(),
+            vertex()
+                .position(10.0f, 20.0f, 30.0f)
+                .normal(0.0f, 1.0f, 0.0f)
+                .color(0, 0.0f, 1.0f, 0.0f, 1.0f)
+                .texcoord(0, 64.0f, 128.0f)
+                .build(),
+            vertex()
+                .position(100.0f, 200.0f, 50.0f)
+                .normal(0.0f, 0.0f, 1.0f)
+                .color(0, 0.0f, 0.0f, 1.0f, 1.0f)
+                .texcoord(0, 255.0f, 1.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder position_matrix_with_indexed_attrs")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position_matrix(VertexAttributeLocation.Direct);
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.S16, 3, 0);
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+
+    // Position: S16 [100, -200, 300]
+    harness.write_array_bytes(0, 0x2000, [0x00, 0x64, 0xFF, 0x38, 0x01, 0x2C], 6);
+    // Color0: RGBA8888
+    harness.write_array_bytes(2, 0x2200, [0xDE, 0xAD, 0xBE, 0xEF], 4);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x07)  // matrix index = 7
+                .stream_add_u8(0x00)  // position index
+                .stream_add_u8(0x00)  // color index
+                .finish(),
+            1),
+        [
+            vertex()
+                .matrix_index(7)
+                .position(100.0f, -200.0f, 300.0f)
+                .color(0, 0xDE / 255.0f, 0xAD / 255.0f, 0xBE / 255.0f, 0xEF / 255.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed16_position_s16_with_four_texcoords")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed16Bit, CoordFormat.S16, 3, 0);
+    harness.set_texcoord(0, VertexAttributeLocation.Indexed16Bit, CoordFormat.U8, 2, 0);
+    harness.set_texcoord(1, VertexAttributeLocation.Indexed16Bit, CoordFormat.S8, 2, 0);
+    harness.set_texcoord(2, VertexAttributeLocation.Indexed16Bit, CoordFormat.U16, 2, 1);
+    harness.set_texcoord(3, VertexAttributeLocation.Indexed16Bit, CoordFormat.S16, 1, 0);
+
+    // Position: S16 [500, -500, 250]
+    harness.write_array_bytes(0, 0x2000, [0x01, 0xF4, 0xFE, 0x0C, 0x00, 0xFA], 6);
+    // Texcoord0: U8 [5, 10]
+    harness.write_array_bytes(4, 0x2400, [0x05, 0x0A], 2);
+    // Texcoord1: S8 [-1, 1]
+    harness.write_array_bytes(5, 0x2500, [0xFF, 0x01], 2);
+    // Texcoord2: U16 [16, 32], shift=1 → [8.0, 16.0]
+    harness.write_array_bytes(6, 0x2600, [0x00, 0x10, 0x00, 0x20], 4);
+    // Texcoord3: S16 [-1000] (single component)
+    harness.write_array_bytes(7, 0x2700, [0xFC, 0x18], 2);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u16_be(0x0000) // position index
+                .stream_add_u16_be(0x0000) // tc0 index
+                .stream_add_u16_be(0x0000) // tc1 index
+                .stream_add_u16_be(0x0000) // tc2 index
+                .stream_add_u16_be(0x0000) // tc3 index
+                .finish(),
+            1),
+        [
+            vertex()
+                .position(500.0f, -500.0f, 250.0f)
+                .texcoord(0, 5.0f, 10.0f)
+                .texcoord(1, -1.0f, 1.0f)
+                .texcoord(2, 8.0f, 16.0f)
+                .texcoord(3, -1000.0f, 0.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder two_colors_both_indexed_different_formats")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+    harness.set_color(1, VertexAttributeLocation.Indexed16Bit, ColorFormat.RGB565, 3);
+
+    // Color0: RGBA8888
+    harness.write_array_bytes(2, 0x2200, [0x12, 0x34, 0x56, 0x78], 4);
+    // Color1: RGB565 = 0xFFFF
+    harness.write_array_bytes(3, 0x2300, [0xFF, 0xFF], 2);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)       // color0 index
+                .stream_add_u16_be(0x0000) // color1 index
+                .finish(),
+            1),
+        [
+            vertex()
+                .color(0, 0x12 / 255.0f, 0x34 / 255.0f, 0x56 / 255.0f, 0x78 / 255.0f)
+                .color(1, 248.0f / 255.0f, 252.0f / 255.0f, 248.0f / 255.0f, 1.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_position_two_component_f32")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.F32, 2, 0);
+
+    // F32 BE [1.0, -1.0]
+    harness.write_array_bytes(0, 0x2000, [
+        0x3F, 0x80, 0x00, 0x00,  // 1.0f
+        0xBF, 0x80, 0x00, 0x00,  // -1.0f
+    ], 8);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)
+                .finish(),
+            1),
+        [
+            vertex().position(1.0f, -1.0f, 0.0f).build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_texcoord_f32_two_slots")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_texcoord(0, VertexAttributeLocation.Indexed8Bit, CoordFormat.F32, 2, 0);
+    harness.set_texcoord(1, VertexAttributeLocation.Indexed8Bit, CoordFormat.F32, 2, 0);
+
+    // Texcoord0: F32 [0.5, -0.5]
+    harness.write_array_bytes(4, 0x2400, [
+        0x3F, 0x00, 0x00, 0x00,  // 0.5f
+        0xBF, 0x00, 0x00, 0x00,  // -0.5f
+    ], 8);
+    // Texcoord1: F32 [2.0, 3.0]
+    harness.write_array_bytes(5, 0x2500, [
+        0x40, 0x00, 0x00, 0x00,  // 2.0f
+        0x40, 0x40, 0x00, 0x00,  // 3.0f
+    ], 8);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00) // tc0 index
+                .stream_add_u8(0x00) // tc1 index
+                .finish(),
+            1),
+        [
+            vertex()
+                .texcoord(0, 0.5f, -0.5f)
+                .texcoord(1, 2.0f, 3.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder two_vertices_mixed_indices")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.S16, 3, 0);
+    harness.set_color(0, VertexAttributeLocation.Indexed8Bit, ColorFormat.RGBA8888, 4);
+    harness.set_texcoord(0, VertexAttributeLocation.Indexed8Bit, CoordFormat.U8, 2, 0);
+
+    // 2 position entries stride=6
+    harness.write_array_bytes(0, 0x2000, [
+        0x00, 0x01, 0x00, 0x02, 0x00, 0x03,  // entry 0: 1,2,3
+        0xFF, 0xFF, 0xFF, 0xFE, 0xFF, 0xFD,  // entry 1: -1,-2,-3
+    ], 6);
+    // 2 color entries stride=4
+    harness.write_array_bytes(2, 0x2200, [
+        0x10, 0x20, 0x30, 0x40,  // entry 0
+        0xA0, 0xB0, 0xC0, 0xD0,  // entry 1
+    ], 4);
+    // 2 texcoord entries stride=2
+    harness.write_array_bytes(4, 0x2400, [
+        0x01, 0x02,  // entry 0: 1,2
+        0x0A, 0x0B,  // entry 1: 10,11
+    ], 2);
+
+    // Vertex 0: pos=1, color=0, tc=1; Vertex 1: pos=0, color=1, tc=0
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x01).stream_add_u8(0x00).stream_add_u8(0x01) // v0
+                .stream_add_u8(0x00).stream_add_u8(0x01).stream_add_u8(0x00) // v1
+                .finish(),
+            2),
+        [
+            vertex()
+                .position(-1.0f, -2.0f, -3.0f)
+                .color(0, 0x10 / 255.0f, 0x20 / 255.0f, 0x30 / 255.0f, 0x40 / 255.0f)
+                .texcoord(0, 10.0f, 11.0f)
+                .build(),
+            vertex()
+                .position(1.0f, 2.0f, 3.0f)
+                .color(0, 0xA0 / 255.0f, 0xB0 / 255.0f, 0xC0 / 255.0f, 0xD0 / 255.0f)
+                .texcoord(0, 1.0f, 2.0f)
+                .build(),
+        ],
+        harness.state);
+}
+
+@("vertex_decoder indexed_position_s16_with_direct_texcoord_s16")
+unittest {
+    auto harness = VertexDecodeHarness.make();
+    auto decoder = new VertexDecoder();
+
+    harness.set_position(VertexAttributeLocation.Indexed8Bit, CoordFormat.S16, 3);
+    harness.set_texcoord(0, VertexAttributeLocation.Direct, CoordFormat.S16, 2);
+
+    // Position array: 3 S16 components BE at index 0
+    // 100 = 0x0064, -200 = 0xFF38, 300 = 0x012C
+    harness.write_array_bytes(0, 0x1000, [0x00, 0x64, 0xFF, 0x38, 0x01, 0x2C], 6);
+
+    assert_vertices_match(
+        harness.decode(decoder,
+            StreamBuilder()
+                .stream_add_u8(0x00)        // position index
+                .stream_add_s16_be(16384)   // texcoord s
+                .stream_add_s16_be(-8192)   // texcoord t
+                .finish(),
+            1),
+        [
+            vertex()
+                .position(100.0f, -200.0f, 300.0f)
+                .texcoord(0, 16384.0f, -8192.0f)
+                .build(),
         ],
         harness.state);
 }

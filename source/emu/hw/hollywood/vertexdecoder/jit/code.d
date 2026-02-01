@@ -24,8 +24,9 @@ final class Code {
     enum ARRAY_INFO_REG64 = rdx;
     enum ARRAY_INFO_REG32 = edx;
 
-    enum MAX_LICM_VALUES = 4;
-    static immutable YMM[MAX_LICM_VALUES] LICM_REGISTERS = [ymm8, ymm9, ymm10, ymm11];
+    enum MAX_LICM_VALUES = 8;
+    // TODO: if we run out of LICM registers, fall back to memory references
+    static immutable YMM[MAX_LICM_VALUES] LICM_REGISTERS = [ymm8, ymm9, ymm10, ymm11, ymm4, ymm5, ymm6, ymm7];
     alias LicmValue = u8[32];
     LicmValue[MAX_LICM_VALUES] licm_values;
     int                        licm_value_count;
@@ -118,7 +119,6 @@ final class Code {
     void emit_licm_block() {
         foreach (entry; 0 .. licm_value_count) {
             auto label_name = licm_value_label(entry);
-            writefln("Emitting LICM load for entry %d at label %s", entry, label_name);
             auto addr = Address!256.ripAnchor(label_name);
             vmovups(LICM_REGISTERS[entry], addr);
             registerRipReferenceFrom(addr);
@@ -142,16 +142,13 @@ final class Code {
         block.buffer ~= zero_data[0 .. zero_data.length];
     }
 
-    import std.stdio;
     u64 vpshufb_mask_map;
     void assign_vpshufb_mask_to_ymm(YMM ymm, YMM mask) {
-        writefln("Assigning vpshufb mask %s to ymm %s", mask, ymm);
         vpshufb_mask_map &= ~(0xF << (ymm.index * 4));
         vpshufb_mask_map |= (mask.index & 0xF) << (ymm.index * 4);
     }
 
     YMM vpshufb_mask_for(YMM ymm) {
-        writefln("Getting vpshufb mask for ymm %s", ymm);
         return YMM((vpshufb_mask_map >> (ymm.index * 4)) & 0xF);
     }
 

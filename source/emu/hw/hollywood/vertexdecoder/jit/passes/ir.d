@@ -75,6 +75,14 @@ struct IndexedLoad {
     u8              component_count;
     float           scale;            // 1.0 if no scaling
 
+    // For nine-component normals (NBT), the array element contains all 9
+    // components contiguously, but the JIT splits them into three separate
+    // 3-component loads (normal, binormal_t, binormal_b). This field tells
+    // the emission code which component to start reading from within the
+    // array element. For example, binormal_t starts at component 3 and
+    // binormal_b starts at component 6.
+    u8              first_component_index;
+
     u8              ymm_index;
     u8              ymm_byte_offset;
 

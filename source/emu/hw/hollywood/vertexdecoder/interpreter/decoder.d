@@ -113,7 +113,12 @@ private:
         final switch (size) {
         case 1: return state.mem.physical_read_u8(array_offset);
         case 2: return state.mem.physical_read_u16(array_offset);
-        case 3: return state.mem.physical_read_u32(array_offset);
+        case 3: {
+            u32 b0 = state.mem.physical_read_u8(array_offset);
+            u32 b1 = state.mem.physical_read_u8(array_offset + 1);
+            u32 b2 = state.mem.physical_read_u8(array_offset + 2);
+            return (b0 << 16) | (b1 << 8) | b2;
+        }
         case 4: return state.mem.physical_read_u32(array_offset);
         }
     }

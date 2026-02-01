@@ -770,7 +770,7 @@ public:
                 import std.stdio;
             // writefln("debjit %x", is(DST == Reg!16));
                 static if (is(ARGS[0] == int) && is(ARGS[1] == int)) {
-                    if (is(DST == Reg!16) && !(args[0] == 0x0f && (args[1] == 0xb7 || args[1] == 0xbf || 
+                    if ((is(DST == Reg!16) || is(SRC == Reg!16)) && !(args[0] == 0x0f && (args[1] == 0xb7 || args[1] == 0xbf ||
                     args[1] == 0xb6 || args[1] == 0xbe || args[1] == 0xb7 || args[1] == 0xb6)))
                         buffer ~= 0x66;
                 } else {
@@ -4693,4 +4693,65 @@ unittest
     assert(find_jump_to(block.labels["licm"]));
     assert(find_jump_to(block.labels["done"]));
     assert(find_jump_to(block.labels["loop"]));
+}
+
+// Golden output from: gcc -c movbe_test.s && objdump -d movbe_test.o
+@("gallinule_movbe_16bit_load")
+unittest
+{
+    Block!true block;
+    with (block) {
+        movbe(ax, wordPtr(rbx));                // 66 0f 38 f0 03
+        movbe(cx, wordPtr(rdi));                // 66 0f 38 f0 0f
+        movbe(r8w, wordPtr(rbx));               // 66 44 0f 38 f0 03
+        // movbe(r8w, wordPtr(r12)) omitted: known gallinule bug with high reg + zero offset
+        movbe(ax, wordPtr(rbx, 0x10));          // 66 0f 38 f0 43 10
+        movbe(r8w, wordPtr(rbx, 0x10));         // 66 44 0f 38 f0 43 10
+    }
+
+    assert(block.finalize().toHexString ==
+        "660F38F003" ~
+        "660F38F00F" ~
+        "66440F38F003" ~
+        "660F38F04310" ~
+        "66440F38F04310");
+}
+
+@("gallinule_movbe_16bit_store")
+unittest
+{
+    Block!true block;
+    with (block) {
+        movbe(wordPtr(rbx), ax);                // 66 0f 38 f1 03
+        movbe(wordPtr(rdi), cx);                // 66 0f 38 f1 0f
+        movbe(wordPtr(rbx), r8w);               // 66 44 0f 38 f1 03
+        // movbe(wordPtr(r12), r8w) omitted: known gallinule bug with high reg + zero offset
+        movbe(wordPtr(rbx, 0x10), ax);          // 66 0f 38 f1 43 10
+        movbe(wordPtr(rbx, 0x10), r8w);         // 66 44 0f 38 f1 43 10
+    }
+
+    assert(block.finalize().toHexString ==
+        "660F38F103" ~
+        "660F38F10F" ~
+        "66440F38F103" ~
+        "660F38F14310" ~
+        "66440F38F14310");
+}
+
+@("gallinule_movbe_32bit_64bit")
+unittest
+{
+    Block!true block;
+    with (block) {
+        movbe(eax, dwordPtr(rbx));              // 0f 38 f0 03
+        movbe(r8d, dwordPtr(rbx));              // 44 0f 38 f0 03
+        movbe(rax, qwordPtr(rbx));              // 48 0f 38 f0 03
+        movbe(r8, qwordPtr(rbx));               // 4c 0f 38 f0 03
+    }
+
+    assert(block.finalize().toHexString ==
+        "0F38F003" ~
+        "440F38F003" ~
+        "480F38F003" ~
+        "4C0F38F003");
 }
