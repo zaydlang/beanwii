@@ -10,6 +10,7 @@ layout(std140, binding = 0) uniform EFBCopyParams {
     vec2  src_offset;
     vec2  src_size;
     ivec2 dst_size;
+    ivec2 efb_size;
 };
 
 void main() {
@@ -17,12 +18,12 @@ void main() {
     if (gid.x >= dst_size.x || gid.y >= dst_size.y) {
         return;
     }
-    
+
     vec2 base_uv = (vec2(gid) + 0.5) / vec2(dst_size);
 	vec2 offset = src_offset;
-	offset.y = 528.0 - src_size.y - src_offset.y;
+	offset.y = float(efb_size.y) - src_size.y - src_offset.y;
     vec2 pixel_coord = offset + base_uv * src_size;
-    vec2 uv = pixel_coord / vec2(640.0, 528.0);
+    vec2 uv = pixel_coord / vec2(efb_size);
 
     vec4 src_color = texture(efb_color, uv);
     vec4 masked = vec4(
@@ -32,6 +33,7 @@ void main() {
         channel_mask.a != 0 ? src_color.a : 0.0
     );
 
-	gid.y = dst_size.y - gid.y;
+	// Flip into top-left-origin texture space without writing past the last row.
+	gid.y = dst_size.y - 1 - gid.y;
     imageStore(dst, gid, masked);
 }

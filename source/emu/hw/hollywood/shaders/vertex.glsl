@@ -1,4 +1,4 @@
-#version 420
+#version 430
 
 in  vec3 in_Position;
 in  vec3 normal;
@@ -98,40 +98,45 @@ mat4x3 get_matrix(int index) {
 }
 
 mat4x3 get_normal_matrix(int index) {
-	int base = index * 4;
+	int base = index * 3;
 
 	return mat4x3(
-		normal_matrix_data[base+0], normal_matrix_data[base+4], normal_matrix_data[base+8],
-		normal_matrix_data[base+1], normal_matrix_data[base+5], normal_matrix_data[base+9],
-		normal_matrix_data[base+2], normal_matrix_data[base+6], normal_matrix_data[base+10],
-		normal_matrix_data[base+3], normal_matrix_data[base+7], normal_matrix_data[base+11]
+		normal_matrix_data[base+0], normal_matrix_data[base+3], normal_matrix_data[base+6],
+		normal_matrix_data[base+1], normal_matrix_data[base+4], normal_matrix_data[base+7],
+		normal_matrix_data[base+2], normal_matrix_data[base+5], normal_matrix_data[base+8],
+		0.0, 0.0, 0.0
 	);
 }
 
 float calculate_light_factor(ChannelControl cc, Light l, vec3 pos_view, vec3 n) {
 	vec3 diff = l.position.xyz - pos_view;
-	float d = length(diff);
-	vec3 ln = normalize(diff);
-
-	float diffuse = 1.0;
-	if (cc.diffuse_fn == 2) {
-		diffuse = max(dot(n, ln), 0.0);
-	} else if (cc.diffuse_fn == 1) {
-		diffuse = 0.5 * dot(n, ln) + 0.5;
-	}
+	float dist2 = dot(diff, diff);
+	float dist = sqrt(dist2);
+	vec3 ln = dist != 0.0 ? diff / dist : vec3(0.0);
 
 	float atten = 1.0;
-	if (cc.attenuation_fn == 3) {
-		float cosTheta = dot(normalize(l.direction.xyz), ln);
-		float num = max(l.dist_atten[2] * cosTheta * cosTheta + l.dist_atten[1] * cosTheta + l.dist_atten[0], 0.0);
-		float den = l.spec_atten[2] * d * d + l.spec_atten[1] * d + l.spec_atten[0];
-		atten = (den != 0.0) ? num / den : 0.0;
+	if (cc.attenuation_fn == 0 || cc.attenuation_fn == 2) {
+		if (dist == 0.0) {
+			ln = n;
+		}
 	} else if (cc.attenuation_fn == 1) {
-		float ndh = clamp(dot(n, normalize(l.direction.xyz)), -1.0, 1.0);
-		float num = max(l.dist_atten[2] * ndh * ndh + l.dist_atten[1] * ndh + l.dist_atten[0], 0.0);
-		float den = l.spec_atten[2] * ndh * ndh + l.spec_atten[1] * ndh + l.spec_atten[0];
-		atten = (den != 0.0) ? num / den : 0.0;
-		diffuse = 1.0;
+		float ndh = dot(n, ln) >= 0.0 ? max(0.0, dot(n, l.direction.xyz)) : 0.0;
+		vec3 cos_atten = l.dist_atten.xyz;
+		vec3 dist_atten = cc.diffuse_fn == 0 ? l.spec_atten.xyz : normalize(l.spec_atten.xyz);
+		atten = max(0.0, dot(cos_atten, vec3(1.0, ndh, ndh * ndh))) /
+		        dot(dist_atten, vec3(1.0, ndh, ndh * ndh));
+	} else if (cc.attenuation_fn == 3) {
+		ln = diff / dist;
+		atten = max(0.0, dot(ln, l.direction.xyz));
+		atten = max(0.0, l.dist_atten.x + l.dist_atten.y * atten + l.dist_atten.z * atten * atten) /
+		        dot(l.spec_atten.xyz, vec3(1.0, dist, dist2));
+	}
+
+	float diffuse = 1.0;
+	if (cc.diffuse_fn == 1) {
+		diffuse = dot(ln, n);
+	} else if (cc.diffuse_fn == 2) {
+		diffuse = max(0.0, dot(ln, n));
 	}
 
 	return atten * diffuse;
@@ -234,6 +239,6 @@ void main(void) {
 			color_output[i] = material * light_func;
 		}
 
-	color0 = color_output[0];
-	color1 = color_output[1];
+	color0 = clamp(color_output[0], 0, 1);
+	color1 = clamp(color_output[1], 0, 1);
 }
