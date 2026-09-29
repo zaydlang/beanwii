@@ -18,17 +18,17 @@ import util.number;
 final class Mmio {
     private MmioGen!(mmio_spec, Mmio) gen;
 
-    public AudioInterface      audio_interface;
-    public CommandProcessor    command_processor;
-    public DSP                 dsp;
-    public DVDInterface        dvd_interface;
-    public ExternalInterface   external_interface;
-    public VideoInterface      video_interface;
-    public PixelEngine         pixel_engine;
-    public SerialInterface     serial_interface;
-    public InterruptController interrupt_controller;
-    public IPC                 ipc;
-    public Hollywood           hollywood;
+    public AudioInterface         audio_interface;
+    public CommandProcessor       command_processor;
+    public DSP                    dsp;
+    public DVDInterface           dvd_interface;
+    public ExternalInterface      external_interface;
+    public VideoInterface         video_interface;
+    public PixelEngine            pixel_engine;
+    public SerialInterface        serial_interface;
+    public InterruptController    interrupt_controller;
+    public IPC                    ipc;
+    public Hollywood              hollywood;
     public HardwareAcceleratedMem memory;
 
     static const mmio_spec = [
